@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AudioMixer</title>
+<style>
+  :root {
+    --bg: #1e1e22;
+    --panel: #26262c;
+    --border: #3a3a42;
+    --fg: #e8e8ea;
+    --muted: #9a9aa4;
+    --link: #6aa9ff;
+    --code-bg: #16161a;
+    --accent: #f2a93b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px 32px 80px;
+  }
+  h1 { font-size: 32px; margin: 0 0 8px; }
+  h2 { font-size: 22px; margin: 32px 0 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h3 { font-size: 17px; margin: 24px 0 6px; color: var(--fg); }
+  p { margin: 8px 0 12px; }
+  a { color: var(--link); }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  strong { color: #fff; }
+  code {
+    font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 14px;
+    overflow-x: auto;
+  }
+  pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: 600; }
+  .lead { color: var(--muted); font-size: 16px; }
+  .toolbar-item { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>AudioMixer</h1>
+
+<p class="lead">A small Windows desktop audio mixer for routing <strong>3 microphone inputs</strong> to <strong>2 outputs</strong> (typically your headset/speakers and Zoom via VB-CABLE), with per-channel volume, mute, delay, routing toggles, VU meters, recording, and a clap-test delay-detection feature.</p>
+
+<p>Built because Bluetooth mics have ~100-300 ms more latency than wired ones and existing mixers either don't compensate for it or are overkill for a simple setup.</p>
+
+<h2>Features</h2>
+
+<ul>
+  <li><strong>3 input channels</strong> — each with its own device, volume slider, mute, delay (0-1000 ms), and routing toggles</li>
+  <li><strong>2 output buses</strong> — each with its own device picker, peak meter, and dB readout</li>
+  <li><strong>Routing matrix</strong> — independent A/B toggles per input</li>
+  <li><strong>VU meters</strong> — pre-fader and post-fader for each input, output level meter for each bus; green below -12 dBFS, yellow to -3, red above (clip warning)</li>
+  <li><strong>Delay compensation</strong> — per-channel adjustable delay buffer (e.g., add 150 ms to the wired mic to align with a Bluetooth one)</li>
+  <li><strong>Auto-detect delays</strong> — clap test that records all active inputs for 4 seconds, finds the first transient in each, and suggests delay values to align them</li>
+  <li><strong>Recording</strong> — capture the headset or Zoom-bound mix to a WAV file (48 kHz stereo float32) in <code>Documents\AudioMixer\recordings\</code></li>
+  <li><strong>Editable labels</strong> — rename each input/output strip (e.g., "Rode", "Anker 1", "Headset", "Zoom")</li>
+  <li><strong>Auto-save</strong> — every setting change persists 500 ms later to <code>%APPDATA%\AudioMixer\preset.json</code></li>
+  <li><strong>Duplicate-device prevention</strong> — a device picked for one slot disappears from the others' picker lists</li>
+  <li><strong>Compact UI</strong> — single 500×320 window with click-to-open device popups, no scrollbars, no inline dropdowns</li>
+</ul>
+
+<h2>Requirements</h2>
+
+<ul>
+  <li>Windows 10 or 11</li>
+  <li>For <strong>Zoom routing</strong>: <a href="https://vb-audio.com/Cable/">VB-CABLE</a> — free virtual audio cable. Install + reboot. Pick "CABLE Input" as Output B's device, then set Zoom's microphone to "CABLE Output".</li>
+</ul>
+
+<h2>Running</h2>
+
+<h3>From source (developer setup)</h3>
+<pre><code>git clone &lt;repo path&gt; audio-mixer
+cd audio-mixer
+winget install Microsoft.DotNet.SDK.8   # one-time, ~250 MB
+dotnet run --project AudioMixer</code></pre>
+
+<h3>Pre-built — framework-dependent</h3>
+<p>Target machine must have the <strong>.NET 8 Desktop Runtime</strong> installed (<code>winget install Microsoft.DotNet.DesktopRuntime.8</code>, ~50 MB).</p>
+<pre><code>dotnet publish AudioMixer -c Release</code></pre>
+<p>Output goes to <code>AudioMixer\bin\Release\net8.0-windows\publish\</code>. Copy the folder; run <code>AudioMixer.exe</code>.</p>
+
+<h3>Pre-built — self-contained</h3>
+<p>No prerequisites on the target machine. Total ~160 MB.</p>
+<pre><code>dotnet publish AudioMixer -c Release -r win-x64 --self-contained -p:PublishSingleFile=true</code></pre>
+<p>Output goes to <code>AudioMixer\bin\Release\net8.0-windows\win-x64\publish\</code>. The folder contains one big <code>AudioMixer.exe</code> (~154 MB, holds the .NET runtime and all managed code) <strong>plus 5 native WPF DLLs</strong> that .NET cannot embed into the single-file bundle: <code>D3DCompiler_47_cor3.dll</code>, <code>PenImc_cor3.dll</code>, <code>PresentationNative_cor3.dll</code>, <code>vcruntime140_cor3.dll</code>, <code>wpfgfx_cor3.dll</code>. <strong>Copy the whole publish folder</strong>, not just the .exe.</p>
+
+<h2>Quick start</h2>
+
+<ol>
+  <li>Launch AudioMixer</li>
+  <li>On <strong>Input 1</strong>, click the device button (top of the strip) → pick your microphone</li>
+  <li>On <strong>Output A</strong> (right side), click the device button → pick your speakers/headset</li>
+  <li>The <strong>A</strong> toggle on Input 1 is enabled automatically — you should hear yourself</li>
+  <li>(Optional) Click <strong>A</strong> to rename to something memorable like "Headset"</li>
+  <li>(Optional) For Zoom: install VB-CABLE, set <strong>Output B</strong> to "CABLE Input", enable Input 1's <strong>B</strong> toggle, and set Zoom's microphone to "CABLE Output"</li>
+</ol>
+
+<h3>Toolbar (left to right)</h3>
+<ul>
+  <li>↻ <strong>Refresh devices</strong> — re-enumerate Windows audio devices (after plugging in / out)</li>
+  <li>⟳ <strong>Resync audio</strong> — flush all buffers and restart outputs (use if you notice growing latency)</li>
+  <li><strong>A / B</strong> — choose which output bus to record from</li>
+  <li>⏺ <strong>Record</strong> — start/stop recording the chosen bus to WAV</li>
+  <li>⏱ <strong>Detect delays (clap test)</strong> — see below</li>
+</ul>
+
+<h3>Delay detection</h3>
+<p>If one of your mics is Bluetooth, it lags the others by 100-300 ms. To auto-compensate:</p>
+<ol>
+  <li>Click the stopwatch icon in the toolbar</li>
+  <li>A dialog tells you when to make ONE sharp sound (clap)</li>
+  <li>AudioMixer records all active inputs for 4 seconds, finds the first transient in each, computes the difference, and proposes per-channel delay values to align them</li>
+  <li>Accept "Apply suggested delays" — the latest-arriving input gets 0 ms; others get a delay equal to how much earlier they were</li>
+</ol>
+<p>Raw recordings are saved to <code>Documents\AudioMixer\analysis\input{N}-{timestamp}.wav</code> for inspection.</p>
+
+<h2>Architecture</h2>
+
+<pre><code>WasapiCapture (per input device)
+  → resample to 48k stereo float32
+  → mute gate → gain → delay buffer → peak tap
+  → per-output ring buffer
+                          ↓
+                MixingSampleProvider (per output bus)
+                          ↓
+                Peak tap → recorder tap (optional)
+                          ↓
+                WasapiOut (per output device)</code></pre>
+
+<ul>
+  <li><strong>Internal mix format</strong>: 48 kHz, stereo, IEEE float32</li>
+  <li><strong>WASAPI shared mode</strong> for all I/O (so Zoom can also use the same device)</li>
+  <li><strong>Per-output buffer</strong>: 500 ms cap, <code>ReadFully=true</code> to avoid <code>MixingSampleProvider</code> evicting the source on short reads (see CLAUDE.md for the NAudio 2.2.1 gotcha)</li>
+  <li><strong>MVVM</strong> with WPF — view-models in <code>AudioMixer/ViewModels/</code>, engine in <code>AudioMixer/Audio/</code></li>
+</ul>
+
+<h2>File locations</h2>
+
+<table>
+  <thead><tr><th>What</th><th>Where</th></tr></thead>
+  <tbody>
+    <tr><td>Settings (auto-saved)</td><td><code>%APPDATA%\AudioMixer\preset.json</code></td></tr>
+    <tr><td>Mix recordings</td><td><code>Documents\AudioMixer\recordings\mix-{timestamp}.wav</code></td></tr>
+    <tr><td>Clap-test recordings</td><td><code>Documents\AudioMixer\analysis\input{N}-{timestamp}.wav</code></td></tr>
+    <tr><td>Diagnostic log</td><td><code>%TEMP%\AudioMixer.log</code></td></tr>
+  </tbody>
+</table>
+
+<h2>Known limits</h2>
+
+<ul>
+  <li>Two outputs pointing at the <strong>same physical device</strong> is allowed but quirky — auto-dedupe on preset load keeps the first slot and clears the second. WASAPI shared mode mostly handles two sessions per device, but the implementation has occasional issues.</li>
+  <li>Latency floor is the WASAPI shared-mode floor (≈50-100 ms) plus our 200-500 ms jitter buffer + Bluetooth mic device-side delay. Sub-30 ms is not achievable through this stack without switching to ASIO + exclusive mode (which would conflict with Zoom).</li>
+  <li>WPF doesn't support trimming reliably, so the self-contained .exe is ~150 MB.</li>
+</ul>
+
+<h2>License</h2>
+<p>Personal project. No license declared — ask before reusing.</p>
+
+</main>
+</body>
+</html>
