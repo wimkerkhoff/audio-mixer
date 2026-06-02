@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -22,7 +23,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private List<AudioDeviceInfo> _allInputDevices = new();
     private List<AudioDeviceInfo> _allOutputDevices = new();
 
-    public ChannelViewModel[] Channels { get; }
+    public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public OutputViewModel[] Outputs { get; }
 
     public RelayCommand RefreshDevicesCommand { get; }
@@ -71,6 +72,31 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string CurrentRecordSourceLabel =>
         RecordSourceOptions[Math.Clamp(_recordFromOutputIndex, 0, RecordSourceOptions.Length - 1)];
 
+    public int[] InputCountOptions { get; } = Enumerable.Range(
+        AudioEngine.MinInputCount, AudioEngine.MaxInputCount - AudioEngine.MinInputCount + 1).ToArray();
+
+    private int _inputCount = AudioEngine.DefaultInputCount;
+    public int InputCount
+    {
+        get => _inputCount;
+        set
+        {
+            int clamped = Math.Clamp(value, AudioEngine.MinInputCount, AudioEngine.MaxInputCount);
+            if (clamped == _inputCount)
+            {
+                if (value != clamped) RaisePropertyChanged();
+                return;
+            }
+            ApplyInputCount(clamped);
+            _inputCount = clamped;
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(WindowWidth));
+            if (!_suppressAutosave) { _autosaveTimer.Stop(); _autosaveTimer.Start(); }
+        }
+    }
+
+    public double WindowWidth => Math.Max(500, _inputCount * 96 + 160);
+
     public MainViewModel()
     {
         _engine = new AudioEngine();
@@ -78,13 +104,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _allInputDevices = AudioDeviceInfo.Enumerate(DataFlow.Capture);
         _allOutputDevices = AudioDeviceInfo.Enumerate(DataFlow.Render);
 
-        Channels = new ChannelViewModel[AudioEngine.InputCount];
-        for (int i = 0; i < AudioEngine.InputCount; i++)
+        for (int i = 0; i < _engine.InputCount; i++)
         {
-            Channels[i] = new ChannelViewModel(
-                i, _engine.Inputs[i], _allInputDevices, AudioEngine.OutputCount,
-                (idx, dev) => SetInputDevice(idx, dev));
+            Channels.Add(CreateChannel(i));
         }
+        _inputCount = Channels.Count;
         Channels[0].Routes[0].IsOn = true;
         if (Channels[0].Routes.Length > 1) Channels[0].Routes[1].IsOn = true;
 
@@ -111,11 +135,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             SavePreset();
         };
 
-        foreach (var ch in Channels)
-        {
-            ch.PropertyChanged += OnSettingChanged;
-            foreach (var r in ch.Routes) r.PropertyChanged += OnSettingChanged;
-        }
+        foreach (var ch in Channels) AttachChannel(ch);
         foreach (var op in Outputs) op.PropertyChanged += OnSettingChanged;
 
         _meterTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -142,7 +162,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     Audio.AudioLog.Write(
                         $"Output {o}: playing={bus.IsPlaying} samplesPerSec={delta} peakDb={Outputs[o].OutputPeakDb:F1}");
                 }
-                for (int i = 0; i < Channels.Length; i++)
+                for (int i = 0; i < Channels.Count; i++)
                 {
                     var dev = Channels[i].SelectedDevice;
                     if (dev != null)
@@ -162,6 +182,60 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _meterTimer.Start();
 
         TryLoadInitialPreset();
+    }
+
+    private ChannelViewModel CreateChannel(int index) =>
+        new ChannelViewModel(
+            index, _engine.Inputs[index], _allInputDevices, AudioEngine.OutputCount,
+            (idx, dev) => SetInputDevice(idx, dev));
+
+    private void AttachChannel(ChannelViewModel ch)
+    {
+        ch.PropertyChanged += OnSettingChanged;
+        foreach (var r in ch.Routes) r.PropertyChanged += OnSettingChanged;
+    }
+
+    private void DetachChannel(ChannelViewModel ch)
+    {
+        ch.PropertyChanged -= OnSettingChanged;
+        foreach (var r in ch.Routes) r.PropertyChanged -= OnSettingChanged;
+    }
+
+    private void ApplyInputCount(int count)
+    {
+        bool prevAutosave = _suppressAutosave;
+        bool prevRebuild = _suppressRebuild;
+        _suppressAutosave = true;
+        _suppressRebuild = true;
+        try
+        {
+            int cur = Channels.Count;
+            if (count > cur)
+            {
+                _engine.SetInputCount(count);
+                for (int i = cur; i < count; i++)
+                {
+                    var ch = CreateChannel(i);
+                    AttachChannel(ch);
+                    Channels.Add(ch);
+                }
+            }
+            else if (count < cur)
+            {
+                for (int i = cur - 1; i >= count; i--)
+                {
+                    DetachChannel(Channels[i]);
+                    Channels.RemoveAt(i);
+                }
+                _engine.SetInputCount(count);
+            }
+        }
+        finally
+        {
+            _suppressAutosave = prevAutosave;
+            _suppressRebuild = prevRebuild;
+        }
+        RebuildAvailableDevices();
     }
 
     private void SetInputDevice(int index, AudioDeviceInfo? device)
@@ -198,10 +272,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _rebuildInProgress = true;
         try
         {
-            for (int i = 0; i < Channels.Length; i++)
+            for (int i = 0; i < Channels.Count; i++)
             {
                 var excluded = new HashSet<string>();
-                for (int j = 0; j < Channels.Length; j++)
+                for (int j = 0; j < Channels.Count; j++)
                 {
                     if (j == i) continue;
                     var id = Channels[j].SelectedDevice?.Id;
@@ -360,7 +434,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _suppressRebuild = true;
         try
         {
-            for (int i = 0; i < Channels.Length && i < preset.Channels.Length; i++)
+            int desired = Math.Clamp(preset.Channels.Length, AudioEngine.MinInputCount, AudioEngine.MaxInputCount);
+            if (preset.Channels.Length > 0 && desired != Channels.Count)
+            {
+                ApplyInputCount(desired);
+                _inputCount = desired;
+                RaisePropertyChanged(nameof(InputCount));
+                RaisePropertyChanged(nameof(WindowWidth));
+            }
+
+            for (int i = 0; i < Channels.Count && i < preset.Channels.Length; i++)
             {
                 var cp = preset.Channels[i];
                 if (!string.IsNullOrEmpty(cp.CustomLabel)) Channels[i].CustomLabel = cp.CustomLabel;
@@ -485,7 +568,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             foreach (var r in outcome.Inputs)
             {
                 if (double.IsNaN(r.FirstTransientMs)) continue;
-                if (r.InputIndex >= 0 && r.InputIndex < Channels.Length)
+                if (r.InputIndex >= 0 && r.InputIndex < Channels.Count)
                 {
                     Channels[r.InputIndex].DelayMs = Math.Clamp(r.SuggestedDelayMs, 0, 1000);
                 }

@@ -6,8 +6,12 @@
         xmlns:vm="clr-namespace:AudioMixer.ViewModels"
         xmlns:ctrl="clr-namespace:AudioMixer.Controls"
         mc:Ignorable="d"
-        Title="AudioMixer" Height="320" Width="500"
-        MinHeight="260" MinWidth="480"
+        Title="AudioMixer"
+        Icon="Assets/app.ico"
+        Height="320"
+        Width="500"
+        ResizeMode="CanMinimize"
+        SizeToContent="Manual"
         Background="#1E1E22" Foreground="#EEE"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True"
@@ -229,6 +233,13 @@
                 <Button Style="{StaticResource RecordBtn}" Content="{Binding RecordIcon}" ToolTip="{Binding RecordTooltip}" Command="{Binding ToggleRecordCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
                 <Button Style="{StaticResource IconBtn}" Content="&#xE916;" ToolTip="Detect input delays (clap test)" Command="{Binding DetectDelaysCommand}"/>
+                <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
+                <TextBlock Text="Inputs" Foreground="#9A9AA4" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <ComboBox ItemsSource="{Binding InputCountOptions}"
+                          SelectedItem="{Binding InputCount, Mode=TwoWay}"
+                          Width="44" Height="20" FontSize="11"
+                          VerticalContentAlignment="Center"
+                          ToolTip="Number of input channels (1–10)"/>
                 <TextBlock Text="{Binding StatusText}" Foreground="#888" FontSize="10" VerticalAlignment="Center" Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
         </Border>
@@ -236,8 +247,8 @@
         <!-- Main grid -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3*" MinWidth="278"/>
-                <ColumnDefinition Width="2*" MinWidth="182"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="150"/>
             </Grid.ColumnDefinitions>
 
             <!-- Inputs -->
@@ -249,7 +260,7 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:ChannelViewModel}">
-                        <Border Style="{StaticResource Strip}">
+                        <Border Style="{StaticResource Strip}" MinWidth="86">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -358,7 +369,7 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:OutputViewModel}">
-                        <Border Style="{StaticResource Strip}" Background="#2A2A36">
+                        <Border Style="{StaticResource Strip}" Background="#2A2A36" MinWidth="70">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>

@@ -14,6 +14,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
+        Width = _viewModel.WindowWidth;
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.WindowWidth))
+                Width = _viewModel.WindowWidth;
+        };
         Closed += (_, _) => _viewModel.Dispose();
     }
 

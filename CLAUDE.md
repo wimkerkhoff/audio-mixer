@@ -1,6 +1,8 @@
 # AudioMixer
 
-A Windows desktop audio mixer: 3 configurable inputs → 2 configurable outputs, with per-channel volume, mute, delay, routing toggles, VU meters, recording, and presets. Built to send a mix to a headset AND Zoom (via VB-CABLE) simultaneously, with delay compensation for Bluetooth mics.
+A Windows desktop audio mixer: 1–10 configurable inputs (default 3) → 2 configurable outputs, with per-channel volume, mute, delay, routing toggles, VU meters, recording, and presets. Built to send a mix to a headset AND Zoom (via VB-CABLE) simultaneously, with delay compensation for Bluetooth mics.
+
+Input count is runtime-configurable via a toolbar picker (`MainViewModel.InputCount` → `AudioEngine.SetInputCount`): the engine grows/shrinks its `Inputs` array (preserving existing channels, stop+dispose on shrink) and restarts the output buses to re-collect providers. `Channels` is an `ObservableCollection`; the window is non-resizable (`ResizeMode=CanMinimize`) and its width is computed from the input count in `MainWindow` code-behind (see gotcha below).
 
 ## Stack
 
@@ -32,8 +34,10 @@ AudioMixer/
 │   └── MixerPreset.cs        # Serializable: device IDs, volumes, mutes, delays, routes
 ├── Services/
 │   └── PresetStore.cs        # JSON load/save to %APPDATA%\AudioMixer\presets.json
-└── Controls/
-    └── VuMeter.xaml          # Custom control: gradient bar with peak-hold tick
+├── Controls/
+│   └── VuMeter.xaml          # Custom control: gradient bar with peak-hold tick
+└── Assets/
+    └── app.ico              # Multi-res app icon (EXE via <ApplicationIcon>, window via Icon=)
 ```
 
 ## Audio architecture
@@ -87,6 +91,7 @@ dotnet run --project AudioMixer
 - NAudio's `BufferedWaveProvider` property is `DiscardOnBufferOverflow` (not `DiscardOnBufferFull` — that name doesn't exist in 2.2.1 despite what older docs suggest).
 - WPF's temporary XAML-compilation project (`*_wpftmp.csproj`) does not appear to honor `ImplicitUsings` reliably for `System.IO` — add explicit `using System.IO;` in any file that uses `Path`/`Directory`/`File` rather than relying on globals.
 - The per-output BufferedWaveProvider (InputChannel._outBuffers) sets the **hard cap on end-to-end latency**. If you size it generously (e.g. 2s) and input starts pushing before the output starts pulling, that backlog becomes audible latency. Keep it small (~200ms) AND clear the buffer when (re)starting an output (see `AudioEngine.RestartOutputBus_NoLock` → `ClearOutputBuffer`). Symptom of the bug: "hello" comes out 1–2 seconds late.
+- **Input strips are laid out in a `UniformGrid Rows="1"`, which divides the column equally and IGNORES each child's `MinWidth`.** So a fixed-width window crams N strips into whatever space exists and clips the right-most controls (the A/B route toggles vanish first). Fix: the window is non-resizable and its width is computed from input count (`MainViewModel.WindowWidth = max(500, count*96 + 160)`), applied in `MainWindow` code-behind. Don't bind `Window.Width` in XAML — the binding isn't reliably applied at startup because `DataContext` is set *after* `InitializeComponent`, so it falls back to the literal; set `Width` in code-behind after assigning `DataContext` and on `WindowWidth` PropertyChanged instead. Also: the outputs live in a fixed-width column (150px), NOT `Auto` — an `Auto` column lets the device-name buttons expand to their full untrimmed text and blow out the layout.
 - **NAudio 2.2.1 `MixingSampleProvider.ReadFully=true` only controls output padding — NOT source retention.** In 2.2.1, when ANY source returns less than the requested count, MSP unconditionally `RemoveAt(index)`'s that source from its `sources` list (regardless of ReadFully). The source is gone forever. To prevent eviction, the source provider itself must always return the full requested count — set `ReadFully=true` on the underlying `BufferedWaveProvider` so it pads with zeros internally when empty. Symptom: audio works until first buffer-empty event (e.g. route toggle off then on), then output goes permanently silent until OutputBus is restarted.
 
 ## Self-maintenance protocol
