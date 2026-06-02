@@ -13,6 +13,21 @@ public sealed class OutputBus : IDisposable
     private WasapiOut? _output;
     private MixingSampleProvider? _mixer;
     private TapSampleProvider? _tap;
+    private VolumeSampleProvider? _volumeProvider;
+
+    private float _volume = 1f;
+    // Final output trim applied AFTER the peak/recorder tap, so the meter and recordings reflect
+    // the full mix and this only sets how loud the physical device (e.g. headset) plays.
+    public float Volume
+    {
+        get => _volume;
+        set
+        {
+            _volume = value < 0f ? 0f : value;
+            var v = _volumeProvider;
+            if (v != null) v.Volume = _volume;
+        }
+    }
 
     public WaveFormat InternalFormat { get; } =
         WaveFormat.CreateIeeeFloatWaveFormat(InternalSampleRate, InternalChannels);
@@ -39,8 +54,9 @@ public sealed class OutputBus : IDisposable
         AudioLog.Write($"  mixer inputs={inputCount} format={mixer.WaveFormat}");
 
         var tap = new TapSampleProvider(mixer);
+        var volume = new VolumeSampleProvider(tap) { Volume = _volume };
 
-        IWaveProvider source = tap.ToWaveProvider();
+        IWaveProvider source = volume.ToWaveProvider();
         AudioLog.Write($"  source format={source.WaveFormat}");
 
         var deviceFormat = device.AudioClient.MixFormat;
@@ -81,6 +97,7 @@ public sealed class OutputBus : IDisposable
         {
             _mixer = mixer;
             _tap = tap;
+            _volumeProvider = volume;
             _output = output;
         }
     }
@@ -105,6 +122,7 @@ public sealed class OutputBus : IDisposable
             _output = null;
             _mixer = null;
             _tap = null;
+            _volumeProvider = null;
         }
         if (prevOutput != null)
         {

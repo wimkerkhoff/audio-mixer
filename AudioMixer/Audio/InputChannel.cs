@@ -12,8 +12,41 @@ public sealed class InputChannel : IDisposable
 
     private readonly int _outputCount;
     private readonly BufferedWaveProvider[] _outBuffers;
+    private readonly float[] _autoMixGain;   // per-output automix gain, set by AutoMixer (audio thread reads)
+    private readonly float[] _autoMixRamp;    // per-output last-applied gain, for intra-buffer ramping
     private int _routeMask;
     private readonly object _stateLock = new();
+
+    private float _currentLevelLinear;
+    public float CurrentLevelLinear => Volatile.Read(ref _currentLevelLinear);
+
+    private bool _isPriority;
+    public bool IsPriority
+    {
+        get => Volatile.Read(ref _isPriority);
+        set => Volatile.Write(ref _isPriority, value);
+    }
+
+    public void SetAutoMixGain(int outputIndex, float gain)
+    {
+        if (outputIndex < 0 || outputIndex >= _outputCount) return;
+        Volatile.Write(ref _autoMixGain[outputIndex], gain);
+    }
+
+    // True when the automixer is attenuating this channel on any output it is routed to.
+    public bool IsDucking
+    {
+        get
+        {
+            int mask = Volatile.Read(ref _routeMask);
+            for (int o = 0; o < _outputCount; o++)
+            {
+                if ((mask & (1 << o)) == 0) continue;
+                if (Volatile.Read(ref _autoMixGain[o]) < 0.85f) return true;
+            }
+            return false;
+        }
+    }
 
     private WasapiCapture? _capture;
     private WaveFormat? _captureFormat;
@@ -52,9 +85,13 @@ public sealed class InputChannel : IDisposable
         _outputCount = outputCount;
         _outBuffers = new BufferedWaveProvider[outputCount];
         _outTrackers = new TrackingSampleProvider?[outputCount];
+        _autoMixGain = new float[outputCount];
+        _autoMixRamp = new float[outputCount];
         for (int i = 0; i < outputCount; i++)
         {
             _outBuffers[i] = CreateOutBuffer();
+            _autoMixGain[i] = 1f;
+            _autoMixRamp[i] = 1f;
         }
     }
 
@@ -161,11 +198,15 @@ public sealed class InputChannel : IDisposable
             _captureFifo = null;
             _convertedSource = null;
             _delayLine = null;
+            Volatile.Write(ref _currentLevelLinear, 0f);
+            for (int o = 0; o < _outputCount; o++) _autoMixRamp[o] = 1f;
             foreach (var buf in _outBuffers) buf.ClearBuffer();
         }
     }
 
     public void Dispose() => Stop();
+
+    private static bool IsUnity(float g) => g > 0.9999f && g < 1.0001f;
 
     private static BufferedWaveProvider CreateOutBuffer()
     {
@@ -246,23 +287,50 @@ public sealed class InputChannel : IDisposable
 
             PostPeak.Observe(rented, read);
 
+            double sumSq = 0;
+            for (int i = 0; i < read; i++) sumSq += (double)rented[i] * rented[i];
+            Volatile.Write(ref _currentLevelLinear, (float)Math.Sqrt(sumSq / read));
+
             int byteCount = read * sizeof(float);
-            var byteBuf = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
+            int mask = Volatile.Read(ref _routeMask);
+            byte[]? unityBytes = null;
+            float[]? scaledFloats = null;
+            byte[]? scaledBytes = null;
             try
             {
-                Buffer.BlockCopy(rented, 0, byteBuf, 0, byteCount);
-                int mask = Volatile.Read(ref _routeMask);
                 for (int o = 0; o < _outputCount; o++)
                 {
-                    if ((mask & (1 << o)) != 0)
+                    if ((mask & (1 << o)) == 0) { _autoMixRamp[o] = Volatile.Read(ref _autoMixGain[o]); continue; }
+
+                    float target = Volatile.Read(ref _autoMixGain[o]);
+                    float start = _autoMixRamp[o];
+                    if (IsUnity(target) && IsUnity(start))
                     {
-                        try { _outBuffers[o].AddSamples(byteBuf, 0, byteCount); } catch { }
+                        if (unityBytes == null)
+                        {
+                            unityBytes = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
+                            Buffer.BlockCopy(rented, 0, unityBytes, 0, byteCount);
+                        }
+                        try { _outBuffers[o].AddSamples(unityBytes, 0, byteCount); } catch { }
                     }
+                    else
+                    {
+                        scaledFloats ??= System.Buffers.ArrayPool<float>.Shared.Rent(read);
+                        scaledBytes ??= System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
+                        float g = start;
+                        float step = (target - start) / read;
+                        for (int i = 0; i < read; i++) { scaledFloats[i] = rented[i] * g; g += step; }
+                        Buffer.BlockCopy(scaledFloats, 0, scaledBytes, 0, byteCount);
+                        try { _outBuffers[o].AddSamples(scaledBytes, 0, byteCount); } catch { }
+                    }
+                    _autoMixRamp[o] = target;
                 }
             }
             finally
             {
-                System.Buffers.ArrayPool<byte>.Shared.Return(byteBuf);
+                if (unityBytes != null) System.Buffers.ArrayPool<byte>.Shared.Return(unityBytes);
+                if (scaledFloats != null) System.Buffers.ArrayPool<float>.Shared.Return(scaledFloats);
+                if (scaledBytes != null) System.Buffers.ArrayPool<byte>.Shared.Return(scaledBytes);
             }
         }
         finally

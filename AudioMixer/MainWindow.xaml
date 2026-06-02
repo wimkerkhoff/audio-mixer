@@ -176,6 +176,39 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="GearBtn" TargetType="ToggleButton">
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#3A3A42"/>
+            <Setter Property="Foreground" Value="#BBB"/>
+            <Setter Property="BorderBrush" Value="#4A4A52"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasAdvancedSettings}" Value="True">
+                    <Setter Property="Foreground" Value="#F2A93B"/>
+                    <Setter Property="BorderBrush" Value="#F2A93B"/>
+                </DataTrigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#48485A"/>
+                </Trigger>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="#3A3A48"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="DelayBox" TargetType="TextBox">
             <Setter Property="MinHeight" Value="18"/>
             <Setter Property="Height" Value="18"/>
@@ -214,24 +247,6 @@
                 <Button Style="{StaticResource IconBtn}" Content="&#xE72C;" ToolTip="Refresh devices" Command="{Binding RefreshDevicesCommand}"/>
                 <Button Style="{StaticResource IconBtn}" Content="&#xE895;" ToolTip="Resync audio (flush buffers if delay creeps up)" Command="{Binding ResyncAudioCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
-                <Grid Width="48" Margin="0,0,2,0">
-                    <ToggleButton x:Name="RecSrcBtn" Style="{StaticResource DeviceSelBtn}"
-                                  Content="{Binding CurrentRecordSourceLabel}"
-                                  ToolTip="Record source"/>
-                    <Popup IsOpen="{Binding IsChecked, ElementName=RecSrcBtn}"
-                           PlacementTarget="{Binding ElementName=RecSrcBtn}"
-                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
-                        <Border Style="{StaticResource PopupSurface}">
-                            <ListBox Style="{StaticResource PopupList}" MinWidth="80"
-                                     ItemsSource="{Binding RecordSourceOptions}"
-                                     SelectedIndex="{Binding RecordFromOutputIndex, Mode=TwoWay}"
-                                     Tag="{Binding ElementName=RecSrcBtn}"
-                                     SelectionChanged="PopupList_SelectionChanged"/>
-                        </Border>
-                    </Popup>
-                </Grid>
-                <Button Style="{StaticResource RecordBtn}" Content="{Binding RecordIcon}" ToolTip="{Binding RecordTooltip}" Command="{Binding ToggleRecordCommand}"/>
-                <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
                 <Button Style="{StaticResource IconBtn}" Content="&#xE916;" ToolTip="Detect input delays (clap test)" Command="{Binding DetectDelaysCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
                 <TextBlock Text="Inputs" Foreground="#9A9AA4" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"/>
@@ -267,12 +282,58 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*" MinHeight="60"/>
                                     <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <TextBox Grid.Row="0" Style="{StaticResource EditableLabel}"
-                                         Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"
-                                         MaxLength="20"/>
+                                <Grid Grid.Row="0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Margin="1,0,3,0" VerticalAlignment="Center"
+                                             ToolTip="Amber when the automixer is ducking this input">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="#333842"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsDucking}" Value="True">
+                                                        <Setter Property="Fill" Value="#F2A93B"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBox Grid.Column="1" Style="{StaticResource EditableLabel}"
+                                             Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"
+                                             MaxLength="20"/>
+                                    <Grid Grid.Column="2">
+                                        <ToggleButton x:Name="AdvBtn" Style="{StaticResource GearBtn}" Content="&#xE713;"
+                                                      ToolTip="Advanced: delay &amp; auto-mix"/>
+                                        <Popup IsOpen="{Binding IsChecked, ElementName=AdvBtn}"
+                                               PlacementTarget="{Binding ElementName=AdvBtn}"
+                                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                            <Border Style="{StaticResource PopupSurface}">
+                                                <StackPanel MinWidth="200" Margin="6">
+                                                    <TextBlock Style="{StaticResource Lbl}" Text="DELAY (ms)"/>
+                                                    <Grid Margin="0,2,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="42"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Slider Grid.Column="0" Minimum="0" Maximum="1000" Value="{Binding DelayMs}"
+                                                                SmallChange="5" LargeChange="50" VerticalAlignment="Center"/>
+                                                        <TextBox Grid.Column="1" Style="{StaticResource DelayBox}"
+                                                                 Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,0,0"/>
+                                                    </Grid>
+                                                    <CheckBox Margin="0,10,0,0" IsChecked="{Binding IsPriority}"
+                                                              Foreground="#DDD" FontSize="11"
+                                                              Content="Priority mic (always on, ducks others while speaking)"
+                                                              ToolTip="Always full level and out of the competition; while this mic is speaking it ducks the other (room) mics — e.g. a presenter's lapel"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Popup>
+                                    </Grid>
+                                </Grid>
 
                                 <Grid Grid.Row="1">
                                     <ToggleButton x:Name="DevBtn" Style="{StaticResource DeviceSelBtn}"
@@ -282,12 +343,21 @@
                                            PlacementTarget="{Binding ElementName=DevBtn}"
                                            Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
                                         <Border Style="{StaticResource PopupSurface}">
-                                            <ListBox Style="{StaticResource PopupList}"
-                                                     ItemsSource="{Binding AvailableDevices}"
-                                                     SelectedItem="{Binding SelectedDevice}"
-                                                     DisplayMemberPath="FriendlyName"
-                                                     Tag="{Binding ElementName=DevBtn}"
-                                                     SelectionChanged="PopupList_SelectionChanged"/>
+                                            <StackPanel MinWidth="220">
+                                                <Button Content="✕  Clear device" HorizontalContentAlignment="Left"
+                                                        Background="Transparent" Foreground="#C99" BorderThickness="0"
+                                                        Padding="6,3" FontSize="11" Cursor="Hand"
+                                                        Command="{Binding ClearDeviceCommand}"
+                                                        Tag="{Binding ElementName=DevBtn}"
+                                                        Click="ClosePopup_Click"/>
+                                                <Border Height="1" Background="#3A3A42" Margin="2,1"/>
+                                                <ListBox Style="{StaticResource PopupList}"
+                                                         ItemsSource="{Binding AvailableDevices}"
+                                                         SelectedItem="{Binding SelectedDevice}"
+                                                         DisplayMemberPath="FriendlyName"
+                                                         Tag="{Binding ElementName=DevBtn}"
+                                                         SelectionChanged="PopupList_SelectionChanged"/>
+                                            </StackPanel>
                                         </Border>
                                     </Popup>
                                 </Grid>
@@ -344,16 +414,6 @@
                                     </ItemsControl>
                                 </Grid>
 
-                                <Grid Grid.Row="4" Margin="0,3,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="12"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="28"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="&#xE823;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="#9A9AA4" VerticalAlignment="Center" ToolTip="Delay (ms)"/>
-                                    <Slider Grid.Column="1" Minimum="0" Maximum="1000" Value="{Binding DelayMs}" SmallChange="5" LargeChange="50" VerticalAlignment="Center" Margin="2,0,0,0"/>
-                                    <TextBox Grid.Column="2" Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource DelayBox}" Margin="1,0,0,0"/>
-                                </Grid>
                             </Grid>
                         </Border>
                     </DataTemplate>
@@ -374,11 +434,24 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*" MinHeight="60"/>
+                                    <RowDefinition Height="*" MinHeight="40"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <TextBox Grid.Row="0" Style="{StaticResource EditableLabel}"
-                                         Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"
-                                         MaxLength="20"/>
+                                <Grid Grid.Row="0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Style="{StaticResource EditableLabel}"
+                                             Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"
+                                             MaxLength="20"/>
+                                    <Button Grid.Column="1" Style="{StaticResource RecordBtn}"
+                                            FontFamily="Segoe UI" FontSize="12"
+                                            Content="{Binding RecordIcon}" ToolTip="{Binding RecordTooltip}"
+                                            Command="{Binding ToggleRecordCommand}" VerticalAlignment="Center"/>
+                                </Grid>
                                 <Grid Grid.Row="1">
                                     <ToggleButton x:Name="OutDevBtn" Style="{StaticResource DeviceSelBtn}"
                                                   Content="{Binding SelectedDevice.FriendlyName, FallbackValue='(none)', TargetNullValue='(none)'}"
@@ -414,6 +487,53 @@
                                         <TextBlock Foreground="#FFF" FontSize="10"
                                                    Text="{Binding OutputPeakHoldDb, StringFormat={}{0:F1}}"/>
                                     </StackPanel>
+                                </Grid>
+
+                                <Grid Grid.Row="3" Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource Lbl}" Text="Vol" VerticalAlignment="Center"/>
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                            Value="{Binding VolumePercent}"
+                                            Margin="3,0,0,0" VerticalAlignment="Center"
+                                            ToolTip="{Binding VolumePercent, StringFormat={}{0:F0}% output volume}"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource Lbl}" Margin="3,0,0,0" VerticalAlignment="Center"
+                                               Text="{Binding VolumePercent, StringFormat={}{0:F0}%}"/>
+                                </Grid>
+
+                                <StackPanel Grid.Row="4" Margin="0,3,0,0">
+                                    <TextBlock Style="{StaticResource Lbl}" Text="Auto-mix"/>
+                                    <Grid>
+                                        <ToggleButton x:Name="AmxBtn" Style="{StaticResource DeviceSelBtn}"
+                                                      Content="{Binding CurrentAutoMixLabel}"
+                                                      ToolTip="Automixer for this output: Off = straight sum, Share = smooth duck, Gate = one mic at a time"/>
+                                        <Popup IsOpen="{Binding IsChecked, ElementName=AmxBtn}"
+                                               PlacementTarget="{Binding ElementName=AmxBtn}"
+                                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                            <Border Style="{StaticResource PopupSurface}">
+                                                <ListBox Style="{StaticResource PopupList}" MinWidth="90"
+                                                         ItemsSource="{Binding AutoMixModeOptions}"
+                                                         SelectedIndex="{Binding AutoMixModeIndex, Mode=TwoWay}"
+                                                         Tag="{Binding ElementName=AmxBtn}"
+                                                         SelectionChanged="PopupList_SelectionChanged"/>
+                                            </Border>
+                                        </Popup>
+                                    </Grid>
+                                </StackPanel>
+
+                                <Grid Grid.Row="5" Margin="0,3,0,0" IsEnabled="{Binding AutoMixEnabled}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource Lbl}" Text="Str" VerticalAlignment="Center"/>
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                            Value="{Binding StrengthPercent}"
+                                            Margin="3,0,0,0" VerticalAlignment="Center"
+                                            ToolTip="{Binding StrengthPercent, StringFormat={}{0:F0}% duck strength}"/>
                                 </Grid>
                             </Grid>
                         </Border>

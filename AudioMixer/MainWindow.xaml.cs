@@ -30,4 +30,12 @@ public partial class MainWindow : Window
             tb.IsChecked = false;
         }
     }
+
+    private void ClosePopup_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is ToggleButton tb)
+        {
+            tb.IsChecked = false;
+        }
+    }
 }

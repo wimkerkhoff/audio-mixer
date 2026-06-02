@@ -70,9 +70,32 @@ public sealed class ChannelViewModel : ViewModelBase
         set
         {
             int clamped = Math.Clamp(value, 0, 1000);
-            if (SetField(ref _delayMs, clamped)) _channel.DelayMs = clamped;
+            if (SetField(ref _delayMs, clamped))
+            {
+                _channel.DelayMs = clamped;
+                RaisePropertyChanged(nameof(HasAdvancedSettings));
+            }
         }
     }
+
+    private bool _isPriority;
+    public bool IsPriority
+    {
+        get => _isPriority;
+        set
+        {
+            if (SetField(ref _isPriority, value))
+            {
+                _channel.IsPriority = value;
+                RaisePropertyChanged(nameof(HasAdvancedSettings));
+            }
+        }
+    }
+
+    // Drives the gear icon's "customized" highlight.
+    public bool HasAdvancedSettings => _delayMs != 0 || _isPriority;
+
+    public RelayCommand ClearDeviceCommand { get; }
 
     public RouteToggleViewModel[] Routes { get; }
 
@@ -80,6 +103,7 @@ public sealed class ChannelViewModel : ViewModelBase
     public float PostPeakDb => _channel.PostPeak.CurrentDb;
     public float InputPeakHoldDb => _channel.InputPeak.HoldDb;
     public float PostPeakHoldDb => _channel.PostPeak.HoldDb;
+    public bool IsDucking => _channel.IsDucking;
 
     public ChannelViewModel(
         int index,
@@ -100,6 +124,7 @@ public sealed class ChannelViewModel : ViewModelBase
             Routes[o] = new RouteToggleViewModel(o, channel);
         }
         _channel.GainLinear = PercentToLinear(_volumePercent);
+        ClearDeviceCommand = new RelayCommand(() => SelectedDevice = null);
     }
 
     public void RefreshMeters()
@@ -108,6 +133,7 @@ public sealed class ChannelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(PostPeakDb));
         RaisePropertyChanged(nameof(InputPeakHoldDb));
         RaisePropertyChanged(nameof(PostPeakHoldDb));
+        RaisePropertyChanged(nameof(IsDucking));
     }
 
     public void RefreshDevices(IEnumerable<AudioDeviceInfo> devices)

@@ -16,7 +16,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly PresetStore _presetStore = new();
     private readonly DispatcherTimer _meterTimer;
     private readonly DispatcherTimer _autosaveTimer;
-    private readonly MixRecorder _recorder = new();
+    private readonly MixRecorder[] _recorders = new MixRecorder[AudioEngine.OutputCount];
     private bool _suppressAutosave;
     private bool _suppressRebuild;
     private bool _rebuildInProgress;
@@ -27,7 +27,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public OutputViewModel[] Outputs { get; }
 
     public RelayCommand RefreshDevicesCommand { get; }
-    public RelayCommand ToggleRecordCommand { get; }
     public RelayCommand DetectDelaysCommand { get; }
     public RelayCommand ResyncAudioCommand { get; }
 
@@ -37,40 +36,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         get => _statusText;
         set => SetField(ref _statusText, value);
     }
-
-    private bool _isRecording;
-    public bool IsRecording
-    {
-        get => _isRecording;
-        private set
-        {
-            if (SetField(ref _isRecording, value))
-            {
-                RaisePropertyChanged(nameof(RecordButtonText));
-                RaisePropertyChanged(nameof(RecordIcon));
-                RaisePropertyChanged(nameof(RecordTooltip));
-            }
-        }
-    }
-
-    public string RecordButtonText => IsRecording ? "Stop Recording" : "Record Mix";
-    public string RecordIcon => IsRecording ? "" : "";
-    public string RecordTooltip => IsRecording ? "Stop recording" : "Record mix to WAV";
-
-    private int _recordFromOutputIndex = 0;
-    public int RecordFromOutputIndex
-    {
-        get => _recordFromOutputIndex;
-        set
-        {
-            if (SetField(ref _recordFromOutputIndex, value))
-                RaisePropertyChanged(nameof(CurrentRecordSourceLabel));
-        }
-    }
-
-    public string[] RecordSourceOptions { get; } = new[] { "A", "B" };
-    public string CurrentRecordSourceLabel =>
-        RecordSourceOptions[Math.Clamp(_recordFromOutputIndex, 0, RecordSourceOptions.Length - 1)];
 
     public int[] InputCountOptions { get; } = Enumerable.Range(
         AudioEngine.MinInputCount, AudioEngine.MaxInputCount - AudioEngine.MinInputCount + 1).ToArray();
@@ -115,13 +80,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         Outputs = new OutputViewModel[AudioEngine.OutputCount];
         for (int o = 0; o < AudioEngine.OutputCount; o++)
         {
+            _recorders[o] = new MixRecorder();
             Outputs[o] = new OutputViewModel(
                 o, _engine.Outputs[o], _allOutputDevices,
-                (idx, dev) => SetOutputDevice(idx, dev));
+                (idx, dev) => SetOutputDevice(idx, dev),
+                (idx, mode) => _engine.SetAutoMixMode(idx, mode),
+                (idx, strength) => _engine.SetAutoMixStrength(idx, strength),
+                ToggleRecord);
         }
 
         RefreshDevicesCommand = new RelayCommand(RefreshDevices);
-        ToggleRecordCommand = new RelayCommand(ToggleRecord);
         DetectDelaysCommand = new RelayCommand(StartDelayDetection);
         ResyncAudioCommand = new RelayCommand(ResyncAudio);
 
@@ -341,35 +309,37 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         StatusText = $"Refreshed: {_allInputDevices.Count} inputs, {_allOutputDevices.Count} outputs";
     }
 
-    private void ToggleRecord()
+    private void ToggleRecord(int index)
     {
-        if (IsRecording)
+        if (index < 0 || index >= Outputs.Length) return;
+        var ovm = Outputs[index];
+        var bus = _engine.Outputs[index];
+        var recorder = _recorders[index];
+
+        if (ovm.IsRecording)
         {
-            int idx = RecordFromOutputIndex;
-            if (idx >= 0 && idx < Outputs.Length) _engine.Outputs[idx].Recorder = null;
-            _recorder.Stop();
-            IsRecording = false;
-            StatusText = $"Recording stopped. Saved to: {_recorder.CurrentPath}";
+            bus.Recorder = null;
+            recorder.Stop();
+            ovm.SetRecording(false);
+            StatusText = $"Recording stopped. Saved to: {recorder.CurrentPath}";
+            return;
         }
-        else
+
+        string folder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "AudioMixer", "recordings");
+        string tag = index == 0 ? "A" : "B";
+        string path = Path.Combine(folder, $"mix-{tag}-{DateTime.Now:yyyyMMdd-HHmmss}.wav");
+        try
         {
-            int idx = Math.Clamp(RecordFromOutputIndex, 0, Outputs.Length - 1);
-            var bus = _engine.Outputs[idx];
-            string folder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "AudioMixer", "recordings");
-            string path = Path.Combine(folder, $"mix-{DateTime.Now:yyyyMMdd-HHmmss}.wav");
-            try
-            {
-                _recorder.Start(path, bus.InternalFormat);
-                bus.Recorder = _recorder;
-                IsRecording = true;
-                StatusText = $"Recording {Outputs[idx].Label} → {Path.GetFileName(path)}";
-            }
-            catch (Exception ex)
-            {
-                StatusText = $"Record failed: {ex.Message}";
-            }
+            recorder.Start(path, bus.InternalFormat);
+            bus.Recorder = recorder;
+            ovm.SetRecording(true);
+            StatusText = $"Recording {ovm.CustomLabel} → {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Record failed: {ex.Message}";
         }
     }
 
@@ -402,6 +372,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 VolumePercent = c.VolumePercent,
                 Muted = c.Muted,
                 DelayMs = c.DelayMs,
+                Priority = c.IsPriority,
                 Routes = c.Routes.Select(r => r.IsOn).ToArray(),
             }).ToArray(),
             Outputs = Outputs.Select(o => new OutputPreset
@@ -409,6 +380,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 CustomLabel = o.CustomLabel,
                 DeviceId = o.SelectedDevice?.Id,
                 DeviceName = o.SelectedDevice?.FriendlyName,
+                AutoMixMode = o.AutoMixModeIndex,
+                AutoMixStrength = o.StrengthPercent,
+                Volume = o.VolumePercent,
             }).ToArray(),
         };
         try
@@ -453,6 +427,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Channels[i].VolumePercent = cp.VolumePercent;
                 Channels[i].Muted = cp.Muted;
                 Channels[i].DelayMs = cp.DelayMs;
+                Channels[i].IsPriority = cp.Priority;
                 for (int r = 0; r < Channels[i].Routes.Length && r < cp.Routes.Length; r++)
                 {
                     Channels[i].Routes[r].IsOn = cp.Routes[r];
@@ -465,6 +440,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 var match = op.DeviceId == null ? null :
                     Outputs[o].AvailableDevices.FirstOrDefault(d => d.Id == op.DeviceId);
                 Outputs[o].SelectedDevice = match;
+                Outputs[o].StrengthPercent = Math.Clamp(op.AutoMixStrength, 0f, 100f);
+                Outputs[o].AutoMixModeIndex = Math.Clamp(op.AutoMixMode, 0, 2);
+                Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
             }
         }
         finally
@@ -538,7 +516,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void ShowAnalysisResult(DelayAnalyzer.AnalysisOutcome outcome)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Detected transient arrival times (post-resample, pre-processing):");
+        sb.AppendLine("Arrival offsets via onset cross-correlation (relative to the earliest input):");
         sb.AppendLine();
         foreach (var r in outcome.Inputs)
         {
@@ -549,7 +527,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
             else
             {
-                sb.AppendLine($"  {label}: arrived at {r.FirstTransientMs,7:F1} ms   →   suggested delay: {r.SuggestedDelayMs} ms");
+                sb.AppendLine($"  {label}: arrived at {r.FirstTransientMs,7:F1} ms   →   suggested delay: {r.SuggestedDelayMs} ms   (corr {r.Confidence:F2})");
             }
         }
         if (outcome.Warning != null)
@@ -586,7 +564,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _meterTimer.Stop();
         _autosaveTimer.Stop();
         SavePreset();
-        _recorder.Dispose();
+        foreach (var r in _recorders) r?.Dispose();
         _engine.Dispose();
     }
 }

@@ -1,3 +1,4 @@
+using System.Threading;
 using NAudio.Wave;
 
 namespace AudioMixer.Audio;
@@ -16,12 +17,25 @@ public sealed class AudioEngine : IDisposable
     private readonly AudioDeviceInfo?[] _outputDevices = new AudioDeviceInfo?[OutputCount];
     private readonly object _lock = new();
 
+    private readonly AutoMixer _autoMix = new(OutputCount, MaxInputCount);
+    private readonly Timer _autoMixTimer;
+
     public AudioEngine()
     {
         Inputs = new InputChannel[DefaultInputCount];
         for (int i = 0; i < DefaultInputCount; i++) Inputs[i] = new InputChannel(OutputCount);
         Outputs = new OutputBus[OutputCount];
         for (int o = 0; o < OutputCount; o++) Outputs[o] = new OutputBus();
+        _autoMixTimer = new Timer(AutoMixTick, null, 10, 10);
+    }
+
+    public void SetAutoMixMode(int output, AutoMixMode mode) => _autoMix.SetMode(output, mode);
+    public void SetAutoMixStrength(int output, float strength) => _autoMix.SetStrength(output, strength);
+
+    private void AutoMixTick(object? state)
+    {
+        var inputs = Inputs; // single atomic reference read; safe vs SetInputCount's array swap
+        try { _autoMix.Tick(inputs); } catch { }
     }
 
     public int InputCount => Inputs.Length;
@@ -107,6 +121,7 @@ public sealed class AudioEngine : IDisposable
 
     public void Dispose()
     {
+        _autoMixTimer.Dispose();
         StopAll();
         foreach (var input in Inputs) input.Dispose();
         foreach (var output in Outputs) output.Dispose();

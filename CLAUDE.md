@@ -20,20 +20,23 @@ AudioMixer/
 ├── App.xaml / App.xaml.cs
 ├── MainWindow.xaml / .cs
 ├── Audio/
-│   ├── AudioEngine.cs        # Owns capture/render lifecycle, wires graph
-│   ├── InputChannel.cs       # capture → mute → gain → delay → tap
+│   ├── AudioEngine.cs        # Owns capture/render lifecycle, wires graph, runs AutoMixer tick timer
+│   ├── InputChannel.cs       # capture → mute → gain → delay → tap → per-output automix gain → push
 │   ├── OutputBus.cs          # MixingSampleProvider → WasapiOut, peak tap, optional recorder
+│   ├── AutoMixer.cs          # Per-output gain-share/gate decision loop (closest-mic-wins); off the audio threads
+│   ├── AutoMixMode.cs        # enum Off/Share/Gate
 │   ├── DelayLine.cs          # Ring buffer with adjustable read offset
 │   ├── PeakMeter.cs          # Computes peak dBFS per buffer, peak-hold decay
 │   └── MixRecorder.cs        # WaveFileWriter wrapper, thread-safe start/stop
 ├── ViewModels/
 │   ├── MainViewModel.cs      # Engine lifecycle, output bus pickers, preset list, record state
-│   ├── ChannelViewModel.cs   # Per-input: device, volume, mute, delay, route flags, meter
-│   └── OutputViewModel.cs    # Per-output: device, meter
+│   ├── ChannelViewModel.cs   # Per-input: device, volume, mute, delay, route flags, meter, priority-mic flag, IsDucking
+│   └── OutputViewModel.cs    # Per-output: device, meter, volume, record button, automix mode + strength
 ├── Models/
-│   └── MixerPreset.cs        # Serializable: device IDs, volumes, mutes, delays, routes
+│   └── MixerPreset.cs        # Serializable: device IDs, volumes, mutes, delays, routes, automix mode/strength
 ├── Services/
-│   └── PresetStore.cs        # JSON load/save to %APPDATA%\AudioMixer\presets.json
+│   ├── PresetStore.cs        # JSON load/save to %APPDATA%\AudioMixer\presets.json
+│   └── DelayAnalyzer.cs      # "Detect Delays" clap test: onset-envelope cross-correlation → per-input suggested delays
 ├── Controls/
 │   └── VuMeter.xaml          # Custom control: gradient bar with peak-hold tick
 └── Assets/
@@ -60,13 +63,15 @@ MixingSampleProvider (sums routed channels) → peak tap → [optional: recorder
 - WASAPI **shared mode** for all devices — exclusive mode would lock Zoom out of the headset.
 - Delay range: 0–1000 ms. Implemented as the read offset into a ring buffer sized for max delay + headroom (~1500 ms).
 - Meters update at ~30 Hz from peak values latched in the audio thread, read on the UI thread via a timer (do NOT marshal per-buffer).
+- Each output bus has a post-tap **Volume** (`OutputBus.Volume` → `VolumeSampleProvider`), applied *after* the peak/recorder tap — a final device trim (e.g. headset monitor level) that does NOT affect the meters or recordings. Recording is **per output**: each bus has its own `MixRecorder` (toggled from a record button on each output strip).
+- **Automixer** (per output, `AutoMixer` + `InputChannel`): an optional stage that attenuates all mics except the one(s) closest to the active talker — the fix for multiple distant mics summing the same voice (comb "echo", noise floor, reverb). `AudioEngine` runs a ~100 Hz `Timer` (`AutoMixTick`) that reads each channel's `CurrentLevelLinear` (RMS latched in the audio thread), smooths it (fast attack / slow release), and for each output computes a per-channel gain over the channels routed there — **Share** = gain-share `(env/max)^p` (Dugan-style), **Gate** = winner-take-all with ~3 dB hysteresis + ~200 ms hold. Gains are written lock-free (volatile) and applied by each `InputChannel` at the routing-push step with an intra-buffer ramp (no zipper). This is the correct tool for distributed room mics; static delay compensation is NOT (per-talker offset isn't fixed). A channel can set `IsPriority` (per-input "advanced" gear popup): a priority mic (e.g. a presenter's lapel) is always full level and out of the competition, and while it is *active* (`AutoMixer.PriorityActiveRms`, ~-40 dBFS) it ducks the other (room) mics — otherwise that voice would reach the bus via both the clean lapel and a delayed room mic and comb-filter. Multiple priority mics are intentionally allowed (multi-presenter, e.g. pastor + worship leader) — do NOT restrict to one; note they don't duck *each other*, so two priority mics hearing the same source would double. `InputChannel.IsDucking` (any routed output's gain < 0.85) drives a per-input amber LED, polled on the meter timer.
 
 ## Conventions
 
 - **Naming**: PascalCase for types/methods, _camelCase for private fields, camelCase for locals/params.
 - **Async**: Audio engine start/stop is async (device init can block). Audio callbacks are NOT async.
 - **Threading**: NAudio callbacks run on its own threads. Never touch WPF UI objects from a callback — use `Dispatcher.BeginInvoke` or (preferred) a UI timer that polls atomic state.
-- **Logging**: Use `System.Diagnostics.Trace` for engine events; surface user-facing errors via status bar text in MainViewModel.
+- **Logging**: Use `System.Diagnostics.Trace` for engine events; surface user-facing errors via status bar text in MainViewModel. File logging via `AudioLog` (→ `%TEMP%\AudioMixer.log`) is **opt-in** — off unless the `AUDIOMIXER_LOG` env var is set (the meter loop writes ~1 line/sec, so we don't grow a file on every run).
 - **No comments explaining what code does.** Only comment non-obvious WHY (e.g. "WASAPI shared mode picks device default rate — must resample before mixing").
 
 ## Build & run
@@ -86,6 +91,9 @@ dotnet run --project AudioMixer
 *(grows over time — see Self-maintenance protocol below)*
 
 - WASAPI device IDs are stable across reboots; persist those (not friendly names) in presets.
+- **Automix gain is applied AFTER the meter/analysis taps** (`InputPeak`/`PostPeak`/analysis recorder all run before the per-output routing push). So VU meters and the clap-test recordings show the *pre-automix* post-fader level — a channel can read hot on its meter while the automixer is ducking its contribution to a given output. Intentional (the meter shows what the channel produces); don't "fix" it by moving the tap.
+- **Delay measurement: the route-to-output clap test does NOT measure device latency.** A channel's position in the mixed/recorded output is `transport_latency + standing backlog in its per-output BufferedWaveProvider`. That backlog is set nondeterministically at startup (a fast, low-latency device accumulates a *larger* backlog before the bus starts draining) and anti-correlates with transport latency, so the ordering scrambles — a low-latency built-in mic can look *more* delayed than a Bluetooth one. For a clean measurement use the "Detect Delays" feature (`DelayAnalyzer`), which taps the per-channel analysis recorder (`InputChannel.StartAnalysisRecording`) *before* the output buffer. Re-measure after any output restart.
+- **`DelayAnalyzer` cross-correlates onset envelopes, NOT a peak-threshold.** A "first sample ≥ 50% of file peak" detector mislocates soft/vocal onsets: a spoken "T!" (used because Anker speakerphones' noise suppression gates real claps) has its global peak in the *vowel*, so the detector skips the leading `[t]` on a clean mic (→ looks late) while a suppressed mic keeps only the `[t]` (→ looks early), inverting the ranking. Fix: half-wave-rectified first-difference of a 1 ms RMS envelope (spectral-flux-style onset), normalized cross-correlation vs the loudest channel over ±1000 ms; the normalized peak is reported as a confidence (warn below 0.5). Caveat: a speakerphone that *gates* transients may have no constant latency, so no single delay value fully syncs it.
 - Some Bluetooth headsets switch profile when used as both input and output simultaneously, dropping audio quality to HSP/HFP. Workaround: use BT only as input, wired output. (To verify once we have hardware in hand.)
 - `WaveFileWriter` is NOT thread-safe; serialize Write calls with a lock or write from a single tap thread.
 - NAudio's `BufferedWaveProvider` property is `DiscardOnBufferOverflow` (not `DiscardOnBufferFull` — that name doesn't exist in 2.2.1 despite what older docs suggest).
