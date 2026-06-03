@@ -110,7 +110,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             Interval = TimeSpan.FromMilliseconds(33),
         };
-        long _lastLogTick = 0;
+        long _lastLogTick = Environment.TickCount64;
         long[] _lastTotalSamples = new long[Outputs.Length];
         _meterTimer.Tick += (_, _) =>
         {
@@ -118,7 +118,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             foreach (var op in Outputs) op.RefreshMeters();
 
             long now = Environment.TickCount64;
-            if (now - _lastLogTick > 1000)
+            long elapsedMs = now - _lastLogTick;
+            if (elapsedMs > 1000)
             {
                 _lastLogTick = now;
                 for (int o = 0; o < Outputs.Length; o++)
@@ -126,9 +127,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     var bus = _engine.Outputs[o];
                     long total = bus.TotalSamplesRead;
                     long delta = total - _lastTotalSamples[o];
+                    // A bus restart (input-count change) resets TotalSamplesRead, so a stale
+                    // baseline yields a bogus negative delta — count from restart instead.
+                    if (delta < 0) delta = total;
                     _lastTotalSamples[o] = total;
+                    long samplesPerSec = delta * 1000 / elapsedMs;
                     Audio.AudioLog.Write(
-                        $"Output {o}: playing={bus.IsPlaying} samplesPerSec={delta} peakDb={Outputs[o].OutputPeakDb:F1}");
+                        $"Output {o}: playing={bus.IsPlaying} samplesPerSec={samplesPerSec} peakDb={Outputs[o].OutputPeakDb:F1}");
                 }
                 for (int i = 0; i < Channels.Count; i++)
                 {
