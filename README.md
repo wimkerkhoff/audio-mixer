@@ -157,4 +157,8 @@ The diagnostic log is **off by default**. To enable it, set the `AUDIOMIXER_LOG`
 
 ## License
 
-Personal project. No license declared — ask before reusing.
+Licensed under the **GNU General Public License v3.0** — see [LICENSE](LICENSE).
+
+Copyright (C) 2026 Wim Kerkhoff
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GPL as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
