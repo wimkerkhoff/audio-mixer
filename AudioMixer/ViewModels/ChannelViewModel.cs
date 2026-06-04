@@ -138,22 +138,7 @@ public sealed class ChannelViewModel : ViewModelBase
 
     public void RefreshDevices(IEnumerable<AudioDeviceInfo> devices)
     {
-        var newList = devices.ToList();
-        var newIds = new HashSet<string>(newList.Select(d => d.Id));
-        for (int i = AvailableDevices.Count - 1; i >= 0; i--)
-        {
-            if (!newIds.Contains(AvailableDevices[i].Id)) AvailableDevices.RemoveAt(i);
-        }
-        var existingIds = new HashSet<string>(AvailableDevices.Select(d => d.Id));
-        foreach (var d in newList)
-        {
-            if (!existingIds.Contains(d.Id)) AvailableDevices.Add(d);
-        }
-        var currentId = SelectedDevice?.Id;
-        if (currentId != null && !newIds.Contains(currentId))
-        {
-            SelectedDevice = null;
-        }
+        if (!DeviceList.Sync(AvailableDevices, devices, SelectedDevice?.Id)) SelectedDevice = null;
     }
 
     private static float PercentToLinear(float percent)

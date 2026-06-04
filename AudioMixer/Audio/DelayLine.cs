@@ -12,8 +12,6 @@ public sealed class DelayLine
         _buffer = new float[maxDelaySamples];
     }
 
-    public int MaxDelaySamples => _buffer.Length;
-
     public int DelaySamples
     {
         get => _delaySamples;
@@ -49,11 +47,5 @@ public sealed class DelayLine
             _writeIndex++;
             if (_writeIndex >= bufLen) _writeIndex = 0;
         }
-    }
-
-    public void Reset()
-    {
-        Array.Clear(_buffer);
-        _writeIndex = 0;
     }
 }

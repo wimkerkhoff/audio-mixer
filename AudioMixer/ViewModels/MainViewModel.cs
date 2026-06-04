@@ -23,6 +23,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private List<AudioDeviceInfo> _allInputDevices = new();
     private List<AudioDeviceInfo> _allOutputDevices = new();
 
+    private long _lastLogTick;
+    private readonly long[] _lastTotalSamples = new long[AudioEngine.OutputCount];
+
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public OutputViewModel[] Outputs { get; }
 
@@ -110,51 +113,54 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             Interval = TimeSpan.FromMilliseconds(33),
         };
-        long _lastLogTick = Environment.TickCount64;
-        long[] _lastTotalSamples = new long[Outputs.Length];
+        _lastLogTick = Environment.TickCount64;
         _meterTimer.Tick += (_, _) =>
         {
             foreach (var ch in Channels) ch.RefreshMeters();
             foreach (var op in Outputs) op.RefreshMeters();
-
-            long now = Environment.TickCount64;
-            long elapsedMs = now - _lastLogTick;
-            if (elapsedMs > 1000)
-            {
-                _lastLogTick = now;
-                for (int o = 0; o < Outputs.Length; o++)
-                {
-                    var bus = _engine.Outputs[o];
-                    long total = bus.TotalSamplesRead;
-                    long delta = total - _lastTotalSamples[o];
-                    // A bus restart (input-count change) resets TotalSamplesRead, so a stale
-                    // baseline yields a bogus negative delta — count from restart instead.
-                    if (delta < 0) delta = total;
-                    _lastTotalSamples[o] = total;
-                    long samplesPerSec = delta * 1000 / elapsedMs;
-                    Audio.AudioLog.Write(
-                        $"Output {o}: playing={bus.IsPlaying} samplesPerSec={samplesPerSec} peakDb={Outputs[o].OutputPeakDb:F1}");
-                }
-                for (int i = 0; i < Channels.Count; i++)
-                {
-                    var dev = Channels[i].SelectedDevice;
-                    if (dev != null)
-                    {
-                        var bufMs = string.Join(",", Enumerable.Range(0, Outputs.Length)
-                            .Select(o => _engine.Inputs[i].BufferedMs(o).ToString()));
-                        var readSamples = string.Join(",", Enumerable.Range(0, Outputs.Length)
-                            .Select(o => _engine.Inputs[i].ReadSamplesForOutput(o).ToString()));
-                        var readCalls = string.Join(",", Enumerable.Range(0, Outputs.Length)
-                            .Select(o => _engine.Inputs[i].ReadCallsForOutput(o).ToString()));
-                        Audio.AudioLog.Write(
-                            $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
-                    }
-                }
-            }
+            MaybeLogDiagnostics();
         };
         _meterTimer.Start();
 
         TryLoadInitialPreset();
+    }
+
+    // Throttled to ~1 Hz. Short-circuits when file logging is off so we don't build the per-output
+    // / per-input strings every meter tick on a normal run (logging is opt-in via AUDIOMIXER_LOG).
+    private void MaybeLogDiagnostics()
+    {
+        if (!AudioLog.Enabled) return;
+        long now = Environment.TickCount64;
+        long elapsedMs = now - _lastLogTick;
+        if (elapsedMs <= 1000) return;
+        _lastLogTick = now;
+
+        for (int o = 0; o < Outputs.Length; o++)
+        {
+            var bus = _engine.Outputs[o];
+            long total = bus.TotalSamplesRead;
+            long delta = total - _lastTotalSamples[o];
+            // A bus restart (input-count change) resets TotalSamplesRead, so a stale
+            // baseline yields a bogus negative delta — count from restart instead.
+            if (delta < 0) delta = total;
+            _lastTotalSamples[o] = total;
+            long samplesPerSec = delta * 1000 / elapsedMs;
+            AudioLog.Write(
+                $"Output {o}: playing={bus.IsPlaying} samplesPerSec={samplesPerSec} peakDb={Outputs[o].OutputPeakDb:F1}");
+        }
+        for (int i = 0; i < Channels.Count; i++)
+        {
+            var dev = Channels[i].SelectedDevice;
+            if (dev == null) continue;
+            var bufMs = string.Join(",", Enumerable.Range(0, Outputs.Length)
+                .Select(o => _engine.Inputs[i].BufferedMs(o).ToString()));
+            var readSamples = string.Join(",", Enumerable.Range(0, Outputs.Length)
+                .Select(o => _engine.Inputs[i].ReadSamplesForOutput(o).ToString()));
+            var readCalls = string.Join(",", Enumerable.Range(0, Outputs.Length)
+                .Select(o => _engine.Inputs[i].ReadCallsForOutput(o).ToString()));
+            AudioLog.Write(
+                $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
+        }
     }
 
     private ChannelViewModel CreateChannel(int index) =>
