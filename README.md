@@ -38,41 +38,37 @@ winget install Microsoft.DotNet.SDK.8   # one-time, ~250 MB
 dotnet run --project AudioMixer
 ```
 
-### Pre-built — framework-dependent
+### Pre-built — two flavors
 
-Target machine must have the **.NET 8 Desktop Runtime** installed (`winget install Microsoft.DotNet.DesktopRuntime.8`, ~50 MB).
+Each GitHub Release ships **two single-file exes** — pick whichever suits the target:
+
+| Asset | Size | Requires on target | Use when |
+|---|---|---|---|
+| **`AudioMixer.exe`** (self-contained) | ~68 MB | nothing | the default — any fresh Windows 10/11 x64 box, no install, no internet |
+| **`AudioMixer-slim.exe`** (framework-dependent) | ~0.8 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | tiny download / many machines that already have .NET 8 |
+
+If the slim exe runs on a machine without the runtime, Windows prompts the user to download it on first launch (`winget install Microsoft.DotNet.DesktopRuntime.8`, ~55 MB). The self-contained exe never prompts — it bundles the runtime and the native WPF DLLs (`D3DCompiler_47_cor3.dll`, `PenImc_cor3.dll`, `PresentationNative_cor3.dll`, `vcruntime140_cor3.dll`, `wpfgfx_cor3.dll`), self-extracted to a temp folder on first launch. Either way, copy **just the one file**. (Targets still install VB-CABLE manually if they want Zoom routing.)
+
+### Building locally
 
 ```powershell
-dotnet publish AudioMixer -c Release
+.\publish.ps1          # self-contained -> bin\publish\AudioMixer.exe (~68 MB)
+.\publish.ps1 -Slim    # framework-dependent -> bin\publish-slim\AudioMixer.exe (~0.8 MB)
 ```
-
-Output goes to `AudioMixer\bin\Release\net8.0-windows\publish\`. Copy the folder; run `AudioMixer.exe`.
-
-### Pre-built — self-contained single file (recommended for deployment)
-
-No prerequisites on the target machine, and it's **one file**. Just run the publish script:
-
-```powershell
-.\publish.ps1
-```
-
-Output: `bin\publish\AudioMixer.exe` (~68 MB). This single exe holds the .NET 8 runtime, all managed code, and the native WPF DLLs (`D3DCompiler_47_cor3.dll`, `PenImc_cor3.dll`, `PresentationNative_cor3.dll`, `vcruntime140_cor3.dll`, `wpfgfx_cor3.dll`) — compressed and self-extracted to a temp folder on first launch. **Copy just that one file** to any Windows 10/11 x64 machine and double-click. (Targets still install VB-CABLE manually if they want Zoom routing.)
-
-The script uses `-p:IncludeNativeLibrariesForSelfExtract=true` + `-p:EnableCompressionInSingleFile=true`, which is what collapses the old 6-file / ~160 MB folder into a single ~68 MB exe.
 
 ## Deploying to other computers
 
-Two equivalent ways to get `AudioMixer.exe`:
+Two equivalent ways to get the exe(s):
 
-1. **Local build** — run `.\publish.ps1`, then copy `bin\publish\AudioMixer.exe` to the target (USB stick, network share, etc.).
-2. **GitHub Release (CI-built)** — push a version tag and let GitHub Actions build it for you:
+1. **Local build** — run `.\publish.ps1` (add `-Slim` for the small one), then copy the resulting `AudioMixer.exe` to the target (USB stick, network share, etc.).
+2. **GitHub Release (CI-built)** — push a version tag and let GitHub Actions build both for you:
 
    ```powershell
    git tag v1.0.0
    git push origin v1.0.0
    ```
 
-   The [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow builds the self-contained exe on a Windows runner and attaches it to a GitHub Release. On any computer, open the repo's **Releases** page and download `AudioMixer.exe` — no toolchain needed on the target. The workflow only runs on `v*` tags, not on ordinary pushes.
+   The [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow builds both exes on a Windows runner and attaches them to a GitHub Release. On any computer, open the repo's **Releases** page and download `AudioMixer.exe` (standalone) or `AudioMixer-slim.exe` — no toolchain needed on the target. The workflow only runs on `v*` tags, not on ordinary pushes.
 
 ## Quick start
 
