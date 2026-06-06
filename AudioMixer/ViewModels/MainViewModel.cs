@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -32,6 +33,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand RefreshDevicesCommand { get; }
     public RelayCommand DetectDelaysCommand { get; }
     public RelayCommand ResyncAudioCommand { get; }
+    public RelayCommand DownloadVbCableCommand { get; }
+    public RelayCommand DismissVbCablePromptCommand { get; }
+    public RelayCommand OpenDocumentationCommand { get; }
+
+    private const string VbCableUrl = "https://vb-audio.com/Cable/";
+    private const string DocsUrl = "https://github.com/wimkerkhoff/audio-mixer";
+    private bool _vbCableInstalled;
+    private bool _vbCablePromptDismissed;
+
+    // Shown when VB-CABLE isn't among the enumerated endpoints and the user hasn't dismissed the hint.
+    public bool ShowVbCablePrompt => !_vbCableInstalled && !_vbCablePromptDismissed;
 
     private string _statusText = "Idle";
     public string StatusText
@@ -65,6 +77,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public double WindowWidth => Math.Max(500, _inputCount * 96 + 160);
 
+    private const double BaseWindowHeight = 320;
+    private const double VbCableBannerHeight = 36;
+    public double WindowHeight => BaseWindowHeight + (ShowVbCablePrompt ? VbCableBannerHeight : 0);
+
     public MainViewModel()
     {
         _engine = new AudioEngine();
@@ -95,6 +111,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         RefreshDevicesCommand = new RelayCommand(RefreshDevices);
         DetectDelaysCommand = new RelayCommand(StartDelayDetection);
         ResyncAudioCommand = new RelayCommand(ResyncAudio);
+        DownloadVbCableCommand = new RelayCommand(OpenVbCableDownload);
+        DismissVbCablePromptCommand = new RelayCommand(DismissVbCablePrompt);
+        OpenDocumentationCommand = new RelayCommand(() => OpenUrl(DocsUrl));
+
+        UpdateVbCableStatus();
 
         _autosaveTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -317,7 +338,45 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _allInputDevices = AudioDeviceInfo.Enumerate(DataFlow.Capture);
         _allOutputDevices = AudioDeviceInfo.Enumerate(DataFlow.Render);
         DedupeAndRebuild();
+        UpdateVbCableStatus();
         StatusText = $"Refreshed: {_allInputDevices.Count} inputs, {_allOutputDevices.Count} outputs";
+    }
+
+    // VB-CABLE installs "CABLE Input" (render) + "CABLE Output" (capture); detect either by the VB-Audio vendor tag.
+    private static bool IsVbCableInstalled(IEnumerable<AudioDeviceInfo> a, IEnumerable<AudioDeviceInfo> b) =>
+        a.Concat(b).Any(d =>
+            d.FriendlyName.Contains("VB-Audio", StringComparison.OrdinalIgnoreCase) ||
+            d.FriendlyName.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase) ||
+            d.FriendlyName.Contains("CABLE Output", StringComparison.OrdinalIgnoreCase));
+
+    private void UpdateVbCableStatus()
+    {
+        _vbCableInstalled = IsVbCableInstalled(_allInputDevices, _allOutputDevices);
+        RaisePropertyChanged(nameof(ShowVbCablePrompt));
+        RaisePropertyChanged(nameof(WindowHeight));
+    }
+
+    private void OpenVbCableDownload() => OpenUrl(VbCableUrl);
+
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Couldn't open browser: {ex.Message}";
+        }
+    }
+
+    private void DismissVbCablePrompt()
+    {
+        if (_vbCablePromptDismissed) return;
+        _vbCablePromptDismissed = true;
+        RaisePropertyChanged(nameof(ShowVbCablePrompt));
+        RaisePropertyChanged(nameof(WindowHeight));
+        if (!_suppressAutosave) { _autosaveTimer.Stop(); _autosaveTimer.Start(); }
     }
 
     private void ToggleRecord(int index)
@@ -375,6 +434,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var preset = new MixerPreset
         {
             Name = "Default",
+            VbCablePromptDismissed = _vbCablePromptDismissed,
             Channels = Channels.Select(c => new ChannelPreset
             {
                 CustomLabel = c.CustomLabel,
@@ -419,6 +479,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _suppressRebuild = true;
         try
         {
+            _vbCablePromptDismissed = preset.VbCablePromptDismissed;
+            UpdateVbCableStatus();
+
             int desired = Math.Clamp(preset.Channels.Length, AudioEngine.MinInputCount, AudioEngine.MaxInputCount);
             if (preset.Channels.Length > 0 && desired != Channels.Count)
             {

@@ -5,6 +5,7 @@ public sealed class MixerPreset
     public string Name { get; set; } = "Default";
     public ChannelPreset[] Channels { get; set; } = Array.Empty<ChannelPreset>();
     public OutputPreset[] Outputs { get; set; } = Array.Empty<OutputPreset>();
+    public bool VbCablePromptDismissed { get; set; }
 }
 
 public sealed class ChannelPreset

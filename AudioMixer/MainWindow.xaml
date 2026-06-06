@@ -17,6 +17,8 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
         <Style x:Key="Lbl" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#9A9AA4"/>
             <Setter Property="FontSize" Value="9"/>
@@ -243,6 +245,10 @@
     <DockPanel>
         <!-- Toolbar -->
         <Border DockPanel.Dock="Top" Background="#16161A" Padding="4,3">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Style="{StaticResource IconBtn}" Content="&#xE897;"
+                        ToolTip="Help — open documentation on GitHub"
+                        Command="{Binding OpenDocumentationCommand}" Margin="4,0,0,0"/>
             <StackPanel Orientation="Horizontal">
                 <Button Style="{StaticResource IconBtn}" Content="&#xE72C;" ToolTip="Refresh devices" Command="{Binding RefreshDevicesCommand}"/>
                 <Button Style="{StaticResource IconBtn}" Content="&#xE895;" ToolTip="Resync audio (flush buffers if delay creeps up)" Command="{Binding ResyncAudioCommand}"/>
@@ -257,6 +263,29 @@
                           ToolTip="Number of input channels (1–10)"/>
                 <TextBlock Text="{Binding StatusText}" Foreground="#888" FontSize="10" VerticalAlignment="Center" Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- VB-CABLE suggestion banner (only when not installed and not dismissed) -->
+        <Border DockPanel.Dock="Top" Background="#2B2517" BorderBrush="#5A4A1E" BorderThickness="0,0,0,1"
+                Padding="8,4" Visibility="{Binding ShowVbCablePrompt, Converter={StaticResource BoolToVis}}">
+            <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                           Foreground="#F2A93B" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                <Button DockPanel.Dock="Right" Content="&#xE711;" Command="{Binding DismissVbCablePromptCommand}"
+                        FontFamily="Segoe MDL2 Assets" FontSize="10"
+                        VerticalAlignment="Center" Margin="6,0,0,0" Padding="4,1" Cursor="Hand"
+                        Background="Transparent" Foreground="#C0B79E" BorderThickness="0"
+                        ToolTip="Dismiss (don't show this again)"/>
+                <Button DockPanel.Dock="Right" Content="Download" Command="{Binding DownloadVbCableCommand}"
+                        VerticalAlignment="Center" Margin="8,0,0,0" Padding="8,1" FontSize="11" Cursor="Hand"
+                        Background="#F2A93B" Foreground="#1A1A1F" BorderThickness="0"
+                        ToolTip="Open vb-audio.com/Cable in your browser"/>
+                <TextBlock VerticalAlignment="Center" Foreground="#E8DCC0" FontSize="11"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="VB-CABLE not detected — it's needed to send the mix to Zoom as a virtual microphone."
+                           Text="VB-CABLE not detected — needed to send the mix to Zoom as a virtual mic."/>
+            </DockPanel>
         </Border>
 
         <!-- Main grid -->
