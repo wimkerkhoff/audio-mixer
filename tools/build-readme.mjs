@@ -2,8 +2,8 @@
 // edit README.md and run `node tools/build-readme.mjs`.
 //
 // Dependency-free (no npm install). Supports the Markdown subset this README uses: ATX headings
-// (## get slug ids for anchors), paragraphs, **bold**, *italic*, `code`, [links](url), fenced code
-// blocks, unordered/ordered lists, GitHub pipe tables, and > blockquotes.
+// (## get slug ids for anchors), paragraphs, **bold**, *italic*, `code`, [links](url),
+// ![images](src), fenced code blocks, unordered/ordered lists, GitHub pipe tables, and > blockquotes.
 //
 // The output has a light/dark/auto theme toggle (top-right); "auto" follows prefers-color-scheme,
 // and the explicit choice is persisted in localStorage.
@@ -109,6 +109,14 @@ const CSS = `
   ul, ol { padding-left: 22px; }
   li { margin: 4px 0; }
   strong { color: var(--strong); }
+  img.screenshot {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 16px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
   code {
     font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
     font-size: 13px;
@@ -196,6 +204,7 @@ function inline(text) {
     return '@@CODE' + (codes.length - 1) + '@@';
   });
   text = escapeHtml(text);
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => `<img class="screenshot" src="${src}" alt="${alt}">`);
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, t, h) => `<a href="${h}">${t}</a>`);
   text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   text = text.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');

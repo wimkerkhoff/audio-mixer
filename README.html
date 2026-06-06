@@ -105,6 +105,14 @@
   ul, ol { padding-left: 22px; }
   li { margin: 4px 0; }
   strong { color: var(--strong); }
+  img.screenshot {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 16px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
   code {
     font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
     font-size: 13px;
@@ -172,8 +180,9 @@
     <li><a class="toc-h2" href="#requirements">Requirements</a></li>
     <li><a class="toc-h2" href="#running">Running</a></li>
     <li><a class="toc-h3" href="#from-source-developer-setup">From source (developer setup)</a></li>
-    <li><a class="toc-h3" href="#pre-built-framework-dependent">Pre-built — framework-dependent</a></li>
-    <li><a class="toc-h3" href="#pre-built-self-contained">Pre-built — self-contained</a></li>
+    <li><a class="toc-h3" href="#pre-built-two-flavors">Pre-built — two flavors</a></li>
+    <li><a class="toc-h3" href="#building-locally">Building locally</a></li>
+    <li><a class="toc-h2" href="#deploying-to-other-computers">Deploying to other computers</a></li>
     <li><a class="toc-h2" href="#quick-start">Quick start</a></li>
     <li><a class="toc-h3" href="#toolbar-left-to-right">Toolbar (left to right)</a></li>
     <li><a class="toc-h3" href="#delay-detection">Delay detection</a></li>
@@ -193,6 +202,8 @@
 <p>Built because Bluetooth mics have ~100-300 ms more latency than wired ones and existing mixers either don't compensate for it or are overkill for a simple setup.</p>
 
 <p>It also handles <strong>distributed multi-mic rooms</strong> — several mics (e.g. conference speakerphones) spread across a room so everyone is in range. Because every talker is picked up by <em>all</em> the mics at different distances, simply summing them produces comb-filter "echo", a raised noise floor, and reverb. The automixer fixes this by keeping only the mic(s) closest to the active talker open.</p>
+
+<p><img class="screenshot" src="docs/screenshot.png" alt="AudioMixer screenshot"></p>
 
 <h2 id="features">Features</h2>
 
@@ -228,21 +239,37 @@ cd audio-mixer
 winget install Microsoft.DotNet.SDK.8   # one-time, ~250 MB
 dotnet run --project AudioMixer</code></pre>
 
-<h3 id="pre-built-framework-dependent">Pre-built — framework-dependent</h3>
+<h3 id="pre-built-two-flavors">Pre-built — two flavors</h3>
 
-<p>Target machine must have the <strong>.NET 8 Desktop Runtime</strong> installed (<code>winget install Microsoft.DotNet.DesktopRuntime.8</code>, ~50 MB).</p>
+<p>Each GitHub Release ships <strong>two single-file exes</strong> — pick whichever suits the target:</p>
 
-<pre><code>dotnet publish AudioMixer -c Release</code></pre>
+<table>
+  <thead><tr><th>Asset</th><th>Size</th><th>Requires on target</th><th>Use when</th></tr></thead>
+  <tbody>
+    <tr><td><strong><code>AudioMixer.exe</code></strong> (self-contained)</td><td>~68 MB</td><td>nothing</td><td>the default — any fresh Windows 10/11 x64 box, no install, no internet</td></tr>
+    <tr><td><strong><code>AudioMixer-slim.exe</code></strong> (framework-dependent)</td><td>~0.8 MB</td><td><a href="https://dotnet.microsoft.com/download/dotnet/8.0">.NET 8 Desktop Runtime</a></td><td>tiny download / many machines that already have .NET 8</td></tr>
+  </tbody>
+</table>
 
-<p>Output goes to <code>AudioMixer\bin\Release\net8.0-windows\publish\</code>. Copy the folder; run <code>AudioMixer.exe</code>.</p>
+<p>If the slim exe runs on a machine without the runtime, Windows prompts the user to download it on first launch (<code>winget install Microsoft.DotNet.DesktopRuntime.8</code>, ~55 MB). The self-contained exe never prompts — it bundles the runtime and the native WPF DLLs (<code>D3DCompiler_47_cor3.dll</code>, <code>PenImc_cor3.dll</code>, <code>PresentationNative_cor3.dll</code>, <code>vcruntime140_cor3.dll</code>, <code>wpfgfx_cor3.dll</code>), self-extracted to a temp folder on first launch. Either way, copy <strong>just the one file</strong>. (Targets still install VB-CABLE manually if they want Zoom routing.)</p>
 
-<h3 id="pre-built-self-contained">Pre-built — self-contained</h3>
+<h3 id="building-locally">Building locally</h3>
 
-<p>No prerequisites on the target machine. Total ~160 MB.</p>
+<pre><code>.\publish.ps1          # self-contained -&gt; bin\publish\AudioMixer.exe (~68 MB)
+.\publish.ps1 -Slim    # framework-dependent -&gt; bin\publish-slim\AudioMixer.exe (~0.8 MB)</code></pre>
 
-<pre><code>dotnet publish AudioMixer -c Release -r win-x64 --self-contained -p:PublishSingleFile=true</code></pre>
+<h2 id="deploying-to-other-computers">Deploying to other computers</h2>
 
-<p>Output goes to <code>AudioMixer\bin\Release\net8.0-windows\win-x64\publish\</code>. The folder contains one big <code>AudioMixer.exe</code> (~154 MB, holds the .NET runtime and all managed code) <strong>plus 5 native WPF DLLs</strong> that .NET cannot embed into the single-file bundle: <code>D3DCompiler_47_cor3.dll</code>, <code>PenImc_cor3.dll</code>, <code>PresentationNative_cor3.dll</code>, <code>vcruntime140_cor3.dll</code>, <code>wpfgfx_cor3.dll</code>. <strong>Copy the whole publish folder</strong>, not just the .exe.</p>
+<p>Two equivalent ways to get the exe(s):</p>
+
+<ol>
+  <li><strong>Local build</strong> — run <code>.\publish.ps1</code> (add <code>-Slim</code> for the small one), then copy the resulting <code>AudioMixer.exe</code> to the target (USB stick, network share, etc.).</li>
+  <li><strong>GitHub Release (CI-built)</strong> — push a version tag and let GitHub Actions build both for you:</li>
+</ol>
+
+<p>   ``<code>powershell    git tag v1.0.0    git push origin v1.0.0    </code>``</p>
+
+<p>   The <a href=".github/workflows/release.yml"><code>.github/workflows/release.yml</code></a> workflow builds both exes on a Windows runner and attaches them to a GitHub Release. On any computer, open the repo's <strong>Releases</strong> page and download <code>AudioMixer.exe</code> (standalone) or <code>AudioMixer-slim.exe</code> — no toolchain needed on the target. The workflow only runs on <code>v*</code> tags, not on ordinary pushes.</p>
 
 <h2 id="quick-start">Quick start</h2>
 

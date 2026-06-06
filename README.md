@@ -6,6 +6,8 @@ Built because Bluetooth mics have ~100-300 ms more latency than wired ones and e
 
 It also handles **distributed multi-mic rooms** — several mics (e.g. conference speakerphones) spread across a room so everyone is in range. Because every talker is picked up by *all* the mics at different distances, simply summing them produces comb-filter "echo", a raised noise floor, and reverb. The automixer fixes this by keeping only the mic(s) closest to the active talker open.
 
+![AudioMixer screenshot](docs/screenshot.png)
+
 ## Features
 
 - **1–10 input channels** — count is configurable from the toolbar (default 3); each with its own device, volume slider, mute, delay (0-1000 ms), and routing toggles
