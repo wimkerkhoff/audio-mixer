@@ -48,15 +48,31 @@ dotnet publish AudioMixer -c Release
 
 Output goes to `AudioMixer\bin\Release\net8.0-windows\publish\`. Copy the folder; run `AudioMixer.exe`.
 
-### Pre-built — self-contained
+### Pre-built — self-contained single file (recommended for deployment)
 
-No prerequisites on the target machine. Total ~160 MB.
+No prerequisites on the target machine, and it's **one file**. Just run the publish script:
 
 ```powershell
-dotnet publish AudioMixer -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+.\publish.ps1
 ```
 
-Output goes to `AudioMixer\bin\Release\net8.0-windows\win-x64\publish\`. The folder contains one big `AudioMixer.exe` (~154 MB, holds the .NET runtime and all managed code) **plus 5 native WPF DLLs** that .NET cannot embed into the single-file bundle: `D3DCompiler_47_cor3.dll`, `PenImc_cor3.dll`, `PresentationNative_cor3.dll`, `vcruntime140_cor3.dll`, `wpfgfx_cor3.dll`. **Copy the whole publish folder**, not just the .exe.
+Output: `bin\publish\AudioMixer.exe` (~68 MB). This single exe holds the .NET 8 runtime, all managed code, and the native WPF DLLs (`D3DCompiler_47_cor3.dll`, `PenImc_cor3.dll`, `PresentationNative_cor3.dll`, `vcruntime140_cor3.dll`, `wpfgfx_cor3.dll`) — compressed and self-extracted to a temp folder on first launch. **Copy just that one file** to any Windows 10/11 x64 machine and double-click. (Targets still install VB-CABLE manually if they want Zoom routing.)
+
+The script uses `-p:IncludeNativeLibrariesForSelfExtract=true` + `-p:EnableCompressionInSingleFile=true`, which is what collapses the old 6-file / ~160 MB folder into a single ~68 MB exe.
+
+## Deploying to other computers
+
+Two equivalent ways to get `AudioMixer.exe`:
+
+1. **Local build** — run `.\publish.ps1`, then copy `bin\publish\AudioMixer.exe` to the target (USB stick, network share, etc.).
+2. **GitHub Release (CI-built)** — push a version tag and let GitHub Actions build it for you:
+
+   ```powershell
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+   The [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow builds the self-contained exe on a Windows runner and attaches it to a GitHub Release. On any computer, open the repo's **Releases** page and download `AudioMixer.exe` — no toolchain needed on the target. The workflow only runs on `v*` tags, not on ordinary pushes.
 
 ## Quick start
 

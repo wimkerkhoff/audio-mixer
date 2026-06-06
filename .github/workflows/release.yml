@@ -1,0 +1,39 @@
+name: Release
+
+# Push a version tag (e.g. v1.0.0) to build the self-contained exe and
+# attach it to a GitHub Release. Download it from the Releases page on any PC.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish self-contained single-file exe
+        run: >
+          dotnet publish AudioMixer/AudioMixer.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=none
+          -p:DebugSymbols=false
+          -o publish
+
+      - name: Attach exe to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: publish/AudioMixer.exe
+          generate_release_notes: true
