@@ -33,6 +33,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public RelayCommand RefreshDevicesCommand { get; }
     public RelayCommand DetectDelaysCommand { get; }
+    public RelayCommand RecordInputsCommand { get; }
     public RelayCommand ResyncAudioCommand { get; }
     public RelayCommand DownloadVbCableCommand { get; }
     public RelayCommand DismissVbCablePromptCommand { get; }
@@ -116,6 +117,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         RefreshDevicesCommand = new RelayCommand(RefreshDevices);
         DetectDelaysCommand = new RelayCommand(StartDelayDetection);
+        RecordInputsCommand = new RelayCommand(ToggleInputDiagRecording);
         ResyncAudioCommand = new RelayCommand(ResyncAudio);
         DownloadVbCableCommand = new RelayCommand(OpenVbCableDownload);
         DismissVbCablePromptCommand = new RelayCommand(DismissVbCablePrompt);
@@ -563,6 +565,56 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         DedupeAndRebuild();
     }
 
+    // Diagnostic: records every selected input to its own WAV via the pre-automix analysis tap (the
+    // same tap "Detect Delays" uses), so the captured per-mic feeds show what the automixer's
+    // selection is actually deciding on — the mix recorder is post-automix and useless for this.
+    private bool _inputDiagRecording;
+    public string InputDiagRecordIcon => _inputDiagRecording ? "■" : "●";
+    public string InputDiagRecordTooltip => _inputDiagRecording
+        ? "Stop recording inputs"
+        : "Record all inputs to separate WAVs (diagnostic — raw pre-automix per-mic feeds)";
+
+    private void ToggleInputDiagRecording()
+    {
+        if (_delayDetectionInProgress) { StatusText = "Busy with delay detection — try again in a moment."; return; }
+
+        string folder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "AudioMixer", "analysis");
+
+        if (_inputDiagRecording)
+        {
+            foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
+            _inputDiagRecording = false;
+            RaisePropertyChanged(nameof(InputDiagRecordIcon));
+            RaisePropertyChanged(nameof(InputDiagRecordTooltip));
+            StatusText = $"Input recordings saved to {folder}";
+            return;
+        }
+
+        var active = Channels.Where(c => c.SelectedDevice != null).ToArray();
+        if (active.Length == 0) { StatusText = "No inputs with a device selected to record."; return; }
+
+        try
+        {
+            Directory.CreateDirectory(folder);
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            foreach (var ch in active)
+            {
+                string path = Path.Combine(folder, $"diag-input{ch.Index + 1}-{stamp}.wav");
+                _engine.Inputs[ch.Index].StartAnalysisRecording(path);
+            }
+            _inputDiagRecording = true;
+            RaisePropertyChanged(nameof(InputDiagRecordIcon));
+            RaisePropertyChanged(nameof(InputDiagRecordTooltip));
+            StatusText = $"Recording {active.Length} inputs — narrate which mic is closest as people talk.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Input recording failed: {ex.Message}";
+        }
+    }
+
     private bool _delayDetectionInProgress;
 
     private async void StartDelayDetection()
@@ -673,6 +725,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         _meterTimer.Stop();
         _autosaveTimer.Stop();
+        if (_inputDiagRecording)
+            foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
         SavePreset();
         foreach (var r in _recorders) r?.Dispose();
         _engine.Dispose();

@@ -254,6 +254,9 @@
                 <Button Style="{StaticResource IconBtn}" Content="&#xE895;" ToolTip="Resync audio: restart inputs &amp; outputs (recovers a stalled mic or creeping delay)" Command="{Binding ResyncAudioCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
                 <Button Style="{StaticResource IconBtn}" Content="&#xE916;" ToolTip="Detect input delays (clap test)" Command="{Binding DetectDelaysCommand}"/>
+                <Button Style="{StaticResource RecordBtn}" FontFamily="Segoe UI" FontSize="12"
+                        Content="{Binding InputDiagRecordIcon}" ToolTip="{Binding InputDiagRecordTooltip}"
+                        Command="{Binding RecordInputsCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
                 <TextBlock Text="Inputs" Foreground="#9A9AA4" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"/>
                 <ComboBox ItemsSource="{Binding InputCountOptions}"
