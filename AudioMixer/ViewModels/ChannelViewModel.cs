@@ -104,6 +104,12 @@ public sealed class ChannelViewModel : ViewModelBase
     public float InputPeakHoldDb => _channel.InputPeak.HoldDb;
     public float PostPeakHoldDb => _channel.PostPeak.HoldDb;
     public bool IsDucking => _channel.IsDucking;
+    public bool IsAutoMixActive => _channel.IsAutoMixActive;
+
+    // Crest-derived clarity (0..1, higher = closer/cleaner). NaN when the mic hears no speech.
+    public bool HasClarity => !float.IsNaN(_channel.Clarity);
+    public double ClarityBar => float.IsNaN(_channel.Clarity) ? 0 : _channel.Clarity;
+    public string ClarityText => float.IsNaN(_channel.Clarity) ? "—" : $"{_channel.Clarity * 100:F0}%";
 
     public ChannelViewModel(
         int index,
@@ -134,6 +140,10 @@ public sealed class ChannelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(InputPeakHoldDb));
         RaisePropertyChanged(nameof(PostPeakHoldDb));
         RaisePropertyChanged(nameof(IsDucking));
+        RaisePropertyChanged(nameof(IsAutoMixActive));
+        RaisePropertyChanged(nameof(HasClarity));
+        RaisePropertyChanged(nameof(ClarityBar));
+        RaisePropertyChanged(nameof(ClarityText));
     }
 
     public void RefreshDevices(IEnumerable<AudioDeviceInfo> devices)

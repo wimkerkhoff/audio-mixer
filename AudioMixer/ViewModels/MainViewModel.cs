@@ -26,6 +26,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private long _lastLogTick;
     private readonly long[] _lastTotalSamples = new long[AudioEngine.OutputCount];
+    private readonly int[] _lastAutoMixWinner = new int[AudioEngine.OutputCount];
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public OutputViewModel[] Outputs { get; }
@@ -77,13 +78,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public double WindowWidth => Math.Max(500, _inputCount * 96 + 160);
 
-    private const double BaseWindowHeight = 320;
+    private const double BaseWindowHeight = 344;
     private const double VbCableBannerHeight = 36;
     public double WindowHeight => BaseWindowHeight + (ShowVbCablePrompt ? VbCableBannerHeight : 0);
 
     public MainViewModel()
     {
         _engine = new AudioEngine();
+        _engine.InputRestarted += (idx, attempt) => RunOnUi(() =>
+            StatusText = $"Input {idx + 1} dropped — auto-restarted (attempt {attempt}).");
+        _engine.InputRestartGaveUp += idx => RunOnUi(() =>
+            StatusText = $"Input {idx + 1} not responding — re-pick the device or click Resync.");
 
         _allInputDevices = AudioDeviceInfo.Enumerate(DataFlow.Capture);
         _allOutputDevices = AudioDeviceInfo.Enumerate(DataFlow.Render);
@@ -105,6 +110,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 (idx, dev) => SetOutputDevice(idx, dev),
                 (idx, mode) => _engine.SetAutoMixMode(idx, mode),
                 (idx, strength) => _engine.SetAutoMixStrength(idx, strength),
+                (idx, on) => _engine.SetAutoMixQualityWeighting(idx, on),
                 ToggleRecord);
         }
 
@@ -135,15 +141,35 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             Interval = TimeSpan.FromMilliseconds(33),
         };
         _lastLogTick = Environment.TickCount64;
+        for (int o = 0; o < _lastAutoMixWinner.Length; o++) _lastAutoMixWinner[o] = -1;
         _meterTimer.Tick += (_, _) =>
         {
             foreach (var ch in Channels) ch.RefreshMeters();
             foreach (var op in Outputs) op.RefreshMeters();
+            LogAutoMixSelectionChanges();
             MaybeLogDiagnostics();
         };
         _meterTimer.Start();
 
         TryLoadInitialPreset();
+    }
+
+    // Logs each automixer talker hand-off (Output B: mic1 → mic3, clarity 78%). Polled per meter
+    // tick (not throttled) so the trail captures fast switches, but only when file logging is on.
+    private void LogAutoMixSelectionChanges()
+    {
+        if (!AudioLog.Enabled) return;
+        for (int o = 0; o < Outputs.Length; o++)
+        {
+            int winner = _engine.AutoMixActiveInput(o);
+            if (winner == _lastAutoMixWinner[o]) continue;
+            int prev = _lastAutoMixWinner[o];
+            _lastAutoMixWinner[o] = winner;
+            string Name(int i) => i < 0 ? "none"
+                : i < Channels.Count ? $"mic{i + 1} ('{Channels[i].CustomLabel}')" : $"mic{i + 1}";
+            string clarity = winner >= 0 && winner < Channels.Count ? Channels[winner].ClarityText : "—";
+            AudioLog.Write($"Output {(o == 0 ? "A" : "B")} auto-mix: {Name(prev)} → {Name(winner)} (clarity {clarity})");
+        }
     }
 
     // Throttled to ~1 Hz. Short-circuits when file logging is off so we don't build the per-output
@@ -324,13 +350,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         try
         {
+            _engine.RestartInputs();
             _engine.RestartOutputs();
-            StatusText = "Audio resynced.";
+            StatusText = "Audio resynced (inputs + outputs).";
         }
         catch (Exception ex)
         {
             StatusText = $"Resync failed: {ex.Message}";
         }
+    }
+
+    private static void RunOnUi(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess()) action();
+        else dispatcher.BeginInvoke(action);
     }
 
     private void RefreshDevices()
@@ -453,6 +487,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 DeviceName = o.SelectedDevice?.FriendlyName,
                 AutoMixMode = o.AutoMixModeIndex,
                 AutoMixStrength = o.StrengthPercent,
+                AutoMixQualityWeighting = o.QualityWeighting,
                 Volume = o.VolumePercent,
             }).ToArray(),
         };
@@ -515,6 +550,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     Outputs[o].AvailableDevices.FirstOrDefault(d => d.Id == op.DeviceId);
                 Outputs[o].SelectedDevice = match;
                 Outputs[o].StrengthPercent = Math.Clamp(op.AutoMixStrength, 0f, 100f);
+                Outputs[o].QualityWeighting = op.AutoMixQualityWeighting;
                 Outputs[o].AutoMixModeIndex = Math.Clamp(op.AutoMixMode, 0, 2);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
             }

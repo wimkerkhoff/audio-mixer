@@ -34,6 +34,14 @@ public sealed class PeakMeter
         }
     }
 
+    // Zero the meter so a stopped/stalled channel's bar drops instead of freezing at its last value.
+    public void Reset()
+    {
+        Interlocked.Exchange(ref _peakBits, 0);
+        Interlocked.Exchange(ref _holdPeakBits, 0);
+        _holdUntil = DateTime.UtcNow;
+    }
+
     public float CurrentLinear => BitConverter.Int32BitsToSingle((int)Interlocked.Read(ref _peakBits));
 
     public float HoldLinear => BitConverter.Int32BitsToSingle((int)Interlocked.Read(ref _holdPeakBits));

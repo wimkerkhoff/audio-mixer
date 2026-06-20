@@ -251,7 +251,7 @@
                         Command="{Binding OpenDocumentationCommand}" Margin="4,0,0,0"/>
             <StackPanel Orientation="Horizontal">
                 <Button Style="{StaticResource IconBtn}" Content="&#xE72C;" ToolTip="Refresh devices" Command="{Binding RefreshDevicesCommand}"/>
-                <Button Style="{StaticResource IconBtn}" Content="&#xE895;" ToolTip="Resync audio (flush buffers if delay creeps up)" Command="{Binding ResyncAudioCommand}"/>
+                <Button Style="{StaticResource IconBtn}" Content="&#xE895;" ToolTip="Resync audio: restart inputs &amp; outputs (recovers a stalled mic or creeping delay)" Command="{Binding ResyncAudioCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
                 <Button Style="{StaticResource IconBtn}" Content="&#xE916;" ToolTip="Detect input delays (clap test)" Command="{Binding DetectDelaysCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
@@ -320,11 +320,14 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <Ellipse Grid.Column="0" Width="8" Height="8" Margin="1,0,3,0" VerticalAlignment="Center"
-                                             ToolTip="Amber when the automixer is ducking this input">
+                                             ToolTip="Green = auto-mix is selecting this mic; amber = it's being ducked">
                                         <Ellipse.Style>
                                             <Style TargetType="Ellipse">
                                                 <Setter Property="Fill" Value="#333842"/>
                                                 <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAutoMixActive}" Value="True">
+                                                        <Setter Property="Fill" Value="#3FB950"/>
+                                                    </DataTrigger>
                                                     <DataTrigger Binding="{Binding IsDucking}" Value="True">
                                                         <Setter Property="Fill" Value="#F2A93B"/>
                                                     </DataTrigger>
@@ -358,6 +361,21 @@
                                                               Foreground="#DDD" FontSize="11"
                                                               Content="Priority mic (always on, ducks others while speaking)"
                                                               ToolTip="Always full level and out of the competition; while this mic is speaking it ducks the other (room) mics — e.g. a presenter's lapel"/>
+                                                    <Border Height="1" Background="#3A3A42" Margin="0,10,0,6"/>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Style="{StaticResource Lbl}" Text="MIC CLARITY (auto-mix)" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="1" Foreground="#3FB950" FontSize="11" FontWeight="SemiBold"
+                                                                   Text="{Binding ClarityText}" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding ClarityBar, Mode=OneWay}"
+                                                                 Height="5" Margin="0,3,0,0"
+                                                                 Background="#26262C" Foreground="#3FB950" BorderThickness="0"/>
+                                                    <TextBlock Margin="0,4,0,0" Foreground="#777" FontSize="9" TextWrapping="Wrap"
+                                                               Text="How close/clean this mic sounds vs the others (crest factor). Higher wins the auto-mix. Shows '—' until it hears speech."/>
                                                 </StackPanel>
                                             </Border>
                                         </Popup>
@@ -551,6 +569,9 @@
                                             </Border>
                                         </Popup>
                                     </Grid>
+                                    <CheckBox Margin="0,3,0,0" IsChecked="{Binding QualityWeighting}" IsEnabled="{Binding AutoMixEnabled}"
+                                              Foreground="#CCC" FontSize="10" Content="Prefer clearest"
+                                              ToolTip="Bias the auto-mixer toward the closest/cleanest mic (crest-factor weighting), not just the loudest — the speakerphones' own AGC flattens levels, so loudest ≠ closest."/>
                                 </StackPanel>
 
                                 <Grid Grid.Row="5" Margin="0,3,0,0" IsEnabled="{Binding AutoMixEnabled}">

@@ -27,5 +27,6 @@ public sealed class OutputPreset
     public string? DeviceName { get; set; }
     public int AutoMixMode { get; set; }              // 0 Off, 1 Share, 2 Gate
     public float AutoMixStrength { get; set; } = 50f;  // percent
+    public bool AutoMixQualityWeighting { get; set; } = true;  // crest-factor "prefer clearest mic"
     public float Volume { get; set; } = 100f;          // percent
 }

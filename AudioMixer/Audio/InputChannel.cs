@@ -20,6 +20,30 @@ public sealed class InputChannel : IDisposable
     private float _currentLevelLinear;
     public float CurrentLevelLinear => Volatile.Read(ref _currentLevelLinear);
 
+    // Peak (max |sample|) latched per buffer. AutoMixer divides this by the RMS to get a crest
+    // factor — a closeness/clarity proxy that survives the speakerphones' own AGC (AGC normalizes
+    // RMS but can't un-smear the reverb that fills a distant mic's envelope troughs).
+    private float _currentPeakLinear;
+    public float CurrentPeakLinear => Volatile.Read(ref _currentPeakLinear);
+
+    // Smoothed crest-derived clarity weight (0..1, NaN when no recent speech), written by AutoMixer
+    // for display. Higher = closer/cleaner mic.
+    private float _clarity = float.NaN;
+    public float Clarity
+    {
+        get => Volatile.Read(ref _clarity);
+        set => Volatile.Write(ref _clarity, value);
+    }
+
+    // True when the automixer is currently selecting this channel (gate winner / share leader /
+    // active priority mic) on any output it is routed to. Drives the per-input green "selected" LED.
+    private bool _isAutoMixActive;
+    public bool IsAutoMixActive
+    {
+        get => Volatile.Read(ref _isAutoMixActive);
+        set => Volatile.Write(ref _isAutoMixActive, value);
+    }
+
     private bool _isPriority;
     public bool IsPriority
     {
@@ -47,6 +71,15 @@ public sealed class InputChannel : IDisposable
             return false;
         }
     }
+
+    // Watchdog state: true while a capture is supposed to be running, plus the tick of the last
+    // buffer the device delivered. A capture that stops firing DataAvailable (Anker USB/BT hiccup)
+    // leaves IsCapturing true but LastDataTicks stale — that's what AudioEngine restarts on.
+    private volatile bool _captureActive;
+    public bool IsCapturing => _captureActive;
+
+    private long _lastDataTicks;
+    public long LastDataTicks => Volatile.Read(ref _lastDataTicks);
 
     private WasapiCapture? _capture;
     private WaveFormat? _captureFormat;
@@ -181,6 +214,8 @@ public sealed class InputChannel : IDisposable
                 System.Diagnostics.Trace.WriteLine($"Capture stopped with error: {e.Exception}");
         };
         _capture = capture;
+        Volatile.Write(ref _lastDataTicks, Environment.TickCount64);
+        _captureActive = true;
         capture.StartRecording();
     }
 
@@ -188,6 +223,7 @@ public sealed class InputChannel : IDisposable
     {
         lock (_stateLock)
         {
+            _captureActive = false;
             if (_capture != null)
             {
                 try { _capture.StopRecording(); } catch { }
@@ -198,7 +234,12 @@ public sealed class InputChannel : IDisposable
             _captureFifo = null;
             _convertedSource = null;
             _delayLine = null;
+            InputPeak.Reset();
+            PostPeak.Reset();
             Volatile.Write(ref _currentLevelLinear, 0f);
+            Volatile.Write(ref _currentPeakLinear, 0f);
+            Volatile.Write(ref _clarity, float.NaN);
+            Volatile.Write(ref _isAutoMixActive, false);
             for (int o = 0; o < _outputCount; o++) _autoMixRamp[o] = 1f;
             foreach (var buf in _outBuffers) buf.ClearBuffer();
         }
@@ -260,6 +301,8 @@ public sealed class InputChannel : IDisposable
         if (fifo == null || converted == null || delay == null || _captureFormat == null) return;
         if (e.BytesRecorded <= 0) return;
 
+        Volatile.Write(ref _lastDataTicks, Environment.TickCount64);
+
         fifo.AddSamples(e.Buffer, 0, e.BytesRecorded);
 
         int captureFrames = e.BytesRecorded / _captureFormat.BlockAlign;
@@ -288,8 +331,16 @@ public sealed class InputChannel : IDisposable
             PostPeak.Observe(rented, read);
 
             double sumSq = 0;
-            for (int i = 0; i < read; i++) sumSq += (double)rented[i] * rented[i];
+            float peak = 0f;
+            for (int i = 0; i < read; i++)
+            {
+                float s = rented[i];
+                sumSq += (double)s * s;
+                float a = s < 0 ? -s : s;
+                if (a > peak) peak = a;
+            }
             Volatile.Write(ref _currentLevelLinear, (float)Math.Sqrt(sumSq / read));
+            Volatile.Write(ref _currentPeakLinear, peak);
 
             int byteCount = read * sizeof(float);
             int mask = Volatile.Read(ref _routeMask);

@@ -20,6 +20,21 @@ public sealed class AudioEngine : IDisposable
     private readonly AutoMixer _autoMix = new(OutputCount, MaxInputCount);
     private readonly Timer _autoMixTimer;
 
+    // Capture-stall watchdog: a selected input that stops delivering buffers for StallMs is restarted
+    // (Anker speakerphones drop on USB/BT renegotiation). Backoff + attempt cap stop a permanently-
+    // gone device from restart-looping. Fires InputRestarted (index, attempt) for status surfacing.
+    private const int StallMs = 1500;
+    private const int RestartBackoffMs = 3000;
+    private const int MaxRestartAttempts = 5;
+    private readonly Timer _watchdogTimer;
+    private readonly int[] _inputRestarting = new int[MaxInputCount];
+    private readonly long[] _lastRestartTicks = new long[MaxInputCount];
+    private readonly int[] _restartAttempts = new int[MaxInputCount];
+    private readonly bool[] _restartGaveUp = new bool[MaxInputCount];
+
+    public event Action<int, int>? InputRestarted;        // (index, attempt)
+    public event Action<int>? InputRestartGaveUp;         // (index)
+
     public AudioEngine()
     {
         Inputs = new InputChannel[DefaultInputCount];
@@ -27,15 +42,98 @@ public sealed class AudioEngine : IDisposable
         Outputs = new OutputBus[OutputCount];
         for (int o = 0; o < OutputCount; o++) Outputs[o] = new OutputBus();
         _autoMixTimer = new Timer(AutoMixTick, null, 10, 10);
+        _watchdogTimer = new Timer(WatchdogTick, null, 1000, 500);
     }
 
     public void SetAutoMixMode(int output, AutoMixMode mode) => _autoMix.SetMode(output, mode);
     public void SetAutoMixStrength(int output, float strength) => _autoMix.SetStrength(output, strength);
+    public void SetAutoMixQualityWeighting(int output, bool on) => _autoMix.SetQualityWeighting(output, on);
+    public int AutoMixActiveInput(int output) => _autoMix.ActiveInput(output);
 
     private void AutoMixTick(object? state)
     {
         var inputs = Inputs; // single atomic reference read; safe vs SetInputCount's array swap
         try { _autoMix.Tick(inputs); } catch { }
+    }
+
+    private void WatchdogTick(object? state)
+    {
+        InputChannel[] inputs;
+        AudioDeviceInfo?[] devices;
+        lock (_lock)
+        {
+            inputs = Inputs;
+            devices = (AudioDeviceInfo?[])_inputDevices.Clone();
+        }
+
+        long now = Environment.TickCount64;
+        for (int i = 0; i < inputs.Length && i < MaxInputCount; i++)
+        {
+            var dev = i < devices.Length ? devices[i] : null;
+            var ch = inputs[i];
+            if (dev == null || !ch.IsCapturing) continue;
+
+            if (now - ch.LastDataTicks < StallMs)
+            {
+                // Healthy again — clear the backoff so a future stall gets a fresh budget.
+                _restartAttempts[i] = 0;
+                _restartGaveUp[i] = false;
+                continue;
+            }
+
+            if (_restartAttempts[i] >= MaxRestartAttempts)
+            {
+                if (!_restartGaveUp[i]) { _restartGaveUp[i] = true; InputRestartGaveUp?.Invoke(i); }
+                continue;
+            }
+            if (now - _lastRestartTicks[i] < RestartBackoffMs) continue;
+            if (Interlocked.CompareExchange(ref _inputRestarting[i], 1, 0) != 0) continue;
+
+            _lastRestartTicks[i] = now;
+            int attempt = ++_restartAttempts[i];
+            int idx = i;
+            Task.Run(() => RestartInput(idx, dev, attempt));
+        }
+    }
+
+    private void RestartInput(int index, AudioDeviceInfo device, int attempt)
+    {
+        try
+        {
+            lock (_lock)
+            {
+                if (index >= Inputs.Length) return;
+                if (!ReferenceEquals(_inputDevices[index], device)) return; // device changed under us
+                Inputs[index].Stop();
+                Inputs[index].Start(device);
+            }
+            InputRestarted?.Invoke(index, attempt);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"Watchdog restart of input {index} failed: {ex}");
+        }
+        finally
+        {
+            Volatile.Write(ref _inputRestarting[index], 0);
+        }
+    }
+
+    // Manual recovery (Resync button): restart every selected input's capture from scratch.
+    public void RestartInputs()
+    {
+        lock (_lock)
+        {
+            for (int i = 0; i < Inputs.Length; i++)
+            {
+                var dev = _inputDevices[i];
+                if (dev == null) continue;
+                Inputs[i].Stop();
+                try { Inputs[i].Start(dev); }
+                catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"Resync input {i} failed: {ex}"); }
+                if (i < MaxInputCount) { _restartAttempts[i] = 0; _lastRestartTicks[i] = 0; _restartGaveUp[i] = false; }
+            }
+        }
     }
 
     public int InputCount => Inputs.Length;
@@ -75,6 +173,12 @@ public sealed class AudioEngine : IDisposable
             _inputDevices[index] = device;
             Inputs[index].Stop();
             if (device != null) Inputs[index].Start(device);
+            if (index < MaxInputCount)
+            {
+                _restartAttempts[index] = 0;
+                _lastRestartTicks[index] = 0;
+                _restartGaveUp[index] = false;
+            }
         }
     }
 
@@ -121,6 +225,7 @@ public sealed class AudioEngine : IDisposable
 
     public void Dispose()
     {
+        _watchdogTimer.Dispose();
         _autoMixTimer.Dispose();
         StopAll();
         foreach (var input in Inputs) input.Dispose();
