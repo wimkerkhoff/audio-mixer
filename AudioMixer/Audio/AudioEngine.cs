@@ -47,7 +47,7 @@ public sealed class AudioEngine : IDisposable
 
     public void SetAutoMixMode(int output, AutoMixMode mode) => _autoMix.SetMode(output, mode);
     public void SetAutoMixStrength(int output, float strength) => _autoMix.SetStrength(output, strength);
-    public void SetAutoMixQualityWeighting(int output, bool on) => _autoMix.SetQualityWeighting(output, on);
+    public void SetAutoMixStableHandoff(int output, bool on) => _autoMix.SetStableHandoff(output, on);
     public int AutoMixActiveInput(int output) => _autoMix.ActiveInput(output);
 
     private void AutoMixTick(object? state)

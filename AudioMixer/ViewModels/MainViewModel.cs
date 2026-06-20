@@ -111,7 +111,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 (idx, dev) => SetOutputDevice(idx, dev),
                 (idx, mode) => _engine.SetAutoMixMode(idx, mode),
                 (idx, strength) => _engine.SetAutoMixStrength(idx, strength),
-                (idx, on) => _engine.SetAutoMixQualityWeighting(idx, on),
+                (idx, on) => _engine.SetAutoMixStableHandoff(idx, on),
                 ToggleRecord);
         }
 
@@ -489,7 +489,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 DeviceName = o.SelectedDevice?.FriendlyName,
                 AutoMixMode = o.AutoMixModeIndex,
                 AutoMixStrength = o.StrengthPercent,
-                AutoMixQualityWeighting = o.QualityWeighting,
+                AutoMixStableHandoff = o.StableHandoff,
                 Volume = o.VolumePercent,
             }).ToArray(),
         };
@@ -552,7 +552,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     Outputs[o].AvailableDevices.FirstOrDefault(d => d.Id == op.DeviceId);
                 Outputs[o].SelectedDevice = match;
                 Outputs[o].StrengthPercent = Math.Clamp(op.AutoMixStrength, 0f, 100f);
-                Outputs[o].QualityWeighting = op.AutoMixQualityWeighting;
+                Outputs[o].StableHandoff = op.AutoMixStableHandoff;
                 Outputs[o].AutoMixModeIndex = Math.Clamp(op.AutoMixMode, 0, 2);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
             }

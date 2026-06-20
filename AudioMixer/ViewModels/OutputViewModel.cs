@@ -9,7 +9,7 @@ public sealed class OutputViewModel : ViewModelBase
     private readonly Action<int, AudioDeviceInfo?> _onDeviceChanged;
     private readonly Action<int, AutoMixMode> _onAutoMixModeChanged;
     private readonly Action<int, float> _onAutoMixStrengthChanged;
-    private readonly Action<int, bool> _onAutoMixQualityChanged;
+    private readonly Action<int, bool> _onStableHandoffChanged;
     private readonly Action<int> _onToggleRecord;
 
     public int Index { get; }
@@ -100,16 +100,17 @@ public sealed class OutputViewModel : ViewModelBase
         }
     }
 
-    // Crest-factor weighting: bias the automixer toward the closest/cleanest mic rather than the
-    // loudest. On by default — the speakerphones' AGC flattens levels, so loudest != closest.
-    private bool _qualityWeighting = true;
-    public bool QualityWeighting
+    // Stable hand-off: hold the selected mic with hysteresis so a brief louder moment on another mic
+    // (e.g. a distant speakerphone's AGC pumping up in a talker's pause) can't steal the selection.
+    // On by default. Off = legacy instantaneous-loudest selection.
+    private bool _stableHandoff = true;
+    public bool StableHandoff
     {
-        get => _qualityWeighting;
+        get => _stableHandoff;
         set
         {
-            if (SetField(ref _qualityWeighting, value))
-                _onAutoMixQualityChanged(Index, value);
+            if (SetField(ref _stableHandoff, value))
+                _onStableHandoffChanged(Index, value);
         }
     }
 
@@ -120,7 +121,7 @@ public sealed class OutputViewModel : ViewModelBase
         Action<int, AudioDeviceInfo?> onDeviceChanged,
         Action<int, AutoMixMode> onAutoMixModeChanged,
         Action<int, float> onAutoMixStrengthChanged,
-        Action<int, bool> onAutoMixQualityChanged,
+        Action<int, bool> onStableHandoffChanged,
         Action<int> onToggleRecord)
     {
         Index = index;
@@ -128,7 +129,7 @@ public sealed class OutputViewModel : ViewModelBase
         _onDeviceChanged = onDeviceChanged;
         _onAutoMixModeChanged = onAutoMixModeChanged;
         _onAutoMixStrengthChanged = onAutoMixStrengthChanged;
-        _onAutoMixQualityChanged = onAutoMixQualityChanged;
+        _onStableHandoffChanged = onStableHandoffChanged;
         _onToggleRecord = onToggleRecord;
         _customLabel = index == 0 ? "A — Headset" : "B — Zoom";
         AvailableDevices = new ObservableCollection<AudioDeviceInfo>(availableDevices);

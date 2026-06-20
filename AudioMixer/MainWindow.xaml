@@ -572,10 +572,10 @@
                                             </Border>
                                         </Popup>
                                     </Grid>
-                                    <CheckBox Margin="0,3,0,0" IsChecked="{Binding QualityWeighting}" IsEnabled="{Binding AutoMixEnabled}"
+                                    <CheckBox Margin="0,3,0,0" IsChecked="{Binding StableHandoff}" IsEnabled="{Binding AutoMixEnabled}"
                                               Foreground="#CCC" FontSize="10"
-                                              ToolTip="Bias the auto-mixer toward the closest/cleanest mic (crest-factor weighting), not just the loudest — the speakerphones' own AGC flattens levels, so loudest ≠ closest.">
-                                        <TextBlock Text="Clearest mic" TextTrimming="CharacterEllipsis"/>
+                                              ToolTip="Hold the selected mic with hysteresis so a brief louder moment on another mic can't steal it — stops a distant speakerphone's AGC pumping in a talker's pause from grabbing the mix. Off = pick the instantaneously loudest mic.">
+                                        <TextBlock Text="Stable hand-off" TextTrimming="CharacterEllipsis"/>
                                     </CheckBox>
                                 </StackPanel>
 
