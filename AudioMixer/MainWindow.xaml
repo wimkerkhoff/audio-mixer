@@ -180,12 +180,12 @@
 
         <Style x:Key="GearBtn" TargetType="ToggleButton">
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontSize" Value="11"/>
             <Setter Property="Width" Value="18"/>
             <Setter Property="Height" Value="18"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Background" Value="#3A3A42"/>
-            <Setter Property="Foreground" Value="#BBB"/>
+            <Setter Property="Foreground" Value="#EDEDED"/>
             <Setter Property="BorderBrush" Value="#4A4A52"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
@@ -570,8 +570,10 @@
                                         </Popup>
                                     </Grid>
                                     <CheckBox Margin="0,3,0,0" IsChecked="{Binding QualityWeighting}" IsEnabled="{Binding AutoMixEnabled}"
-                                              Foreground="#CCC" FontSize="10" Content="Prefer clearest"
-                                              ToolTip="Bias the auto-mixer toward the closest/cleanest mic (crest-factor weighting), not just the loudest — the speakerphones' own AGC flattens levels, so loudest ≠ closest."/>
+                                              Foreground="#CCC" FontSize="10"
+                                              ToolTip="Bias the auto-mixer toward the closest/cleanest mic (crest-factor weighting), not just the loudest — the speakerphones' own AGC flattens levels, so loudest ≠ closest.">
+                                        <TextBlock Text="Clearest mic" TextTrimming="CharacterEllipsis"/>
+                                    </CheckBox>
                                 </StackPanel>
 
                                 <Grid Grid.Row="5" Margin="0,3,0,0" IsEnabled="{Binding AutoMixEnabled}">
