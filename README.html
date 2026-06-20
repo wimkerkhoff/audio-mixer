@@ -211,7 +211,7 @@
   <li><strong>1–10 input channels</strong> — count is configurable from the toolbar (default 3); each with its own device, volume slider, mute, delay (0-1000 ms), and routing toggles</li>
   <li><strong>2 output buses</strong> — each with its own device picker, <strong>volume</strong> slider, peak meter, and dB readout</li>
   <li><strong>Routing matrix</strong> — independent A/B toggles per input</li>
-  <li><strong>Auto-mix (per output)</strong> — Off / Share / Gate modes with a strength slider, applied independently to each output bus. Attenuates every mic except the one(s) closest to whoever is speaking — the fix for multiple distant mics picking up the same voice. <strong>Share</strong> = smooth gain-sharing (handles overlapping talkers); <strong>Gate</strong> = one mic open at a time (maximum echo rejection). A per-input <strong>amber LED</strong> shows when a mic is being ducked, and a per-input <strong>"priority mic"</strong> flag keeps a dedicated mic (e.g. a presenter's lapel) always open and lets it duck the room mics while it's speaking. See <a href="#auto-mix">Auto-mix</a> below.</li>
+  <li><strong>Auto-mix (per output)</strong> — Off / Share / Gate modes with a strength slider and a <strong>stable hand-off</strong> toggle, applied independently to each output bus. Attenuates every mic except the one(s) closest to whoever is speaking — the fix for multiple distant mics picking up the same voice. <strong>Share</strong> = smooth gain-sharing (handles overlapping talkers); <strong>Gate</strong> = one mic open at a time (maximum echo rejection). Two per-input LEDs show what the mixer is doing: a <strong>green LED</strong> marks the mic currently selected as the talker, an <strong>amber LED</strong> marks a mic being ducked. A per-input <strong>"priority mic"</strong> flag keeps a dedicated mic (e.g. a presenter's lapel) always open and lets it duck the room mics while it's speaking. See <a href="#auto-mix">Auto-mix</a> below.</li>
   <li><strong>VU meters</strong> — pre-fader and post-fader for each input, output level meter for each bus; green below -12 dBFS, yellow to -3, red above (clip warning)</li>
   <li><strong>Delay compensation</strong> — per-channel adjustable delay buffer (e.g., add 150 ms to the wired mic to align with a Bluetooth one), in each input's ⚙ advanced popup (the gear glows amber when an input has a non-default delay or priority setting)</li>
   <li><strong>Auto-detect delays</strong> — clap test that records all active inputs for 4 seconds and aligns them by <strong>onset cross-correlation</strong> (robust to soft/vocal sounds and speakerphone noise-suppression, not just sharp claps), then suggests per-channel delay values</li>
@@ -288,10 +288,11 @@ dotnet run --project AudioMixer</code></pre>
   <li>↻ <strong>Refresh devices</strong> — re-enumerate Windows audio devices (after plugging in / out)</li>
   <li>⟳ <strong>Resync audio</strong> — flush all buffers and restart outputs (use if you notice growing latency)</li>
   <li>⏱ <strong>Detect delays (clap test)</strong> — see below</li>
+  <li>● <strong>Record all inputs (diagnostic)</strong> — toggle to capture every selected input to its own <em>pre-auto-mix</em> WAV, so you can hear exactly what the mic selection is deciding on. Files land in <code>Documents\AudioMixer\analysis\diag-input{N}-{timestamp}.wav</code>. (For troubleshooting auto-mix selection, not for normal recording.)</li>
   <li><strong>Inputs</strong> — pick the number of input channels (1–10); the window resizes to fit</li>
 </ul>
 
-<p>(Recording is per-output — use the ● button on each output strip, not the toolbar.)</p>
+<p>(Mix recording is per-output — use the ● button on each output strip, not the toolbar.)</p>
 
 <h3 id="delay-detection">Delay detection</h3>
 
@@ -316,13 +317,15 @@ dotnet run --project AudioMixer</code></pre>
 
 <ul>
   <li><strong>Off</strong> — straight sum of all routed mics (default; unchanged behavior).</li>
-  <li><strong>Share</strong> — gain-sharing: every mic is ducked in proportion to how far below the loudest it is, smoothly. Two people on different mics both come through. Best for discussion/cross-talk. Higher Strength sharpens the ducking (the loudest mic dominates more).</li>
-  <li><strong>Gate</strong> — winner-take-all: only the single loudest mic is open; the rest are pushed to a floor. Hysteresis (~3 dB) and a ~200 ms hold prevent chatter. Maximum echo rejection, but it passes one talker at a time. Higher Strength ducks the idle mics harder.</li>
+  <li><strong>Share</strong> — gain-sharing: every mic is ducked in proportion to how far below the selected (closest) mic it is, smoothly. Two people on different mics both come through. Best for discussion/cross-talk. Higher Strength sharpens the ducking (the closest mic dominates more).</li>
+  <li><strong>Gate</strong> — winner-take-all: only the single closest mic is open; the rest are pushed to a floor. Maximum echo rejection, but it passes one talker at a time. Higher Strength ducks the idle mics harder.</li>
 </ul>
 
 <p><strong>Strength</strong> is the live tuning knob — start around the middle and adjust by ear in the room.</p>
 
-<p><strong>Ducking indicator:</strong> each input strip has a small <strong>amber LED</strong> (top-left, by the label) that lights when the automixer is currently ducking that input. At a glance you can see which mic is "winning" (dark LED) and which are being held down (amber).</p>
+<p><strong>Stable hand-off</strong> (checkbox, on by default): holds the currently-selected mic with hysteresis (~3 dB) and a short hold (~200 ms) so a brief louder moment on another mic — like a distant speakerphone's auto-gain pumping up during a talker's pause — can't steal the mix. Leave it on for most rooms; turn it off to fall back to picking the instantaneously loudest mic every frame (legacy behavior). Gate always uses the held selection; this toggle controls whether Share does too.</p>
+
+<p><strong>Status LEDs:</strong> each input strip has two small LEDs (top-left, by the label). A <strong>green LED</strong> lights on the mic the automixer has currently selected as the active talker; an <strong>amber LED</strong> lights on any mic being ducked. At a glance you can see which mic is "winning" (green) and which are being held down (amber).</p>
 
 <p><strong>Priority mic (e.g. a presenter's lapel):</strong> if one input is the primary feed — like a presenter's wireless lapel at the front while room mics cover the audience — open that input's <strong>advanced popup</strong> (the ⚙ gear icon by its label) and tick <strong>"Priority mic"</strong>. A priority mic:</p>
 
@@ -333,7 +336,7 @@ dotnet run --project AudioMixer</code></pre>
 
 <p>You can mark <strong>more than one</strong> input as priority — e.g. a pastor <em>and</em> a worship leader, each on their own lapel. They're all kept always-open and each ducks the room mics while speaking. (Note: priority mics don't duck <em>each other</em>, so only flag mics that are isolated on different people — two priority mics picking up the same voice would double.)</p>
 
-<p>The gear popup also holds that input's <strong>delay</strong> setting.</p>
+<p>The gear popup also holds that input's <strong>delay</strong> setting and a live <strong>Mic clarity</strong> bar — a 0–100% readout of how clean/close that mic's signal looks (derived from its crest factor) while it hears speech. It's a diagnostic aid for comparing mics; it does not drive the selection (which is level-based — see the gotchas in <code>CLAUDE.md</code> for why spectral cues don't survive speakerphone DSP).</p>
 
 <p>Notes:</p>
 
@@ -372,6 +375,7 @@ dotnet run --project AudioMixer</code></pre>
     <tr><td>Settings (auto-saved)</td><td><code>%APPDATA%\AudioMixer\preset.json</code></td></tr>
     <tr><td>Mix recordings</td><td><code>Documents\AudioMixer\recordings\mix-A-…</code> / <code>mix-B-{timestamp}.wav</code></td></tr>
     <tr><td>Clap-test recordings</td><td><code>Documents\AudioMixer\analysis\input{N}-{timestamp}.wav</code></td></tr>
+    <tr><td>Diagnostic per-input recordings</td><td><code>Documents\AudioMixer\analysis\diag-input{N}-{timestamp}.wav</code></td></tr>
     <tr><td>Diagnostic log (opt-in)</td><td><code>%TEMP%\AudioMixer.log</code></td></tr>
   </tbody>
 </table>

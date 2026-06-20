@@ -13,7 +13,7 @@ It also handles **distributed multi-mic rooms** — several mics (e.g. conferenc
 - **1–10 input channels** — count is configurable from the toolbar (default 3); each with its own device, volume slider, mute, delay (0-1000 ms), and routing toggles
 - **2 output buses** — each with its own device picker, **volume** slider, peak meter, and dB readout
 - **Routing matrix** — independent A/B toggles per input
-- **Auto-mix (per output)** — Off / Share / Gate modes with a strength slider, applied independently to each output bus. Attenuates every mic except the one(s) closest to whoever is speaking — the fix for multiple distant mics picking up the same voice. **Share** = smooth gain-sharing (handles overlapping talkers); **Gate** = one mic open at a time (maximum echo rejection). A per-input **amber LED** shows when a mic is being ducked, and a per-input **"priority mic"** flag keeps a dedicated mic (e.g. a presenter's lapel) always open and lets it duck the room mics while it's speaking. See [Auto-mix](#auto-mix) below.
+- **Auto-mix (per output)** — Off / Share / Gate modes with a strength slider and a **stable hand-off** toggle, applied independently to each output bus. Attenuates every mic except the one(s) closest to whoever is speaking — the fix for multiple distant mics picking up the same voice. **Share** = smooth gain-sharing (handles overlapping talkers); **Gate** = one mic open at a time (maximum echo rejection). Two per-input LEDs show what the mixer is doing: a **green LED** marks the mic currently selected as the talker, an **amber LED** marks a mic being ducked. A per-input **"priority mic"** flag keeps a dedicated mic (e.g. a presenter's lapel) always open and lets it duck the room mics while it's speaking. See [Auto-mix](#auto-mix) below.
 - **VU meters** — pre-fader and post-fader for each input, output level meter for each bus; green below -12 dBFS, yellow to -3, red above (clip warning)
 - **Delay compensation** — per-channel adjustable delay buffer (e.g., add 150 ms to the wired mic to align with a Bluetooth one), in each input's ⚙ advanced popup (the gear glows amber when an input has a non-default delay or priority setting)
 - **Auto-detect delays** — clap test that records all active inputs for 4 seconds and aligns them by **onset cross-correlation** (robust to soft/vocal sounds and speakerphone noise-suppression, not just sharp claps), then suggests per-channel delay values
@@ -86,9 +86,10 @@ Two equivalent ways to get the exe(s):
 - ↻ **Refresh devices** — re-enumerate Windows audio devices (after plugging in / out)
 - ⟳ **Resync audio** — flush all buffers and restart outputs (use if you notice growing latency)
 - ⏱ **Detect delays (clap test)** — see below
+- ● **Record all inputs (diagnostic)** — toggle to capture every selected input to its own *pre-auto-mix* WAV, so you can hear exactly what the mic selection is deciding on. Files land in `Documents\AudioMixer\analysis\diag-input{N}-{timestamp}.wav`. (For troubleshooting auto-mix selection, not for normal recording.)
 - **Inputs** — pick the number of input channels (1–10); the window resizes to fit
 
-(Recording is per-output — use the ● button on each output strip, not the toolbar.)
+(Mix recording is per-output — use the ● button on each output strip, not the toolbar.)
 
 ### Delay detection
 
@@ -110,12 +111,14 @@ For rooms with several mics (e.g. conference speakerphones spread across a space
 Each output's strip has an **Auto-mix** selector and a **Strength** slider:
 
 - **Off** — straight sum of all routed mics (default; unchanged behavior).
-- **Share** — gain-sharing: every mic is ducked in proportion to how far below the loudest it is, smoothly. Two people on different mics both come through. Best for discussion/cross-talk. Higher Strength sharpens the ducking (the loudest mic dominates more).
-- **Gate** — winner-take-all: only the single loudest mic is open; the rest are pushed to a floor. Hysteresis (~3 dB) and a ~200 ms hold prevent chatter. Maximum echo rejection, but it passes one talker at a time. Higher Strength ducks the idle mics harder.
+- **Share** — gain-sharing: every mic is ducked in proportion to how far below the selected (closest) mic it is, smoothly. Two people on different mics both come through. Best for discussion/cross-talk. Higher Strength sharpens the ducking (the closest mic dominates more).
+- **Gate** — winner-take-all: only the single closest mic is open; the rest are pushed to a floor. Maximum echo rejection, but it passes one talker at a time. Higher Strength ducks the idle mics harder.
 
 **Strength** is the live tuning knob — start around the middle and adjust by ear in the room.
 
-**Ducking indicator:** each input strip has a small **amber LED** (top-left, by the label) that lights when the automixer is currently ducking that input. At a glance you can see which mic is "winning" (dark LED) and which are being held down (amber).
+**Stable hand-off** (checkbox, on by default): holds the currently-selected mic with hysteresis (~3 dB) and a short hold (~200 ms) so a brief louder moment on another mic — like a distant speakerphone's auto-gain pumping up during a talker's pause — can't steal the mix. Leave it on for most rooms; turn it off to fall back to picking the instantaneously loudest mic every frame (legacy behavior). Gate always uses the held selection; this toggle controls whether Share does too.
+
+**Status LEDs:** each input strip has two small LEDs (top-left, by the label). A **green LED** lights on the mic the automixer has currently selected as the active talker; an **amber LED** lights on any mic being ducked. At a glance you can see which mic is "winning" (green) and which are being held down (amber).
 
 **Priority mic (e.g. a presenter's lapel):** if one input is the primary feed — like a presenter's wireless lapel at the front while room mics cover the audience — open that input's **advanced popup** (the ⚙ gear icon by its label) and tick **"Priority mic"**. A priority mic:
 
@@ -124,7 +127,7 @@ Each output's strip has an **Auto-mix** selector and a **Strength** slider:
 
 You can mark **more than one** input as priority — e.g. a pastor *and* a worship leader, each on their own lapel. They're all kept always-open and each ducks the room mics while speaking. (Note: priority mics don't duck *each other*, so only flag mics that are isolated on different people — two priority mics picking up the same voice would double.)
 
-The gear popup also holds that input's **delay** setting.
+The gear popup also holds that input's **delay** setting and a live **Mic clarity** bar — a 0–100% readout of how clean/close that mic's signal looks (derived from its crest factor) while it hears speech. It's a diagnostic aid for comparing mics; it does not drive the selection (which is level-based — see the gotchas in `CLAUDE.md` for why spectral cues don't survive speakerphone DSP).
 
 Notes:
 - Two people sharing *one* mic is the clean case: a single capture point, no multi-mic echo, both voices pass.
@@ -159,6 +162,7 @@ WasapiCapture (per input device)
 | Settings (auto-saved) | `%APPDATA%\AudioMixer\preset.json` |
 | Mix recordings | `Documents\AudioMixer\recordings\mix-A-…` / `mix-B-{timestamp}.wav` |
 | Clap-test recordings | `Documents\AudioMixer\analysis\input{N}-{timestamp}.wav` |
+| Diagnostic per-input recordings | `Documents\AudioMixer\analysis\diag-input{N}-{timestamp}.wav` |
 | Diagnostic log (opt-in) | `%TEMP%\AudioMixer.log` |
 
 The diagnostic log is **off by default**. To enable it, set the `AUDIOMIXER_LOG` environment variable (to any value) before launching — e.g. in PowerShell: `$env:AUDIOMIXER_LOG=1; .\AudioMixer.exe`.
