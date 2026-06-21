@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 
 namespace AudioMixer.Audio;
 
@@ -24,12 +25,30 @@ public static class AudioLog
             {
                 if (!_initialized)
                 {
-                    File.AppendAllText(Path, $"\n=== AudioMixer started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===\n");
+                    File.AppendAllText(Path, $"\n=== AudioMixer started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===\n{BuildInfo()}");
                     _initialized = true;
                 }
                 File.AppendAllText(Path, $"{DateTime.Now:HH:mm:ss.fff} {message}\n");
             }
             catch { }
         }
+    }
+
+    private static string BuildInfo()
+    {
+        try
+        {
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            string exe = Environment.ProcessPath ?? "(unknown)";
+            string ver = asm.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion
+                ?? asm.GetName().Version?.ToString()
+                ?? "(unknown)";
+            string built = Environment.ProcessPath is { } p && File.Exists(p)
+                ? File.GetLastWriteTime(p).ToString("yyyy-MM-dd HH:mm:ss")
+                : "(unknown)";
+            return $"exe: {exe}\nversion: {ver}  built: {built}\n";
+        }
+        catch { return ""; }
     }
 }

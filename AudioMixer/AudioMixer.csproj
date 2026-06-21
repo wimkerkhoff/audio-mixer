@@ -7,7 +7,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
   </PropertyGroup>
+
+  <!-- Stamp the git short-SHA into AssemblyInformationalVersion (e.g. "1.0.0+a1b2c3d") so the log
+       banner can identify exactly which commit a build came from. ContinueOnError keeps non-git
+       builds (e.g. a copied source tree) working — they just get the bare "1.0.0". -->
+  <Target Name="SetGitRevision" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo"
+          Condition="'$(SourceRevisionId)' == ''">
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-parse --short HEAD"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="SourceRevisionId" />
+    </Exec>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
