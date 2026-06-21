@@ -10,6 +10,7 @@ public sealed class OutputViewModel : ViewModelBase
     private readonly Action<int, AutoMixMode> _onAutoMixModeChanged;
     private readonly Action<int, float> _onAutoMixStrengthChanged;
     private readonly Action<int, bool> _onStableHandoffChanged;
+    private readonly Action<int, bool> _onReferenceGuidedChanged;
     private readonly Action<int> _onToggleRecord;
 
     public int Index { get; }
@@ -114,6 +115,19 @@ public sealed class OutputViewModel : ViewModelBase
         }
     }
 
+    // Reference-guided selection: pick the room mic whose envelope best matches the priority/lapel mic
+    // instead of the loudest. Experimental, off by default. Needs an active priority mic as reference.
+    private bool _referenceGuided;
+    public bool ReferenceGuided
+    {
+        get => _referenceGuided;
+        set
+        {
+            if (SetField(ref _referenceGuided, value))
+                _onReferenceGuidedChanged(Index, value);
+        }
+    }
+
     public OutputViewModel(
         int index,
         OutputBus bus,
@@ -122,6 +136,7 @@ public sealed class OutputViewModel : ViewModelBase
         Action<int, AutoMixMode> onAutoMixModeChanged,
         Action<int, float> onAutoMixStrengthChanged,
         Action<int, bool> onStableHandoffChanged,
+        Action<int, bool> onReferenceGuidedChanged,
         Action<int> onToggleRecord)
     {
         Index = index;
@@ -130,6 +145,7 @@ public sealed class OutputViewModel : ViewModelBase
         _onAutoMixModeChanged = onAutoMixModeChanged;
         _onAutoMixStrengthChanged = onAutoMixStrengthChanged;
         _onStableHandoffChanged = onStableHandoffChanged;
+        _onReferenceGuidedChanged = onReferenceGuidedChanged;
         _onToggleRecord = onToggleRecord;
         _customLabel = index == 0 ? "A — Headset" : "B — Zoom";
         AvailableDevices = new ObservableCollection<AudioDeviceInfo>(availableDevices);

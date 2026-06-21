@@ -295,7 +295,7 @@
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="150"/>
+                <ColumnDefinition Width="230"/>
             </Grid.ColumnDefinitions>
 
             <!-- Inputs -->
@@ -322,22 +322,61 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <Ellipse Grid.Column="0" Width="8" Height="8" Margin="1,0,3,0" VerticalAlignment="Center"
-                                             ToolTip="Green = auto-mix is selecting this mic; amber = it's being ducked">
-                                        <Ellipse.Style>
-                                            <Style TargetType="Ellipse">
-                                                <Setter Property="Fill" Value="#333842"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsAutoMixActive}" Value="True">
-                                                        <Setter Property="Fill" Value="#3FB950"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding IsDucking}" Value="True">
-                                                        <Setter Property="Fill" Value="#F2A93B"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
+                                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="1,0,3,0" VerticalAlignment="Center">
+                                        <StackPanel.Resources>
+                                            <Style x:Key="BusLetter" TargetType="TextBlock">
+                                                <Setter Property="FontSize" Value="7"/>
+                                                <Setter Property="Foreground" Value="#8A93A0"/>
+                                                <Setter Property="Width" Value="7"/>
+                                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                                <Setter Property="TextAlignment" Value="Center"/>
                                             </Style>
-                                        </Ellipse.Style>
-                                    </Ellipse>
+                                        </StackPanel.Resources>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource BusLetter}" Text="A"/>
+                                            <Ellipse Width="7" Height="7" ToolTip="{Binding LedATooltip}">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Setter Property="Fill" Value="#333842"/>
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding RoutedA}" Value="True"/>
+                                                                    <Condition Binding="{Binding DuckingA}" Value="False"/>
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Fill" Value="#3FB950"/>
+                                                            </MultiDataTrigger>
+                                                            <DataTrigger Binding="{Binding DuckingA}" Value="True">
+                                                                <Setter Property="Fill" Value="#F2A93B"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                            <TextBlock Style="{StaticResource BusLetter}" Text="B"/>
+                                            <Ellipse Width="7" Height="7" ToolTip="{Binding LedBTooltip}">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Setter Property="Fill" Value="#333842"/>
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding RoutedB}" Value="True"/>
+                                                                    <Condition Binding="{Binding DuckingB}" Value="False"/>
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Fill" Value="#3FB950"/>
+                                                            </MultiDataTrigger>
+                                                            <DataTrigger Binding="{Binding DuckingB}" Value="True">
+                                                                <Setter Property="Fill" Value="#F2A93B"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+                                        </StackPanel>
+                                    </StackPanel>
                                     <TextBox Grid.Column="1" Style="{StaticResource EditableLabel}"
                                              Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"
                                              MaxLength="20"/>
@@ -576,6 +615,11 @@
                                               Foreground="#CCC" FontSize="10"
                                               ToolTip="Hold the selected mic with hysteresis so a brief louder moment on another mic can't steal it — stops a distant speakerphone's AGC pumping in a talker's pause from grabbing the mix. Off = pick the instantaneously loudest mic.">
                                         <TextBlock Text="Stable hand-off" TextTrimming="CharacterEllipsis"/>
+                                    </CheckBox>
+                                    <CheckBox Margin="0,3,0,0" IsChecked="{Binding ReferenceGuided}" IsEnabled="{Binding AutoMixEnabled}"
+                                              Foreground="#CCC" FontSize="10"
+                                              ToolTip="Experimental: pick the room mic whose voice best matches the priority (lapel) mic instead of the loudest one — avoids a loud-but-bad speakerphone winning. Needs a priority mic that's hearing the talker; falls back to loudest when none is.">
+                                        <TextBlock Text="Match lapel" TextTrimming="CharacterEllipsis"/>
                                     </CheckBox>
                                 </StackPanel>
 

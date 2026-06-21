@@ -118,7 +118,7 @@ Each output's strip has an **Auto-mix** selector and a **Strength** slider:
 
 **Stable hand-off** (checkbox, on by default): holds the currently-selected mic with hysteresis (~3 dB) and a short hold (~200 ms) so a brief louder moment on another mic — like a distant speakerphone's auto-gain pumping up during a talker's pause — can't steal the mix. Leave it on for most rooms; turn it off to fall back to picking the instantaneously loudest mic every frame (legacy behavior). Gate always uses the held selection; this toggle controls whether Share does too.
 
-**Status LEDs:** each input strip has two small LEDs (top-left, by the label). A **green LED** lights on the mic the automixer has currently selected as the active talker; an **amber LED** lights on any mic being ducked. At a glance you can see which mic is "winning" (green) and which are being held down (amber).
+**Per-bus LEDs:** each input strip shows two small LEDs by its label — **A** and **B**, one per output bus. Each is **green** when that input is live (passing) on that bus, **amber** when the automixer is ducking it there, and **dim** when the input isn't routed to that bus. At a glance you can see which mic is feeding which output and which are being held down. (Hover a bus's A/B route button at the bottom of the strip to see that output's name.)
 
 **Priority mic (e.g. a presenter's lapel):** if one input is the primary feed — like a presenter's wireless lapel at the front while room mics cover the audience — open that input's **advanced popup** (the ⚙ gear icon by its label) and tick **"Priority mic"**. A priority mic:
 
@@ -128,6 +128,24 @@ Each output's strip has an **Auto-mix** selector and a **Strength** slider:
 You can mark **more than one** input as priority — e.g. a pastor *and* a worship leader, each on their own lapel. They're all kept always-open and each ducks the room mics while speaking. (Note: priority mics don't duck *each other*, so only flag mics that are isolated on different people — two priority mics picking up the same voice would double.)
 
 The gear popup also holds that input's **delay** setting and a live **Mic clarity** bar — a 0–100% readout of how clean/close that mic's signal looks (derived from its crest factor) while it hears speech. It's a diagnostic aid for comparing mics; it does not drive the selection (which is level-based — see the gotchas in `CLAUDE.md` for why spectral cues don't survive speakerphone DSP).
+
+### Match lapel (reference-guided selection)
+
+**The problem it solves:** normally the automixer picks the **loudest** room mic, assuming loudest = closest = best. With speakerphone-style mics (e.g. Anker) that isn't always true — one mic can read louder (its auto-gain, a nearby vent or PA, desk coupling) while actually *sounding worse* than a slightly quieter one. The plain automixer has no way to know that and will pick the loud-but-bad mic.
+
+**What it does:** when a presenter is on a **priority (lapel) mic**, that lapel is a clean, ground-truth copy of their voice. With **Match lapel** ticked on an output, instead of picking the loudest room mic the automixer picks the room mic whose voice **most closely matches the lapel** — i.e. the one that sounds most like the real voice, with the least room echo and noise. It still holds the choice steady (same hysteresis as Stable hand-off).
+
+**When to use it:**
+- Distributed speakerphone-style room mics **plus** a lapel on the talker, and you've noticed the automixer sometimes lands on a mic that sounds worse than another.
+- A single presenter (the lapel wearer) is the main voice and you want the best-sounding room pickup of *that* voice on an output (e.g. the headset/monitor when the lapel itself isn't routed there).
+
+**When it isn't the right tool:**
+- **No lapel, or the lapel isn't hearing the talker** — there's no reference to match, so it automatically falls back to loudest-wins. (It needs a *priority* mic that's actually picking up speech.)
+- **Multiple people far from the lapel** — the lapel only represents the person wearing it. A different person speaking on a distant room mic won't match the lapel, so use plain **Share**/**Gate** for genuine multi-talker discussion.
+- It's reliable at **rejecting a loud-but-bad mic**, but among several similarly-good mics it won't necessarily pick a single clear "best."
+- It needs a second or two of speech to warm up after you enable it (until then it falls back to loudest).
+
+It's experimental — verify by ear in your room before relying on it.
 
 Notes:
 - Two people sharing *one* mic is the clean case: a single capture point, no multi-mic echo, both voices pass.

@@ -18,6 +18,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly DispatcherTimer _meterTimer;
     private readonly DispatcherTimer _autosaveTimer;
     private readonly MixRecorder[] _recorders = new MixRecorder[AudioEngine.OutputCount];
+    private StateServer? _stateServer;
     private bool _suppressAutosave;
     private bool _suppressRebuild;
     private bool _rebuildInProgress;
@@ -77,7 +78,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public double WindowWidth => Math.Max(500, _inputCount * 96 + 160);
+    public double WindowWidth => Math.Max(560, _inputCount * 96 + 240);
 
     private const double BaseWindowHeight = 344;
     private const double VbCableBannerHeight = 36;
@@ -112,6 +113,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 (idx, mode) => _engine.SetAutoMixMode(idx, mode),
                 (idx, strength) => _engine.SetAutoMixStrength(idx, strength),
                 (idx, on) => _engine.SetAutoMixStableHandoff(idx, on),
+                (idx, on) => _engine.SetAutoMixReferenceGuided(idx, on),
                 ToggleRecord);
         }
 
@@ -154,6 +156,103 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _meterTimer.Start();
 
         TryLoadInitialPreset();
+        StartStateServer();
+    }
+
+    // Loopback JSON state endpoint for diagnostics — opt-in via AUDIOMIXER_STATE (a port number, or
+    // any non-empty value for the default 7077). Read-only; see StateServer.
+    private void StartStateServer()
+    {
+        var env = Environment.GetEnvironmentVariable("AUDIOMIXER_STATE");
+        if (string.IsNullOrEmpty(env)) return;
+        int port = int.TryParse(env, out var p) ? p : 7077;
+        try
+        {
+            _stateServer = new StateServer(port, SnapshotJson);
+            _stateServer.Start();
+            AudioLog.Write($"State server listening on http://127.0.0.1:{port}/state");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"State server failed to start: {ex}");
+        }
+    }
+
+    // Called on the server's background thread — marshal to the UI thread to read VM state coherently.
+    private string SnapshotJson()
+    {
+        var disp = Application.Current?.Dispatcher;
+        return disp == null || disp.CheckAccess() ? BuildStateJson() : disp.Invoke(BuildStateJson);
+    }
+
+    private string BuildStateJson()
+    {
+        static double ToDb(double lin) => lin <= 1e-6 ? -120.0 : Math.Round(20 * Math.Log10(lin), 1);
+        var diag = _engine.AutoMixSnapshot();
+
+        var channels = new List<object>(Channels.Count);
+        for (int i = 0; i < Channels.Count; i++)
+        {
+            var ch = Channels[i];
+            var input = _engine.Inputs[i];
+            var gains = new double[AudioEngine.OutputCount];
+            for (int o = 0; o < AudioEngine.OutputCount; o++) gains[o] = Math.Round(input.GetAutoMixGain(o), 3);
+            channels.Add(new
+            {
+                index = i,
+                label = ch.CustomLabel,
+                device = ch.SelectedDevice?.FriendlyName,
+                inputDb = Math.Round(ch.InputPeakDb, 1),
+                postDb = Math.Round(ch.PostPeakDb, 1),
+                rmsDb = ToDb(input.CurrentLevelLinear),
+                envDb = i < diag.Env.Length ? ToDb(diag.Env[i]) : (double?)null,
+                crest = i < diag.Crest.Length ? Math.Round(diag.Crest[i], 2) : (double?)null,
+                refCorr = i < diag.Corr.Length ? Math.Round(diag.Corr[i], 3) : (double?)null,
+                clarity = ch.HasClarity ? Math.Round(ch.ClarityBar, 2) : (double?)null,
+                routes = ch.Routes.Select(r => r.IsOn).ToArray(),
+                muted = ch.Muted,
+                volumePercent = Math.Round(ch.VolumePercent, 0),
+                delayMs = ch.DelayMs,
+                isPriority = ch.IsPriority,
+                isDucking = input.IsDucking,
+                isAutoMixActive = input.IsAutoMixActive,
+                automixGain = gains,
+            });
+        }
+
+        var outputs = new List<object>(Outputs.Length);
+        for (int o = 0; o < Outputs.Length; o++)
+        {
+            var op = Outputs[o];
+            outputs.Add(new
+            {
+                index = o,
+                label = op.CustomLabel,
+                device = op.SelectedDevice?.FriendlyName,
+                peakDb = Math.Round(op.OutputPeakDb, 1),
+                volumePercent = Math.Round(op.VolumePercent, 0),
+                recording = op.IsRecording,
+                mode = o < diag.Mode.Length ? diag.Mode[o].ToString() : "Off",
+                strengthPercent = Math.Round(op.StrengthPercent, 0),
+                stableHandoff = op.StableHandoff,
+                referenceGuided = op.ReferenceGuided,
+                winner = o < diag.Winner.Length ? diag.Winner[o] : -1,
+                winnerHold = o < diag.WinnerHold.Length ? diag.WinnerHold[o] : 0,
+                activeInput = o < diag.ActiveInput.Length ? diag.ActiveInput[o] : -1,
+            });
+        }
+
+        var root = new
+        {
+            ts = DateTime.Now.ToString("HH:mm:ss.fff"),
+            inputCount = InputCount,
+            status = StatusText,
+            referenceInput = diag.ReferenceInput,
+            channels,
+            outputs,
+        };
+        return System.Text.Json.JsonSerializer.Serialize(
+            root, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
     }
 
     // Logs each automixer talker hand-off (Output B: mic1 → mic3, clarity 78%). Polled per meter
@@ -221,6 +320,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         ch.PropertyChanged += OnSettingChanged;
         foreach (var r in ch.Routes) r.PropertyChanged += OnSettingChanged;
+        ch.AttachOutputs(Outputs);
     }
 
     private void DetachChannel(ChannelViewModel ch)
@@ -490,6 +590,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 AutoMixMode = o.AutoMixModeIndex,
                 AutoMixStrength = o.StrengthPercent,
                 AutoMixStableHandoff = o.StableHandoff,
+                AutoMixReferenceGuided = o.ReferenceGuided,
                 Volume = o.VolumePercent,
             }).ToArray(),
         };
@@ -553,6 +654,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Outputs[o].SelectedDevice = match;
                 Outputs[o].StrengthPercent = Math.Clamp(op.AutoMixStrength, 0f, 100f);
                 Outputs[o].StableHandoff = op.AutoMixStableHandoff;
+                Outputs[o].ReferenceGuided = op.AutoMixReferenceGuided;
                 Outputs[o].AutoMixModeIndex = Math.Clamp(op.AutoMixMode, 0, 2);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
             }
@@ -723,6 +825,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        _stateServer?.Dispose();
         _meterTimer.Stop();
         _autosaveTimer.Stop();
         if (_inputDiagRecording)

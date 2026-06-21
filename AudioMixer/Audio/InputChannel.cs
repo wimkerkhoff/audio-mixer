@@ -57,6 +57,9 @@ public sealed class InputChannel : IDisposable
         Volatile.Write(ref _autoMixGain[outputIndex], gain);
     }
 
+    public float GetAutoMixGain(int outputIndex) =>
+        outputIndex < 0 || outputIndex >= _outputCount ? 1f : Volatile.Read(ref _autoMixGain[outputIndex]);
+
     // True when the automixer is attenuating this channel on any output it is routed to.
     public bool IsDucking
     {
@@ -70,6 +73,14 @@ public sealed class InputChannel : IDisposable
             }
             return false;
         }
+    }
+
+    // Per-output duck state for the per-bus LEDs: routed to this output AND attenuated there.
+    public bool IsDuckingOn(int outputIndex)
+    {
+        if (outputIndex < 0 || outputIndex >= _outputCount) return false;
+        if ((Volatile.Read(ref _routeMask) & (1 << outputIndex)) == 0) return false;
+        return Volatile.Read(ref _autoMixGain[outputIndex]) < 0.85f;
     }
 
     // Watchdog state: true while a capture is supposed to be running, plus the tick of the last
