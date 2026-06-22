@@ -187,6 +187,8 @@
     <li><a class="toc-h3" href="#toolbar-left-to-right">Toolbar (left to right)</a></li>
     <li><a class="toc-h3" href="#delay-detection">Delay detection</a></li>
     <li><a class="toc-h2" href="#auto-mix">Auto-mix</a></li>
+    <li><a class="toc-h3" href="#match-lapel-reference-guided-selection">Match lapel (reference-guided selection)</a></li>
+    <li><a class="toc-h3" href="#prefer-natural-reference-free">Prefer natural (reference-free)</a></li>
     <li><a class="toc-h2" href="#architecture">Architecture</a></li>
     <li><a class="toc-h2" href="#file-locations">File locations</a></li>
     <li><a class="toc-h2" href="#known-limits">Known limits</a></li>
@@ -325,7 +327,7 @@ dotnet run --project AudioMixer</code></pre>
 
 <p><strong>Stable hand-off</strong> (checkbox, on by default): holds the currently-selected mic with hysteresis (~3 dB) and a short hold (~200 ms) so a brief louder moment on another mic — like a distant speakerphone's auto-gain pumping up during a talker's pause — can't steal the mix. Leave it on for most rooms; turn it off to fall back to picking the instantaneously loudest mic every frame (legacy behavior). Gate always uses the held selection; this toggle controls whether Share does too.</p>
 
-<p><strong>Status LEDs:</strong> each input strip has two small LEDs (top-left, by the label). A <strong>green LED</strong> lights on the mic the automixer has currently selected as the active talker; an <strong>amber LED</strong> lights on any mic being ducked. At a glance you can see which mic is "winning" (green) and which are being held down (amber).</p>
+<p><strong>Per-bus LEDs:</strong> each input strip shows two small LEDs by its label — <strong>A</strong> and <strong>B</strong>, one per output bus. Each is <strong>green</strong> when that input is live (passing) on that bus, <strong>amber</strong> when the automixer is ducking it there, and <strong>dim</strong> when the input isn't routed to that bus. At a glance you can see which mic is feeding which output and which are being held down. (Hover a bus's A/B route button at the bottom of the strip to see that output's name.)</p>
 
 <p><strong>Priority mic (e.g. a presenter's lapel):</strong> if one input is the primary feed — like a presenter's wireless lapel at the front while room mics cover the audience — open that input's <strong>advanced popup</strong> (the ⚙ gear icon by its label) and tick <strong>"Priority mic"</strong>. A priority mic:</p>
 
@@ -337,6 +339,48 @@ dotnet run --project AudioMixer</code></pre>
 <p>You can mark <strong>more than one</strong> input as priority — e.g. a pastor <em>and</em> a worship leader, each on their own lapel. They're all kept always-open and each ducks the room mics while speaking. (Note: priority mics don't duck <em>each other</em>, so only flag mics that are isolated on different people — two priority mics picking up the same voice would double.)</p>
 
 <p>The gear popup also holds that input's <strong>delay</strong> setting and a live <strong>Mic clarity</strong> bar — a 0–100% readout of how clean/close that mic's signal looks (derived from its crest factor) while it hears speech. It's a diagnostic aid for comparing mics; it does not drive the selection (which is level-based — see the gotchas in <code>CLAUDE.md</code> for why spectral cues don't survive speakerphone DSP).</p>
+
+<h3 id="match-lapel-reference-guided-selection">Match lapel (reference-guided selection)</h3>
+
+<p><strong>The problem it solves:</strong> normally the automixer picks the <strong>loudest</strong> room mic, assuming loudest = closest = best. With speakerphone-style mics (e.g. Anker) that isn't always true — one mic can read louder (its auto-gain, a nearby vent or PA, desk coupling) while actually <em>sounding worse</em> than a slightly quieter one. The plain automixer has no way to know that and will pick the loud-but-bad mic.</p>
+
+<p><strong>What it does:</strong> when a presenter is on a <strong>priority (lapel) mic</strong>, that lapel is a clean, ground-truth copy of their voice. With <strong>Match lapel</strong> ticked on an output, instead of picking the loudest room mic the automixer picks the room mic whose voice <strong>most closely matches the lapel</strong> — i.e. the one that sounds most like the real voice, with the least room echo and noise. It still holds the choice steady (same hysteresis as Stable hand-off).</p>
+
+<p><strong>When to use it:</strong></p>
+
+<ul>
+  <li>Distributed speakerphone-style room mics <strong>plus</strong> a lapel on the talker, and you've noticed the automixer sometimes lands on a mic that sounds worse than another.</li>
+  <li>A single presenter (the lapel wearer) is the main voice and you want the best-sounding room pickup of <em>that</em> voice on an output (e.g. the headset/monitor when the lapel itself isn't routed there).</li>
+</ul>
+
+<p><strong>When it isn't the right tool:</strong></p>
+
+<ul>
+  <li><strong>No lapel, or the lapel isn't hearing the talker</strong> — there's no reference to match, so it automatically falls back to loudest-wins. (It needs a <em>priority</em> mic that's actually picking up speech.)</li>
+  <li><strong>Multiple people far from the lapel</strong> — the lapel only represents the person wearing it. A different person speaking on a distant room mic won't match the lapel, so use plain <strong>Share</strong>/<strong>Gate</strong> for genuine multi-talker discussion.</li>
+  <li>It's reliable at <strong>rejecting a loud-but-bad mic</strong>, but among several similarly-good mics it won't necessarily pick a single clear "best."</li>
+  <li>It needs a second or two of speech to warm up after you enable it (until then it falls back to loudest).</li>
+</ul>
+
+<p>It's experimental — verify by ear in your room before relying on it.</p>
+
+<h3 id="prefer-natural-reference-free">Prefer natural (reference-free)</h3>
+
+<p><strong>The gap it fills:</strong> <em>Match lapel</em> needs a lapel. <strong>Prefer natural</strong> needs no reference at all, so it works when there's <strong>no lapel</strong> and when <strong>people are spread across the room</strong> (each near a different mic).</p>
+
+<p><strong>What it does:</strong> among the mics that are nearly as loud as the loudest (within a level floor, so it never jumps to a faint mic), it picks the one that sounds <strong>most natural</strong> — measured by how <em>stable</em> its sound is over time. The "scratchy/over-processed" speakerphone sound shows up as an unstable, fluctuating spectrum (gating chatter / musical noise); a natural mic is steadier. So it routes around the scratchy mic automatically. Lower priority than <em>Match lapel</em> — if both are ticked and a lapel is speaking, the lapel match wins; otherwise this takes over; otherwise loudest-wins.</p>
+
+<p><strong>When to use it:</strong> distributed speakerphone-style mics with <strong>no lapel</strong>, or where different people talk from across the room and you want to avoid the over-processed/scratchy mic without any manual tuning.</p>
+
+<p><strong>When it isn't the right tool:</strong></p>
+
+<ul>
+  <li>It also avoids <strong>distant, reverberant</strong> mics (they're unstable too) — which is usually what you want, but it leans on the level floor to not pick something too quiet.</li>
+  <li>It needs a second or two of speech on a mic before it can judge it (falls back to loudest until then).</li>
+  <li>Validated <strong>offline</strong> against recordings (it correctly routes off the bad mic in our test captures), but not yet across many rooms — verify by ear.</li>
+</ul>
+
+<p>It's experimental — leave it off until you've confirmed it in your room.</p>
 
 <p>Notes:</p>
 
