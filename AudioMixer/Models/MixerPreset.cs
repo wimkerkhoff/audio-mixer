@@ -29,5 +29,6 @@ public sealed class OutputPreset
     public float AutoMixStrength { get; set; } = 50f;  // percent
     public bool AutoMixStableHandoff { get; set; } = true;  // hold+hysteresis stable closest-talker selection
     public bool AutoMixReferenceGuided { get; set; }   // pick the room mic best matching the lapel reference
+    public bool AutoMixPreferNatural { get; set; }     // reference-free: prefer the most natural (stable) mic
     public float Volume { get; set; } = 100f;          // percent
 }

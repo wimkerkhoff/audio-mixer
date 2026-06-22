@@ -114,6 +114,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 (idx, strength) => _engine.SetAutoMixStrength(idx, strength),
                 (idx, on) => _engine.SetAutoMixStableHandoff(idx, on),
                 (idx, on) => _engine.SetAutoMixReferenceGuided(idx, on),
+                (idx, on) => _engine.SetAutoMixPreferNatural(idx, on),
                 ToggleRecord);
         }
 
@@ -208,6 +209,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 envDb = i < diag.Env.Length ? ToDb(diag.Env[i]) : (double?)null,
                 crest = i < diag.Crest.Length ? Math.Round(diag.Crest[i], 2) : (double?)null,
                 refCorr = i < diag.Corr.Length ? Math.Round(diag.Corr[i], 3) : (double?)null,
+                fluxCv = i < diag.Cv.Length ? Math.Round(diag.Cv[i], 3) : (double?)null,
                 clarity = ch.HasClarity ? Math.Round(ch.ClarityBar, 2) : (double?)null,
                 routes = ch.Routes.Select(r => r.IsOn).ToArray(),
                 muted = ch.Muted,
@@ -236,6 +238,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 strengthPercent = Math.Round(op.StrengthPercent, 0),
                 stableHandoff = op.StableHandoff,
                 referenceGuided = op.ReferenceGuided,
+                preferNatural = op.PreferNatural,
                 winner = o < diag.Winner.Length ? diag.Winner[o] : -1,
                 winnerHold = o < diag.WinnerHold.Length ? diag.WinnerHold[o] : 0,
                 activeInput = o < diag.ActiveInput.Length ? diag.ActiveInput[o] : -1,
@@ -591,6 +594,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 AutoMixStrength = o.StrengthPercent,
                 AutoMixStableHandoff = o.StableHandoff,
                 AutoMixReferenceGuided = o.ReferenceGuided,
+                AutoMixPreferNatural = o.PreferNatural,
                 Volume = o.VolumePercent,
             }).ToArray(),
         };
@@ -655,6 +659,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Outputs[o].StrengthPercent = Math.Clamp(op.AutoMixStrength, 0f, 100f);
                 Outputs[o].StableHandoff = op.AutoMixStableHandoff;
                 Outputs[o].ReferenceGuided = op.AutoMixReferenceGuided;
+                Outputs[o].PreferNatural = op.AutoMixPreferNatural;
                 Outputs[o].AutoMixModeIndex = Math.Clamp(op.AutoMixMode, 0, 2);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
             }

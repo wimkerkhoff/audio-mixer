@@ -147,6 +147,21 @@ The gear popup also holds that input's **delay** setting and a live **Mic clarit
 
 It's experimental — verify by ear in your room before relying on it.
 
+### Prefer natural (reference-free)
+
+**The gap it fills:** *Match lapel* needs a lapel. **Prefer natural** needs no reference at all, so it works when there's **no lapel** and when **people are spread across the room** (each near a different mic).
+
+**What it does:** among the mics that are nearly as loud as the loudest (within a level floor, so it never jumps to a faint mic), it picks the one that sounds **most natural** — measured by how *stable* its sound is over time. The "scratchy/over-processed" speakerphone sound shows up as an unstable, fluctuating spectrum (gating chatter / musical noise); a natural mic is steadier. So it routes around the scratchy mic automatically. Lower priority than *Match lapel* — if both are ticked and a lapel is speaking, the lapel match wins; otherwise this takes over; otherwise loudest-wins.
+
+**When to use it:** distributed speakerphone-style mics with **no lapel**, or where different people talk from across the room and you want to avoid the over-processed/scratchy mic without any manual tuning.
+
+**When it isn't the right tool:**
+- It also avoids **distant, reverberant** mics (they're unstable too) — which is usually what you want, but it leans on the level floor to not pick something too quiet.
+- It needs a second or two of speech on a mic before it can judge it (falls back to loudest until then).
+- Validated **offline** against recordings (it correctly routes off the bad mic in our test captures), but not yet across many rooms — verify by ear.
+
+It's experimental — leave it off until you've confirmed it in your room.
+
 Notes:
 - Two people sharing *one* mic is the clean case: a single capture point, no multi-mic echo, both voices pass.
 - Two people on *different* mics: Share keeps both; Gate picks one. During the overlap, each open mic also carries the other voice as faint bleed, so a little coloration returns only while people talk over each other.

@@ -26,6 +26,24 @@ public sealed class InputChannel : IDisposable
     private float _currentPeakLinear;
     public float CurrentPeakLinear => Volatile.Read(ref _currentPeakLinear);
 
+    // Spectral-flux instability (coefficient of variation of frame-to-frame spectral change) latched
+    // during voiced buffers. Validated offline (tools/naturalness.py) as a reference-free "scratchy/
+    // over-processed mic" detector: the bad Anker's DSP makes it measure CLEAN on HNR/CPPS but its
+    // spectrum is unstable (gating chatter / musical noise), which this captures. Lower = more natural.
+    // 0 = not enough recent speech to judge.
+    private const int FluxN = 512;
+    private const int FluxBits = 9;             // log2(FluxN)
+    private const float FluxVoiceRms = 0.006f;  // ~ -44 dBFS: only accumulate while the mic hears speech
+    private const float FluxEma = 0.03f;        // ~1 s at ~50 buffers/s
+    private static readonly float[] FluxWindow = MakeHann(FluxN);
+    private readonly Complex[] _fftBuf = new Complex[FluxN];
+    private float[]? _prevMag;
+    private float[]? _magScratch;
+    private float _fluxMean, _fluxVar;
+    private bool _fluxHasPrev;
+    private float _currentFluxCv;
+    public float CurrentFluxCv => Volatile.Read(ref _currentFluxCv);
+
     // Smoothed crest-derived clarity weight (0..1, NaN when no recent speech), written by AutoMixer
     // for display. Higher = closer/cleaner mic.
     private float _clarity = float.NaN;
@@ -249,6 +267,8 @@ public sealed class InputChannel : IDisposable
             PostPeak.Reset();
             Volatile.Write(ref _currentLevelLinear, 0f);
             Volatile.Write(ref _currentPeakLinear, 0f);
+            Volatile.Write(ref _currentFluxCv, 0f);
+            _prevMag = null; _fluxHasPrev = false; _fluxMean = 0f; _fluxVar = 0f;
             Volatile.Write(ref _clarity, float.NaN);
             Volatile.Write(ref _isAutoMixActive, false);
             for (int o = 0; o < _outputCount; o++) _autoMixRamp[o] = 1f;
@@ -257,6 +277,56 @@ public sealed class InputChannel : IDisposable
     }
 
     public void Dispose() => Stop();
+
+    private static float[] MakeHann(int n)
+    {
+        var w = new float[n];
+        for (int i = 0; i < n; i++) w[i] = (float)(0.5 - 0.5 * Math.Cos(2 * Math.PI * i / (n - 1)));
+        return w;
+    }
+
+    // One 512-pt FFT of the (mono) buffer head; flux = L2 distance of the normalized magnitude
+    // spectrum from the previous voiced buffer; EMA mean+variance -> coefficient of variation.
+    private void ComputeFlux(float[] interleaved, int totalSamples)
+    {
+        int frames = totalSamples / 2;
+        if (frames < FluxN) return;
+        for (int i = 0; i < FluxN; i++)
+        {
+            float m = (interleaved[2 * i] + interleaved[2 * i + 1]) * 0.5f;
+            _fftBuf[i].X = m * FluxWindow[i];
+            _fftBuf[i].Y = 0f;
+        }
+        FastFourierTransform.FFT(true, FluxBits, _fftBuf);
+
+        int bins = FluxN / 2;
+        _magScratch ??= new float[bins];
+        float sum = 0f;
+        for (int k = 0; k < bins; k++)
+        {
+            float re = _fftBuf[k].X, im = _fftBuf[k].Y;
+            float mg = (float)Math.Sqrt(re * re + im * im);
+            _magScratch[k] = mg;
+            sum += mg;
+        }
+        if (sum <= 1e-9f) return;
+        float inv = 1f / sum;
+
+        if (_fluxHasPrev && _prevMag != null)
+        {
+            double acc = 0;
+            for (int k = 0; k < bins; k++) { float d = _magScratch[k] * inv - _prevMag[k]; acc += (double)d * d; }
+            float flux = (float)Math.Sqrt(acc);
+            float delta = flux - _fluxMean;
+            _fluxMean += FluxEma * delta;
+            _fluxVar = (1 - FluxEma) * (_fluxVar + FluxEma * delta * delta);
+            float cv = _fluxMean > 1e-6f ? (float)Math.Sqrt(_fluxVar) / _fluxMean : 0f;
+            Volatile.Write(ref _currentFluxCv, cv);
+        }
+        _prevMag ??= new float[bins];
+        for (int k = 0; k < bins; k++) _prevMag[k] = _magScratch[k] * inv;
+        _fluxHasPrev = true;
+    }
 
     private static bool IsUnity(float g) => g > 0.9999f && g < 1.0001f;
 
@@ -350,8 +420,10 @@ public sealed class InputChannel : IDisposable
                 float a = s < 0 ? -s : s;
                 if (a > peak) peak = a;
             }
-            Volatile.Write(ref _currentLevelLinear, (float)Math.Sqrt(sumSq / read));
+            float rmsNow = (float)Math.Sqrt(sumSq / read);
+            Volatile.Write(ref _currentLevelLinear, rmsNow);
             Volatile.Write(ref _currentPeakLinear, peak);
+            if (rmsNow > FluxVoiceRms) ComputeFlux(rented, read);
 
             int byteCount = read * sizeof(float);
             int mask = Volatile.Read(ref _routeMask);

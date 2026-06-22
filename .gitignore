@@ -34,3 +34,6 @@ desktop.ini
 
 # Claude Code local settings
 .claude/
+
+# Scratch spectrogram from tools/spectro.py
+tools/spectro.png

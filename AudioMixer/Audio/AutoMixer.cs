@@ -36,6 +36,14 @@ public sealed class AutoMixer
     private const float CorrReady = 0.05f;          // below this the correlation isn't trustworthy yet
     private const float CorrHysteresis = 0.05f;     // challenger corr must beat the leader's by this
 
+    // Reference-free "prefer natural mic" (opt-in per output): among mics within NaturalFloorDb of the
+    // loudest, pick the one with the lowest spectral-flux instability (InputChannel.CurrentFluxCv) —
+    // the most natural/least scratchy. Validated offline (tools/naturalness.py): the over-processed
+    // Anker measures clean on HNR/CPPS but unstable here. Combined with the level floor so it never
+    // jumps to a too-quiet mic. Lower-precedence than reference-guided; both fall back to loudest.
+    private const float NaturalFloorRatio = 0.398f; // -8 dB: candidate must be within 8 dB of the loudest
+    private const float NaturalHysteresis = 0.05f;  // challenger CV must be this much lower to take over
+
     // Crest factor (peak/RMS) is NO LONGER part of the selection — on the speakerphone DSP it does
     // not track proximity (gating/AGC make it noise; it ranked the closest mic <40% of the time and
     // actually increased selection flips). It is kept only as the per-mic "clarity" readout in the
@@ -57,6 +65,8 @@ public sealed class AutoMixer
     private readonly int[] _winnerHold;            // per output hold countdown
 
     private readonly int[] _refEnabled;            // per output, reference-guided selection (0/1)
+    private readonly int[] _preferNatural;         // per output, reference-free natural-mic selection (0/1)
+    private readonly float[] _cv;                  // per channel spectral-flux instability (from InputChannel)
     private readonly float[][] _envHist;           // [channel] ring of instantaneous RMS (RefHistFrames)
     private int _histPos;                          // next write slot in the ring
     private int _histCount;                        // frames written (caps at RefHistFrames)
@@ -89,7 +99,9 @@ public sealed class AutoMixer
         _crest = new float[maxChannels];
         _activeAny = new bool[maxChannels];
         _refEnabled = new int[outputCount];
+        _preferNatural = new int[outputCount];
         _corr = new float[maxChannels];
+        _cv = new float[maxChannels];
         _envHist = new float[maxChannels][];
         for (int i = 0; i < maxChannels; i++) _envHist[i] = new float[RefHistFrames];
         _attackCoef = (float)(1 - Math.Exp(-TickSeconds / (AttackMs / 1000.0)));
@@ -119,6 +131,11 @@ public sealed class AutoMixer
         if (output >= 0 && output < _outputCount) Volatile.Write(ref _refEnabled[output], on ? 1 : 0);
     }
 
+    public void SetPreferNatural(int output, bool on)
+    {
+        if (output >= 0 && output < _outputCount) Volatile.Write(ref _preferNatural[output], on ? 1 : 0);
+    }
+
     // The channel the automixer is currently selecting on the given output (-1 = none/idle).
     public int ActiveInput(int output) =>
         output >= 0 && output < _outputCount ? Volatile.Read(ref _activeInput[output]) : -1;
@@ -134,22 +151,25 @@ public sealed class AutoMixer
             Env = new float[n],
             Crest = new float[n],
             Corr = new float[n],
+            Cv = new float[n],
             Mode = new AutoMixMode[_outputCount],
             Strength = new float[_outputCount],
             Stable = new bool[_outputCount],
             ReferenceGuided = new bool[_outputCount],
+            PreferNatural = new bool[_outputCount],
             Winner = new int[_outputCount],
             WinnerHold = new int[_outputCount],
             ActiveInput = new int[_outputCount],
             ReferenceInput = _refIndex,
         };
-        for (int i = 0; i < n; i++) { d.Env[i] = _env[i]; d.Crest[i] = _crest[i]; d.Corr[i] = _corr[i]; }
+        for (int i = 0; i < n; i++) { d.Env[i] = _env[i]; d.Crest[i] = _crest[i]; d.Corr[i] = _corr[i]; d.Cv[i] = _cv[i]; }
         for (int o = 0; o < _outputCount; o++)
         {
             d.Mode[o] = (AutoMixMode)Volatile.Read(ref _modes[o]);
             d.Strength[o] = Volatile.Read(ref _strength[o]);
             d.Stable[o] = Volatile.Read(ref _stableOn[o]) != 0;
             d.ReferenceGuided[o] = Volatile.Read(ref _refEnabled[o]) != 0;
+            d.PreferNatural[o] = Volatile.Read(ref _preferNatural[o]) != 0;
             d.Winner[o] = _winner[o];
             d.WinnerHold[o] = _winnerHold[o];
             d.ActiveInput[o] = Volatile.Read(ref _activeInput[o]);
@@ -169,6 +189,7 @@ public sealed class AutoMixer
             float e = _env[i];
             e += (inst - e) * (inst > e ? _attackCoef : _releaseCoef);
             _env[i] = e;
+            _cv[i] = inputs[i].CurrentFluxCv;
 
             if (inst > SilenceFloorRms)
             {
@@ -256,6 +277,28 @@ public sealed class AutoMixer
             bool useCorr = Volatile.Read(ref _refEnabled[o]) != 0 && _refIndex >= 0
                            && argCorr >= 0 && cmax > CorrReady;
 
+            // Reference-free natural-mic fallback (lower precedence than reference-guided): among mics
+            // within NaturalFloorDb of the loudest, pick the lowest flux-instability (most natural).
+            bool useNatural = false;
+            int argNatural = -1;
+            if (!useCorr && Volatile.Read(ref _preferNatural[o]) != 0 && argmax >= 0)
+            {
+                float floor = lmax * NaturalFloorRatio;
+                float bestCv = float.MaxValue;
+                for (int i = 0; i < n; i++)
+                {
+                    if (!inputs[i].GetRoute(o) || inputs[i].IsPriority) continue;
+                    if (_env[i] < floor) continue;
+                    float cv = _cv[i];
+                    if (cv <= 0f) continue;            // no recent speech on this mic -> can't judge it
+                    if (cv < bestCv) { bestCv = cv; argNatural = i; }
+                }
+                useNatural = argNatural >= 0;
+            }
+
+            int selMode = useCorr ? 1 : useNatural ? 2 : 0;        // 0 level, 1 correlation, 2 natural
+            int challenger = useCorr ? argCorr : useNatural ? argNatural : argmax;
+
             if (priorityActive)
             {
                 float pduck = Lerp(0.15f, 0f, s);
@@ -285,13 +328,12 @@ public sealed class AutoMixer
                 int w = _winner[o];
                 if (_winnerHold[o] > 0) _winnerHold[o]--;
                 bool wStale = w < 0 || w >= n || !inputs[w].GetRoute(o) || inputs[w].IsPriority;
-                int challenger = useCorr ? argCorr : argmax;
                 if (wStale)
                 {
                     w = challenger;
                     _winnerHold[o] = HandoffHoldTicks;
                 }
-                else if (challenger != w && _winnerHold[o] <= 0 && Beats(useCorr, challenger, w))
+                else if (challenger != w && _winnerHold[o] <= 0 && Beats(selMode, challenger, w))
                 {
                     w = challenger;
                     _winnerHold[o] = HandoffHoldTicks;
@@ -301,7 +343,7 @@ public sealed class AutoMixer
             }
             else
             {
-                leader = useCorr ? argCorr : argmax;
+                leader = challenger;
                 _winner[o] = -1;
             }
 
@@ -337,10 +379,14 @@ public sealed class AutoMixer
         for (int i = 0; i < n; i++) inputs[i].IsAutoMixActive = _activeAny[i];
     }
 
-    // Challenger-beats-leader test: additive margin on correlation, multiplicative (dB) margin on level.
-    private bool Beats(bool corr, int challenger, int held) =>
-        corr ? _corr[challenger] > _corr[held] + CorrHysteresis
-             : _env[challenger] > _env[held] * HandoffHysteresis;
+    // Challenger-beats-leader test per selection mode: 1 correlation (higher better, additive margin),
+    // 2 natural (lower flux-CV better, additive margin), else level (higher better, multiplicative dB).
+    private bool Beats(int mode, int challenger, int held) => mode switch
+    {
+        1 => _corr[challenger] > _corr[held] + CorrHysteresis,
+        2 => _cv[held] <= 0f || _cv[challenger] < _cv[held] - NaturalHysteresis,
+        _ => _env[challenger] > _env[held] * HandoffHysteresis,
+    };
 
     // Best-lag Pearson correlation of channel `ch`'s envelope against the reference's, over the ring,
     // counting only frames where the reference is speaking. Positive lag = ch delayed vs the reference.
@@ -387,10 +433,12 @@ public sealed class AutoMixDiag
     public float[] Env = Array.Empty<float>();        // smoothed level per channel (the selection metric)
     public float[] Crest = Array.Empty<float>();      // smoothed crest factor per channel (display only)
     public float[] Corr = Array.Empty<float>();       // envelope correlation to the reference mic
+    public float[] Cv = Array.Empty<float>();         // spectral-flux instability per channel (lower = natural)
     public AutoMixMode[] Mode = Array.Empty<AutoMixMode>();
     public float[] Strength = Array.Empty<float>();
     public bool[] Stable = Array.Empty<bool>();
     public bool[] ReferenceGuided = Array.Empty<bool>();
+    public bool[] PreferNatural = Array.Empty<bool>();
     public int[] Winner = Array.Empty<int>();         // held leader per output (-1 none)
     public int[] WinnerHold = Array.Empty<int>();     // ticks remaining before the leader can change
     public int[] ActiveInput = Array.Empty<int>();    // currently selected channel per output (-1 none)

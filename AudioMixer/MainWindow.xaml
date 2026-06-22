@@ -621,6 +621,11 @@
                                               ToolTip="Experimental: pick the room mic whose voice best matches the priority (lapel) mic instead of the loudest one — avoids a loud-but-bad speakerphone winning. Needs a priority mic that's hearing the talker; falls back to loudest when none is.">
                                         <TextBlock Text="Match lapel" TextTrimming="CharacterEllipsis"/>
                                     </CheckBox>
+                                    <CheckBox Margin="0,3,0,0" IsChecked="{Binding PreferNatural}" IsEnabled="{Binding AutoMixEnabled}"
+                                              Foreground="#CCC" FontSize="10"
+                                              ToolTip="Experimental (no lapel needed): among mics nearly as loud as the loudest, pick the most natural-sounding one (lowest spectral-flux instability) — avoids an over-processed/scratchy speakerphone. Works for talkers across the room. Lower priority than Match lapel.">
+                                        <TextBlock Text="Prefer natural" TextTrimming="CharacterEllipsis"/>
+                                    </CheckBox>
                                 </StackPanel>
 
                                 <Grid Grid.Row="5" Margin="0,3,0,0" IsEnabled="{Binding AutoMixEnabled}">

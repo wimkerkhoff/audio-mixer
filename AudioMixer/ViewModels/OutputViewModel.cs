@@ -11,6 +11,7 @@ public sealed class OutputViewModel : ViewModelBase
     private readonly Action<int, float> _onAutoMixStrengthChanged;
     private readonly Action<int, bool> _onStableHandoffChanged;
     private readonly Action<int, bool> _onReferenceGuidedChanged;
+    private readonly Action<int, bool> _onPreferNaturalChanged;
     private readonly Action<int> _onToggleRecord;
 
     public int Index { get; }
@@ -128,6 +129,19 @@ public sealed class OutputViewModel : ViewModelBase
         }
     }
 
+    // Reference-free: among mics within a level floor of the loudest, prefer the most natural (lowest
+    // spectral-flux instability). Experimental, off by default. Lower precedence than Match lapel.
+    private bool _preferNatural;
+    public bool PreferNatural
+    {
+        get => _preferNatural;
+        set
+        {
+            if (SetField(ref _preferNatural, value))
+                _onPreferNaturalChanged(Index, value);
+        }
+    }
+
     public OutputViewModel(
         int index,
         OutputBus bus,
@@ -137,6 +151,7 @@ public sealed class OutputViewModel : ViewModelBase
         Action<int, float> onAutoMixStrengthChanged,
         Action<int, bool> onStableHandoffChanged,
         Action<int, bool> onReferenceGuidedChanged,
+        Action<int, bool> onPreferNaturalChanged,
         Action<int> onToggleRecord)
     {
         Index = index;
@@ -146,6 +161,7 @@ public sealed class OutputViewModel : ViewModelBase
         _onAutoMixStrengthChanged = onAutoMixStrengthChanged;
         _onStableHandoffChanged = onStableHandoffChanged;
         _onReferenceGuidedChanged = onReferenceGuidedChanged;
+        _onPreferNaturalChanged = onPreferNaturalChanged;
         _onToggleRecord = onToggleRecord;
         _customLabel = index == 0 ? "A — Headset" : "B — Zoom";
         AvailableDevices = new ObservableCollection<AudioDeviceInfo>(availableDevices);
