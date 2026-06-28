@@ -297,7 +297,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _lastTotalSamples[o] = total;
             long samplesPerSec = delta * 1000 / elapsedMs;
             AudioLog.Write(
-                $"Output {o}: playing={bus.IsPlaying} samplesPerSec={samplesPerSec} peakDb={Outputs[o].OutputPeakDb:F1}");
+                $"Output {o}: playing={bus.IsPlaying} samplesPerSec={samplesPerSec} peakDb={Outputs[o].OutputPeakDb:F1} winner={_engine.AutoMixActiveInput(o)}");
         }
         for (int i = 0; i < Channels.Count; i++)
         {
@@ -309,8 +309,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 .Select(o => _engine.Inputs[i].ReadSamplesForOutput(o).ToString()));
             var readCalls = string.Join(",", Enumerable.Range(0, Outputs.Length)
                 .Select(o => _engine.Inputs[i].ReadCallsForOutput(o).ToString()));
+            var gains = string.Join(",", Enumerable.Range(0, Outputs.Length)
+                .Select(o => _engine.Inputs[i].GetAutoMixGain(o).ToString("F2")));
             AudioLog.Write(
-                $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
+                $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} gains=[{gains}] fluxCv={_engine.Inputs[i].CurrentFluxCv:F2} bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
         }
     }
 

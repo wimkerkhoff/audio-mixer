@@ -42,7 +42,10 @@ public sealed class AutoMixer
     // Anker measures clean on HNR/CPPS but unstable here. Combined with the level floor so it never
     // jumps to a too-quiet mic. Lower-precedence than reference-guided; both fall back to loudest.
     private const float NaturalFloorRatio = 0.398f; // -8 dB: candidate must be within 8 dB of the loudest
-    private const float NaturalHysteresis = 0.05f;  // challenger CV must be this much lower to take over
+    // Multiplicative, NOT additive — robust to the CV scale (live CV runs ~1-3.4, so an absolute 0.05
+    // margin was negligible and let near-equal good mics bounce/chop, esp. a loud talker who sounds
+    // clean on several mics). Challenger must be at least 15% lower CV to take the lead.
+    private const float NaturalHystRatio = 0.85f;
 
     // Quality-weighted Share: in correlation/natural mode, scale each mic's level by its quality so a
     // loud-but-bad mic ducks even when it's louder than the (quieter) selected leader. Without this,
@@ -397,7 +400,7 @@ public sealed class AutoMixer
     private bool Beats(int mode, int challenger, int held) => mode switch
     {
         1 => _corr[challenger] > _corr[held] + CorrHysteresis,
-        2 => _cv[held] <= 0f || _cv[challenger] < _cv[held] - NaturalHysteresis,
+        2 => _cv[held] <= 0f || _cv[challenger] < _cv[held] * NaturalHystRatio,
         _ => _env[challenger] > _env[held] * HandoffHysteresis,
     };
 
