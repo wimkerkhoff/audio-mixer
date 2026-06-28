@@ -44,6 +44,15 @@ public sealed class AutoMixer
     private const float NaturalFloorRatio = 0.398f; // -8 dB: candidate must be within 8 dB of the loudest
     private const float NaturalHysteresis = 0.05f;  // challenger CV must be this much lower to take over
 
+    // Quality-weighted Share: in correlation/natural mode, scale each mic's level by its quality so a
+    // loud-but-bad mic ducks even when it's louder than the (quieter) selected leader. Without this,
+    // Share anchors to the leader's level and clamps every louder mic to unity, so the scratchy mic
+    // stays wide open whenever the talker sits near it instead of near the good mic. (Level mode is
+    // unchanged — weight is always 1.) CV scale matches InputChannel.CurrentFluxCv: good ~1.0, bad ~2.5+.
+    private const float NatCvGood = 1.0f;
+    private const float NatCvBad = 2.5f;
+    private const float SelWeightFloor = 0.1f;
+
     // Crest factor (peak/RMS) is NO LONGER part of the selection — on the speakerphone DSP it does
     // not track proximity (gating/AGC make it noise; it ranked the closest mic <40% of the time and
     // actually increased selection flips). It is kept only as the per-mic "clarity" readout in the
@@ -351,11 +360,15 @@ public sealed class AutoMixer
             {
                 float p = 1f + 3f * s;
                 float floor = Lerp(0.25f, 0.03f, s);
-                float refLevel = _env[leader];   // anchor the share to the (held) leader, not the instant max
+                // Anchor the share to the (held) leader, weighted by quality so a loud-but-bad mic ducks
+                // even when it's louder than a quieter, cleaner leader (level mode: weight always 1).
+                float refLevel = _env[leader] * SelWeight(leader, selMode, leader);
+                if (refLevel < 1e-9f) refLevel = 1e-9f;
                 for (int i = 0; i < n; i++)
                 {
                     if (!inputs[i].GetRoute(o) || inputs[i].IsPriority) continue;
-                    float g = (float)Math.Pow(_env[i] / refLevel, p);
+                    float eff = _env[i] * SelWeight(i, selMode, leader);
+                    float g = (float)Math.Pow(eff / refLevel, p);
                     if (g < floor) g = floor;
                     else if (g > 1f) g = 1f;
                     inputs[i].SetAutoMixGain(o, g);
@@ -387,6 +400,26 @@ public sealed class AutoMixer
         2 => _cv[held] <= 0f || _cv[challenger] < _cv[held] - NaturalHysteresis,
         _ => _env[challenger] > _env[held] * HandoffHysteresis,
     };
+
+    // Per-mic quality weight for Share in non-level selection modes (1 correlation, 2 natural): 1.0 for
+    // the best mic, down to SelWeightFloor for the worst, so worse mics duck regardless of their level.
+    private float SelWeight(int i, int mode, int leader)
+    {
+        if (mode == 2)
+        {
+            float cv = _cv[i];
+            if (cv <= 0f) return 1f;                          // no speech data yet -> don't penalize
+            float t = Math.Clamp((cv - NatCvGood) / (NatCvBad - NatCvGood), 0f, 1f);
+            return Lerp(1f, SelWeightFloor, t);
+        }
+        if (mode == 1)
+        {
+            float cl = _corr[leader];
+            if (cl <= 1e-4f) return 1f;
+            return Math.Clamp(_corr[i] / cl, SelWeightFloor, 1f);
+        }
+        return 1f;
+    }
 
     // Best-lag Pearson correlation of channel `ch`'s envelope against the reference's, over the ring,
     // counting only frames where the reference is speaking. Positive lag = ch delayed vs the reference.
