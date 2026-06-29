@@ -41,7 +41,34 @@ public partial class App : Application
         _showListener = new Thread(ShowListenerLoop) { IsBackground = true, Name = "SingleInstanceListener" };
         _showListener.Start();
 
+        ApplyCliFlags(e.Args);
         base.OnStartup(e);
+    }
+
+    // Command-line equivalents of the AUDIOMIXER_LOG / AUDIOMIXER_STATE env vars, so a desktop
+    // shortcut can enable diagnostics via arguments (a .lnk can't set env vars). Env vars still work;
+    // these are additive. Runs before base.OnStartup so MainViewModel sees the state port on startup.
+    //   --log            enable file logging (%TEMP%\AudioMixer.log)
+    //   --state[=PORT]   enable the loopback JSON state endpoint (default port 7077)
+    private static void ApplyCliFlags(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            var a = args[i];
+            if (a.Equals("--log", StringComparison.OrdinalIgnoreCase))
+            {
+                AudioLog.Enabled = true;
+            }
+            else if (a.Equals("--state", StringComparison.OrdinalIgnoreCase) ||
+                     a.StartsWith("--state=", StringComparison.OrdinalIgnoreCase))
+            {
+                string port = "7077";
+                int eq = a.IndexOf('=');
+                if (eq >= 0) port = a[(eq + 1)..];
+                else if (i + 1 < args.Length && int.TryParse(args[i + 1], out _)) port = args[++i];
+                Environment.SetEnvironmentVariable("AUDIOMIXER_STATE", port);
+            }
+        }
     }
 
     private void ShowListenerLoop()

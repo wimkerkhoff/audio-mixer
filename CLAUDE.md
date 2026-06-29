@@ -160,14 +160,18 @@ MixingSampleProvider (sums routed channels) → peak tap → [optional: recorder
   — use `Dispatcher.BeginInvoke` or (preferred) a UI timer that polls atomic state.
 - **Logging**: Use `System.Diagnostics.Trace` for engine events; surface user-facing errors via
   status bar text in MainViewModel. File logging via `AudioLog` (→ `%TEMP%\AudioMixer.log`) is
-  **opt-in** — off unless the `AUDIOMIXER_LOG` env var is set (the meter loop writes ~1 line/sec, so
-  we don't grow a file on every run). The log's first line is a banner with the exe path, assembly
+  **opt-in** — off unless the `AUDIOMIXER_LOG` env var is set OR the `--log` CLI flag is passed (so
+  a
+  desktop shortcut can enable it without env vars; see `App.ApplyCliFlags`). The meter loop writes
+  ~1 line/sec, so we don't grow a file on every run. The log's first line is a banner with the exe
+  path, assembly
   version (`1.0.0+<git-sha>`, stamped by an MSBuild target) and build time — so you can tell from a
   log alone *which build* produced it (don't cross-reference DLL mtimes).
 - **Diagnostic state endpoint**: `StateServer` serves a full live JSON snapshot at
   `http://127.0.0.1:<port>/state` (channels: levels/routes/mute/gains/clarity/`refCorr`/`fluxCv`;
   outputs: mode/strength/stable/reference/preferNatural + winner; plus `referenceInput`). **Opt-in**
-  via `AUDIOMIXER_STATE` (a port number, else default 7077). Read-only, loopback only.
+  via `AUDIOMIXER_STATE` (a port number, else default 7077) or the `--state[=PORT]` CLI flag.
+  Read-only, loopback only.
   `MainViewModel.BuildStateJson` marshals to the UI thread. This is the fastest way to watch the
   automixer's *reasoning* (env vs corr vs the selected leader) without the GUI.
 - **Single instance**: `App.xaml.cs` holds a named mutex — a second launch signals the first (raises
