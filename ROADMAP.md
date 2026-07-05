@@ -64,6 +64,19 @@ Option to filter virtual capture devices (VoiceMeeter, VB-CABLE, etc.) out of th
 lists so operators only see real microphones. Keep VB-CABLE selectable for **outputs** (that's the
 Zoom path). *Why:* virtual devices clutter the picker and are never the right input.
 
+### 🔲 In-app audio device diagnostics
+Fold `tools/audio-device-diag.ps1` into the app as a diagnostics panel: list audio endpoints as
+active vs ghost, capture vs render (classified by the MMDEVAPI dataflow id, not the friendly name),
+show which devices are on Bluetooth, and flag the "output up but no mic" Soundsync half-link. *Why:*
+when an Anker goes dead-but-"connected" the operator needs a one-glance answer for *what's actually
+live*; prefix-shuffle and half-links make Windows' own Sound panel misleading.
+
+### 🔲 Prefer Soundsync dongles; warn on Bluetooth
+Policy: the Ankers must run over their 2.4 GHz USB Soundsync dongles, never Bluetooth (BT drops to
+HSP/HFP quality and steals the device from the dongle link). The app should surface/warn when an
+Anker is connected via Bluetooth, and ideally avoid selecting BT ("PowerConf S500 Hands-Free")
+capture endpoints as inputs — pairs with hiding virtual/BT devices from the input pickers.
+
 ### 🔲 Auto-(re)add Anker devices to inputs
 On launch and on device-change, detect Anker capture endpoints and auto-assign them to input
 channels; re-add them when they drop and reappear (USB/BT renegotiation). Complements the existing
