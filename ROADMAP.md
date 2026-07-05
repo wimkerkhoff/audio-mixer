@@ -18,13 +18,32 @@ audio-savvy; the common path has to "just work" with minimal controls to get wro
 ### 🔲 Scene control — Standby / Teaching / Singing
 One operator control that switches the whole behavior:
 - **Standby** — outputs muted, so pre-service chatter never reaches Zoom/recording.
-- **Teaching** — the current follow-the-talker automix.
-- **Singing** — collapse to a single chosen mic (avoid multi-mic comb-filter wash).
+- **Teaching** — the current follow-the-talker automix (priority-lapel ducks the room; correct for
+  one coherent talker).
+- **Singing** — **open the good room mics at flat/equal gain and suspend priority-ducking.** Do NOT
+  collapse to one mic and do NOT follow-the-talker.
+  1. Suspend priority-ducking — stop the lapel gating the room out (the 2026-07-05 bug: worship
+     reached the stream as pastor-only because the priority lapel ducked every room mic to 0).
+  2. Automix Off / flat — room mics pass at unity, not winner-take-all.
+  3. Keep the lapel in if the pastor leads on it, at normal (non-dominating) level — operator taste.
+  4. Optionally exclude a known-bad/dead mic.
 
-*Why:* the automix assumes one talker at a time; singing and pre-session chatter break that, and the
-*desired action differs per scene*. A manual control is reliable; auto-detection is unproven (level
-spread fails through the Anker AGC — see CLAUDE.md gotchas — and needs singing data to test anything
-else). Pairs naturally with Easy UI.
+*Why single-mic was rejected for Singing:* measured on the 2026-07-05 singing capture, the two live
+room Ankers had waveform coherence of only **0.13** and summing them added **zero comb ripple** (6.5
+vs 6.7 dB). Comb-filtering is a *coherence* phenomenon — high for one talker (teaching → duck to
+one) but low for a congregation, a distributed source where each mic hears different nearby singers.
+So the anti-comb reason to duck-to-one **does not transfer to singing**; several mics give better
+coverage with no comb penalty. The real tradeoff for singing is coverage (favors more mics) vs
+accumulated room tone / reverb / Anker gate-chatter (favors fewer) — hence "the *good* room mics,"
+not literally all. See CLAUDE.md gotchas and the singing-scene memory. Caveat: one room, ~3 min, one
+of three room mics dead — re-check 4+-mic summing on a fuller capture.
+
+*Why manual, not auto-detected:* the automix assumes one talker at a time; singing and pre-session
+chatter break that, and the *desired action differs per scene*. Auto-detection is unproven — on the
+2026-07-05 data no reference-free signal separated singing from teaching (room-mic flux-cv rose only
+~0.1, lapel duty-cycle and lapel↔room correlation shifted but every margin overlapped teaching's own
+variation; raw multi-mic activity was useless — 3–4 mics hot for the entire 15 min). A manual
+control is reliable. Pairs naturally with Easy UI.
 
 ---
 
@@ -53,9 +72,13 @@ All deployed, none confirmed live yet — now verifiable from the logged transcr
 - Match lapel (reference-guided) — only testable when a lapel is actually in use.
 
 ### 🔬 Singing capture & analysis
-Record real congregational singing (record-all-inputs during a song) — we still have zero singing
-data. Test whether *any* reference-free signal separates singing from speech before building
-auto-detection. If nothing separates them, the manual scene control is the answer.
+First singing captured 2026-07-05 (~3 min, one room, one of three room mics dead). Findings: (1) no
+reference-free signal cleanly separated singing from teaching → manual scene control, not
+auto-detect; (2) room mics don't comb when summed during singing (coherence 0.13) → Singing scene
+uses several mics, not one. Still needed: a *fuller* capture — longer, all room mics live, ideally a
+loud full-congregation song — to confirm 4+-mic summing stays comb-free and to re-test any
+singing-vs-speech discriminator. Analysis lives in scratchpad (`singing_vs_speech.py`,
+`comb_test.py`, `find_singing.py`); fold the keepers into `tools/`.
 
 ### 🛠 Offline cv-scale fidelity
 Align the Python `flux_cv` to the engine's `CurrentFluxCv` scale (offline ~0.4 vs engine ~1–3.4) so
