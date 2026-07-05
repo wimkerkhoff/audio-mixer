@@ -37,3 +37,7 @@ desktop.ini
 
 # Scratch spectrogram from tools/spectro.py
 tools/spectro.png
+
+# Python
+__pycache__/
+*.pyc
