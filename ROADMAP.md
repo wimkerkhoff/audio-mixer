@@ -45,6 +45,16 @@ chatter break that, and the *desired action differs per scene*. Auto-detection i
 variation; raw multi-mic activity was useless — 3–4 mics hot for the entire 15 min). A manual
 control is reliable. Pairs naturally with Easy UI.
 
+### 🔲 Test-tone / output preflight
+A "send test tone to A / B" button that plays a short tone (or looped noise) out each output bus, so
+the operator can confirm the *downstream* capture is receiving before the service — watch OBS's
+CABLE Output meter move, or hear it on the headset. *Why:* 2026-07-05 the opening ~10–15 min never
+reached OBS even though output A was live the whole time (mixer log + mix-A recording both hot from
+minute one) — the fault was entirely on the OBS/VB-CABLE capture side. The mixer can't force OBS to
+capture, but a one-click tone makes the end-to-end check trivial and talker-free. Rule of thumb to
+document in the UI: if the mixer's A meter moves but OBS is flat, the fault is downstream, not the
+mixer.
+
 ---
 
 ## Device management
@@ -95,8 +105,10 @@ cap the file size so it can't balloon.
 
 ### 🛠 Keep the validation harness current
 `tools/`: `naturalness.py`, `voice_quality.py`, `replay_natural.py`, `review_natural.py`,
-`replay_share.py`, `scene4.py`/`scene5.py`. Re-run after each captured session; fold in the cv-scale
-fix above so they're faithful to the engine.
+`replay_share.py`, `scene4.py`/`scene5.py`, plus the singing set (`live_wav.py`, `find_singing.py`,
+`singing_vs_speech.py`, `comb_test.py`). Re-run after each captured session; fold in the cv-scale fix
+above so they're faithful to the engine. Note `live_wav.py` reads in-progress diag WAVs that
+`soundfile` can't — reuse it for any tool that runs mid-recording.
 
 ---
 
