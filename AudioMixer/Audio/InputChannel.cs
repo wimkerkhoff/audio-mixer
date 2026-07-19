@@ -44,6 +44,33 @@ public sealed class InputChannel : IDisposable
     private float _currentFluxCv;
     public float CurrentFluxCv => Volatile.Read(ref _currentFluxCv);
 
+    // --- RF-health accumulators (diagnostic) --------------------------------------------------
+    // Lock-free monotonic counters incremented in the audio callback; the ~1 Hz log loop reads them
+    // via SnapshotRfStats and computes deltas. Purpose: spot a marginal 2.4 GHz Soundsync dongle link
+    // from the signal alone — a dropping link produces exact-silence gaps mid-speech (voiced→silent
+    // "drop edges") + elevated flux-CV. Only raw counts are recorded here; classification is offline.
+    private const float RfSilenceRms = 1e-4f;   // ~ -80 dBFS: a wireless dropout fills buffers with ~silence
+    private long _rfBuffers, _rfVoiced, _rfSilent, _rfDropEdges, _rfSumMilliDbVoiced;
+    private bool _rfPrevVoiced;                  // audio-thread only
+    private long _rfLastBuffers, _rfLastVoiced, _rfLastSilent, _rfLastDropEdges, _rfLastSumMilliDb; // reader only
+
+    public readonly record struct RfStats(int Buffers, float MeanDb, float VoicedPct, float SilentPct, int DropEdges, float FluxCv);
+
+    // Snapshot RF counters since the previous call. Call once per log interval, from ONE thread only.
+    public RfStats SnapshotRfStats()
+    {
+        long b = Interlocked.Read(ref _rfBuffers), v = Interlocked.Read(ref _rfVoiced);
+        long s = Interlocked.Read(ref _rfSilent), d = Interlocked.Read(ref _rfDropEdges);
+        long sum = Interlocked.Read(ref _rfSumMilliDbVoiced);
+        long nb = b - _rfLastBuffers, nv = v - _rfLastVoiced, ns = s - _rfLastSilent;
+        long nd = d - _rfLastDropEdges, nsum = sum - _rfLastSumMilliDb;
+        _rfLastBuffers = b; _rfLastVoiced = v; _rfLastSilent = s; _rfLastDropEdges = d; _rfLastSumMilliDb = sum;
+        float meanDb = nv > 0 ? nsum / (float)nv / 1000f : -120f;
+        float vp = nb > 0 ? 100f * nv / nb : 0f;
+        float sp = nb > 0 ? 100f * ns / nb : 0f;
+        return new RfStats((int)nb, meanDb, vp, sp, (int)nd, CurrentFluxCv);
+    }
+
     // Smoothed crest-derived clarity weight (0..1, NaN when no recent speech), written by AutoMixer
     // for display. Higher = closer/cleaner mic.
     private float _clarity = float.NaN;
@@ -269,6 +296,7 @@ public sealed class InputChannel : IDisposable
             Volatile.Write(ref _currentPeakLinear, 0f);
             Volatile.Write(ref _currentFluxCv, 0f);
             _prevMag = null; _fluxHasPrev = false; _fluxMean = 0f; _fluxVar = 0f;
+            _rfPrevVoiced = false;   // don't count a drop edge across a stop/restart
             Volatile.Write(ref _clarity, float.NaN);
             Volatile.Write(ref _isAutoMixActive, false);
             for (int o = 0; o < _outputCount; o++) _autoMixRamp[o] = 1f;
@@ -424,6 +452,22 @@ public sealed class InputChannel : IDisposable
             Volatile.Write(ref _currentLevelLinear, rmsNow);
             Volatile.Write(ref _currentPeakLinear, peak);
             if (rmsNow > FluxVoiceRms) ComputeFlux(rented, read);
+
+            // RF-health tally (diagnostic; see SnapshotRfStats). Voiced/silent are mutually exclusive
+            // (voice threshold >> silence floor); a voiced→silent transition is a dropout "edge".
+            bool rfVoiced = rmsNow > FluxVoiceRms;
+            Interlocked.Increment(ref _rfBuffers);
+            if (rfVoiced)
+            {
+                Interlocked.Increment(ref _rfVoiced);
+                Interlocked.Add(ref _rfSumMilliDbVoiced, (long)(20000.0 * Math.Log10(rmsNow)));
+            }
+            else if (rmsNow < RfSilenceRms)
+            {
+                Interlocked.Increment(ref _rfSilent);
+                if (_rfPrevVoiced) Interlocked.Increment(ref _rfDropEdges);
+            }
+            _rfPrevVoiced = rfVoiced;
 
             int byteCount = read * sizeof(float);
             int mask = Volatile.Read(ref _routeMask);

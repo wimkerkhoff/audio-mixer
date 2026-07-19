@@ -166,7 +166,14 @@ MixingSampleProvider (sums routed channels) → peak tap → [optional: recorder
   ~1 line/sec, so we don't grow a file on every run. The log's first line is a banner with the exe
   path, assembly
   version (`1.0.0+<git-sha>`, stamped by an MSBuild target) and build time — so you can tell from a
-  log alone *which build* produced it (don't cross-reference DLL mtimes).
+  log alone *which build* produced it (don't cross-reference DLL mtimes). The per-input log line
+  carries **RF-link health** fields `rf=[lvl=<voiced mean dB> voiced=<%> silent=<%> drops=<n>]`
+  (`InputChannel.SnapshotRfStats`, lock-free counters latched in the audio callback) for **offline**
+  diagnosis of a marginal 2.4 GHz Soundsync dongle link: a dropping link shows exact-silence gaps
+  mid-speech (voiced→silent "drop edges") + high `fluxCv` while `voiced%` is high; a healthy-but-far
+  mic is quiet-and-smooth. Only assess a mic while it's voiced (an idle mic is silent whether the
+  link is fine or dead). Raw counts only — no thresholds in-app; classify from the log after a
+  session (the far/50 ft mic is at the edge of dongle range — see the S500 dual-home gotcha above).
 - **Diagnostic state endpoint**: `StateServer` serves a full live JSON snapshot at
   `http://127.0.0.1:<port>/state` (channels: levels/routes/mute/gains/clarity/`refCorr`/`fluxCv`;
   outputs: mode/strength/stable/reference/preferNatural + winner; plus `referenceInput`). **Opt-in**
@@ -198,7 +205,33 @@ dotnet run --project AudioMixer
 
 *(grows over time — see Self-maintenance protocol below)*
 
-- WASAPI device IDs are stable across reboots; persist those (not friendly names) in presets.
+- WASAPI device IDs are stable across reboots **for fixed devices** (onboard/virtual — e.g. Realtek,
+  VB-CABLE); persist those in presets. **They are NOT stable for hot-plug USB audio** — see the
+  device-remap gotcha below.
+- **Hot-plug USB audio (mics, USB headsets, wireless dongles) gets a NEW WASAPI endpoint GUID when it
+  re-enumerates** (a Windows-Update driver reboot, a replug, a different port). A preset that matches
+  only on `DeviceId` (the endpoint GUID) then silently drops every such device on load and forces a
+  manual remap. Root cause for the Anker rig: the Soundsync dongles expose **no USB serial**
+  (`USB\VID_291A&PID_3523&MI_01\7&<hash>&0` — the `7&hash&0` is a *port-derived* instance, not a
+  serial), so their identity is the USB port, and the endpoint GUID regenerates on re-enumeration.
+  Windows *does* re-apply a user's device **rename** to the new endpoint (keyed to the port-path
+  instance, confirmed to survive a driver-update reboot), so the friendly name is the stable,
+  human-meaningful key even though the GUID isn't. Fix: `MainViewModel.ApplyPreset` (`ResolveDevice`)
+  matches `DeviceId` first, then **falls back to the saved friendly name** — normalized by
+  `DeviceNameKey`, which strips only the volatile `(N- …)` endpoint enumerator (`EnumeratorPrefix`
+  regex) and keeps the rest. Two hard-won details: (1) do **NOT** truncate to the name prefix before
+  `" ("` — an un-renamed device's identity is the *interface* name inside the parens (e.g. `Speakers
+  (Lync USB Headset)` vs `Speakers (Realtek(R) Audio)` share the prefix `Speakers`), so truncating
+  mis-binds the headset to the onboard speakers; (2) resolve against the **master** `_allInputDevices`
+  / `_allOutputDevices`, not a channel's `AvailableDevices`, which is dedup-filtered and can be missing
+  a device mid-apply. A `used` set prevents two channels grabbing the same device when several
+  normalize alike (identical un-renamed dongles → greedy fill). On resolve the app re-selects the real
+  device and autosave rewrites the current GUID, so the preset **self-heals** after one launch. NOTE:
+  the Ankers are **not** interchangeable for this rig — physical placement matters (each unit sits by
+  its own dongle covering a room area), so the operator renamed them `ANKER #1..4` in Windows Sound
+  settings to match physical labels; match by that name, never greedy-fill in arbitrary order. A
+  *rename* (e.g. `ANKER 4`→`ANKER #4`) is a deliberate identity change and correctly won't name-match
+  the old preset — that device needs one manual remap, then it re-saves.
 - **A stalled input capture freezes its VU meter at the last value (looks ~80% "active" but passes
   no audio).** `PeakMeter` has no decay — `CurrentDb` only changes inside `Observe()`, called from
   `OnDataAvailable`. If `WasapiCapture` stops firing `DataAvailable` (Anker USB/BT renegotiation,
@@ -315,6 +348,23 @@ dotnet run --project AudioMixer
   requested count — set `ReadFully=true` on the underlying `BufferedWaveProvider` so it pads with
   zeros internally when empty. Symptom: audio works until first buffer-empty event (e.g. route
   toggle off then on), then output goes permanently silent until OutputBus is restarted.
+- **A WAV being actively recorded reads 0 bytes / a frozen mtime in directory listings.** NTFS doesn't
+  flush a file's directory-entry size + last-write-time during a long buffered write, and
+  `WaveFileWriter` only finalizes the RIFF header on Dispose (stop). So `Get-ChildItem`/Explorer show a
+  live "record all inputs"/`MixRecorder` capture as **0 bytes, mtime stuck at creation** — looks like it
+  captured nothing when it's actually fine. Don't judge a live capture by the folder view, and don't
+  stop/restart it in a panic (that's the only thing that *would* lose buffered data). To read true
+  length mid-write, open the handle: `[System.IO.File]::Open(path,'Open','Read','ReadWrite').Length`.
+  `soundfile`/offline tools can't read the file until it's stopped (header still claims 0 frames).
+- **An Anker S500 can hold its 2.4 GHz Soundsync dongle link AND a Bluetooth link simultaneously**
+  (designed bridging feature). So a mic feeds the mixer fine over its dongle while *also* transmitting
+  on BT — a self-contending extra 2.4 GHz radio that garbles the weakest dongle input (chronic, "bad
+  whether automix natural or not"). Adaptive hopping (BT AFH + proprietary dongle) reduces but doesn't
+  eliminate it — two uncoordinated hoppers + device density + near-field proximity still collide. Fix:
+  "Forget" every `Anker PowerConf S500` BT pairing (they auto-reconnect) so units run dongle-only; safe
+  because the mixer binds Soundsync endpoints, not the BT (`…PowerConf S500`/Hands-Free) ones. Detect
+  with `tools/audio-device-diag.ps1` — it now dedupes BT devices by radio address (multiple identical
+  units share a FriendlyName; `Sort -Unique` on name under-counts how many are live on BT).
 
 ## Self-maintenance protocol
 

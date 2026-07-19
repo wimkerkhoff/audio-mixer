@@ -311,8 +311,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 .Select(o => _engine.Inputs[i].ReadCallsForOutput(o).ToString()));
             var gains = string.Join(",", Enumerable.Range(0, Outputs.Length)
                 .Select(o => _engine.Inputs[i].GetAutoMixGain(o).ToString("F2")));
+            // RF-link health (offline dongle-link diagnosis): high drops/silent while voiced is high =
+            // wireless dropouts; elevated fluxCv corroborates. Only meaningful while the mic is voiced.
+            var rf = _engine.Inputs[i].SnapshotRfStats();
             AudioLog.Write(
-                $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} gains=[{gains}] fluxCv={_engine.Inputs[i].CurrentFluxCv:F2} bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
+                $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} gains=[{gains}] fluxCv={_engine.Inputs[i].CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
         }
     }
 
@@ -617,6 +620,36 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (preset != null) ApplyPreset(preset);
     }
 
+    // The volatile "N- " endpoint enumerator Windows prepends inside the interface name (e.g. "(2- Anker
+    // Soundsync)"); it reshuffles across reboots so it must be ignored when matching a saved name.
+    private static readonly System.Text.RegularExpressions.Regex EnumeratorPrefix =
+        new(@"\(\d+-\s*", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Saved DeviceId is the WASAPI endpoint GUID, which Windows regenerates whenever a USB audio device
+    // re-enumerates (a driver-update reboot, a replug, a different port) — so an exact-ID match silently
+    // drops every hot-plug mic/headset and forces a manual remap. Fall back to the saved friendly name,
+    // normalized (only the "(2-/5- …)" enumerator stripped — Windows re-applies a device rename to the new
+    // endpoint, and for un-renamed devices the identifying part is the interface name inside the parens,
+    // so we must NOT truncate to the prefix). Searches the full master list, not a channel's pre-dedup
+    // AvailableDevices (which can be missing a device mid-apply); `used` stops two channels grabbing the
+    // same device when several normalize alike (e.g. identical un-renamed dongles).
+    private static AudioDeviceInfo? ResolveDevice(IEnumerable<AudioDeviceInfo> all, string? id, string? name, HashSet<string> used)
+    {
+        AudioDeviceInfo? match = null;
+        if (!string.IsNullOrEmpty(id))
+            match = all.FirstOrDefault(d => d.Id == id && !used.Contains(d.Id));
+        if (match == null && !string.IsNullOrWhiteSpace(name))
+        {
+            var key = DeviceNameKey(name);
+            match = all.FirstOrDefault(d => !used.Contains(d.Id) && DeviceNameKey(d.FriendlyName) == key);
+        }
+        if (match != null) used.Add(match.Id);
+        return match;
+    }
+
+    private static string DeviceNameKey(string friendlyName) =>
+        EnumeratorPrefix.Replace(friendlyName, "(").Trim();
+
     private void ApplyPreset(MixerPreset preset)
     {
         _suppressAutosave = true;
@@ -635,12 +668,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 RaisePropertyChanged(nameof(WindowWidth));
             }
 
+            var usedInputIds = new HashSet<string>();
             for (int i = 0; i < Channels.Count && i < preset.Channels.Length; i++)
             {
                 var cp = preset.Channels[i];
                 if (!string.IsNullOrEmpty(cp.CustomLabel)) Channels[i].CustomLabel = cp.CustomLabel;
-                var match = cp.DeviceId == null ? null :
-                    Channels[i].AvailableDevices.FirstOrDefault(d => d.Id == cp.DeviceId);
+                var match = ResolveDevice(_allInputDevices, cp.DeviceId, cp.DeviceName, usedInputIds);
                 Channels[i].SelectedDevice = match;
                 Channels[i].VolumePercent = cp.VolumePercent;
                 Channels[i].Muted = cp.Muted;
@@ -651,12 +684,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     Channels[i].Routes[r].IsOn = cp.Routes[r];
                 }
             }
+            var usedOutputIds = new HashSet<string>();
             for (int o = 0; o < Outputs.Length && o < preset.Outputs.Length; o++)
             {
                 var op = preset.Outputs[o];
                 if (!string.IsNullOrEmpty(op.CustomLabel)) Outputs[o].CustomLabel = op.CustomLabel;
-                var match = op.DeviceId == null ? null :
-                    Outputs[o].AvailableDevices.FirstOrDefault(d => d.Id == op.DeviceId);
+                var match = ResolveDevice(_allOutputDevices, op.DeviceId, op.DeviceName, usedOutputIds);
                 Outputs[o].SelectedDevice = match;
                 Outputs[o].StrengthPercent = Math.Clamp(op.AutoMixStrength, 0f, 100f);
                 Outputs[o].StableHandoff = op.AutoMixStableHandoff;
