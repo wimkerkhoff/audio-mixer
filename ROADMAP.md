@@ -9,6 +9,30 @@ Status key: 🔲 planned · 🔬 needs live data / validation · 🛠 doable now
 
 ## Operator experience
 
+### 🛠 Live automix diagnostics panel ("why this mic?")
+An optional, toggleable telemetry view that surfaces the automixer's live reasoning **in-app**, so
+diagnosing a bad selection no longer means reading the `/state` JSON endpoint from an external tool
+(exactly the human-in-the-loop this took on 2026-07-26 — an operator had to have Claude poll
+`/state` to explain why each talker was on the wrong mic). Off by default / hidden in Easy mode —
+regular operation never needs it — but one click gives real-time insight into **why a mic is (or
+isn't) selected**.
+
+Per output, show the decision as it happens:
+- The **held leader** + current **winner**, the hold countdown (`_winnerHold`), and which
+  **mode/margin** is deciding — level (+3 dB), natural (flux-cv ×0.85), or correlation (+0.05).
+- A live per-mic row: **env level**, **flux-cv**, **ref-corr**, automix **gain**, route/mute,
+  priority/ducking — deciding metric highlighted, and the challenger being *blocked* called out
+  (e.g. "#2 louder but held off by the 3 dB margin + 140 ms hold").
+- A one-line plain-English verdict per output: e.g. "#1 winning: lowest flux-cv (0.38) among mics
+  within −8 dB; #2 louder (−22 dB) but blocked by hold."
+
+*Why:* the data already exists — `MainViewModel.BuildStateJson` / the `--state` endpoint expose
+env/cv/corr/winner/hold — so this is mostly a **presentation** task: bind a hidden in-app view to the
+same snapshot on the existing ~30 Hz meter timer (NOT per-buffer). Newly worthwhile because
+`CurrentFluxCv` is now genuinely live (the 2026-07-26 cross-buffer-windowing fix — before that the cv
+column would have shown a frozen value). Pairs with the clarity→flux-cv readout unification and
+operator overrides below.
+
 ### 🔲 "Easy UI" mode
 A simplified, operator-proof view for non-technical volunteers. Hide the advanced/per-channel
 automix controls and surface only the essentials: device pick, levels, a scene/Standby control, and
