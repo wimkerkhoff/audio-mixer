@@ -134,14 +134,18 @@ MixingSampleProvider (sums routed channels) → peak tap → [optional: recorder
   natural-mic selection** ("Prefer natural", `OutputViewModel.PreferNatural`, default off,
   persisted, lower precedence than Match lapel): for the no-lapel / talkers-across-the-room case.
   Among mics within `NaturalFloorRatio` (-8 dB) of the loudest it picks the one with the lowest
-  **spectral-flux instability** (`InputChannel.CurrentFluxCv` — a 512-pt FFT per voiced buffer in
-  the audio thread, EMA mean/variance of normalized-spectrum frame-to-frame distance → coefficient
-  of variation; lower = more natural). Held leader uses CV with a **multiplicative** margin
-  (`NaturalHystRatio` 0.85 — challenger must be ≥15% lower CV). NOTE: the live `CurrentFluxCv` scale
-  (~1–3.4) is much larger than the offline Python `flux_cv` (~0.4–0.6) — an early *additive* 0.05
-  margin was therefore ≈ zero hysteresis and made near-equal good mics bounce/chop; a multiplicative
-  margin is scale-robust. (Same reason offline replays of CV thresholds aren't faithful — different
-  scale.) Precedence in `Tick`: `selMode` = correlation if `useCorr`, else natural if `useNatural`,
+  **spectral-flux instability** (`InputChannel.CurrentFluxCv` — a 512-pt FFT per voiced 512-sample
+  window *accumulated across capture buffers* in the audio thread, EMA mean/variance of
+  normalized-spectrum frame-to-frame distance → coefficient of variation; lower = more natural).
+  Held leader uses CV with a **multiplicative** margin (`NaturalHystRatio` 0.85 — challenger must be
+  ≥15% lower CV). NOTE: `CurrentFluxCv` MUST accumulate across buffers — WASAPI shared-mode delivers
+  ~480-frame buffers (<512), so the original per-buffer FFT (guarded `if (frames < FluxN) return;`)
+  almost never ran and the value **froze at a startup estimate**; fixed 2026-07-26 by cross-buffer
+  windowing (`ComputeFlux` accumulates → `ComputeFluxWindow` runs the FFT). With real windowing the
+  live scale (~0.35–0.5) now **matches** the offline Python `flux_cv` (~0.4–0.6), so offline replays
+  are faithful again. The held-leader margin is kept **multiplicative** (scale-robust — an early
+  *additive* 0.05 margin was ≈ zero hysteresis under the old inflated scale and chopped near-equal
+  mics). Precedence in `Tick`: `selMode` = correlation if `useCorr`, else natural if `useNatural`,
   else level; `Beats(selMode,...)` applies the matching margin. Snapshot exposes `_cv` as `fluxCv`.
   **Quality-weighted Share** (`SelWeight`): in correlation/natural mode each mic's level is scaled
   by its quality (CV for natural, corr for lapel) *before* the gain-share, so a loud-but-bad mic

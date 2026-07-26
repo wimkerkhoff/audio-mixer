@@ -34,7 +34,7 @@ public sealed class InputChannel : IDisposable
     private const int FluxN = 512;
     private const int FluxBits = 9;             // log2(FluxN)
     private const float FluxVoiceRms = 0.006f;  // ~ -44 dBFS: only accumulate while the mic hears speech
-    private const float FluxEma = 0.03f;        // ~1 s at ~50 buffers/s
+    private const float FluxEma = 0.01f;        // ~1 s of continuous speech over 512-sample windows (~94/s)
     private static readonly float[] FluxWindow = MakeHann(FluxN);
     private readonly Complex[] _fftBuf = new Complex[FluxN];
     private float[]? _prevMag;
@@ -43,6 +43,11 @@ public sealed class InputChannel : IDisposable
     private bool _fluxHasPrev;
     private float _currentFluxCv;
     public float CurrentFluxCv => Volatile.Read(ref _currentFluxCv);
+    private const int FluxHop = FluxN;          // non-overlapping windows (set < FluxN for overlap)
+    private readonly float[] _fluxAccum = new float[FluxN];
+    private int _fluxFill;
+    private int _fluxDbgLog;                     // one-shot: log first buffers' frame sizes (opt-in AudioLog)
+    private string _label = "";
 
     // --- RF-health accumulators (diagnostic) --------------------------------------------------
     // Lock-free monotonic counters incremented in the audio callback; the ~1 Hz log loop reads them
@@ -250,6 +255,7 @@ public sealed class InputChannel : IDisposable
         Stop();
         var device = deviceInfo.Resolve()
             ?? throw new InvalidOperationException($"Capture device not found: {deviceInfo.FriendlyName}");
+        _label = deviceInfo.FriendlyName;
 
         var capture = new WasapiCapture(device, useEventSync: true, audioBufferMillisecondsLength: 20);
         _captureFormat = capture.WaveFormat;
@@ -295,7 +301,7 @@ public sealed class InputChannel : IDisposable
             Volatile.Write(ref _currentLevelLinear, 0f);
             Volatile.Write(ref _currentPeakLinear, 0f);
             Volatile.Write(ref _currentFluxCv, 0f);
-            _prevMag = null; _fluxHasPrev = false; _fluxMean = 0f; _fluxVar = 0f;
+            _prevMag = null; _fluxHasPrev = false; _fluxMean = 0f; _fluxVar = 0f; _fluxFill = 0;
             _rfPrevVoiced = false;   // don't count a drop edge across a stop/restart
             Volatile.Write(ref _clarity, float.NaN);
             Volatile.Write(ref _isAutoMixActive, false);
@@ -313,16 +319,31 @@ public sealed class InputChannel : IDisposable
         return w;
     }
 
-    // One 512-pt FFT of the (mono) buffer head; flux = L2 distance of the normalized magnitude
-    // spectrum from the previous voiced buffer; EMA mean+variance -> coefficient of variation.
+    // WASAPI shared-mode delivers <512-frame buffers per DataAvailable, so a per-buffer 512-pt FFT
+    // never ran and the CV froze at its startup value. Accumulate mono samples across buffers into a
+    // FluxN window and run one FFT per completed window (see ComputeFluxWindow).
     private void ComputeFlux(float[] interleaved, int totalSamples)
     {
         int frames = totalSamples / 2;
-        if (frames < FluxN) return;
+        for (int f = 0; f < frames; f++)
+        {
+            _fluxAccum[_fluxFill++] = (interleaved[2 * f] + interleaved[2 * f + 1]) * 0.5f;
+            if (_fluxFill == FluxN)
+            {
+                ComputeFluxWindow();
+                Array.Copy(_fluxAccum, FluxHop, _fluxAccum, 0, FluxN - FluxHop);
+                _fluxFill = FluxN - FluxHop;
+            }
+        }
+    }
+
+    // One 512-pt FFT of the accumulated (mono) window; flux = L2 distance of the normalized magnitude
+    // spectrum from the previous window; EMA mean+variance -> coefficient of variation.
+    private void ComputeFluxWindow()
+    {
         for (int i = 0; i < FluxN; i++)
         {
-            float m = (interleaved[2 * i] + interleaved[2 * i + 1]) * 0.5f;
-            _fftBuf[i].X = m * FluxWindow[i];
+            _fftBuf[i].X = _fluxAccum[i] * FluxWindow[i];
             _fftBuf[i].Y = 0f;
         }
         FastFourierTransform.FFT(true, FluxBits, _fftBuf);
@@ -424,6 +445,8 @@ public sealed class InputChannel : IDisposable
         {
             int read = converted.Read(rented, 0, sampleCount);
             if (read <= 0) return;
+
+            if (_fluxDbgLog < 4) { _fluxDbgLog++; AudioLog.Write($"[flux] '{_label}' srcRate={_captureFormat.SampleRate} bufFrames={read / 2} (need {FluxN})"); }
 
             InputPeak.Observe(rented, read);
 
