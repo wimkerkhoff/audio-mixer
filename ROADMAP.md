@@ -62,12 +62,39 @@ accumulated room tone / reverb / Anker gate-chatter (favors fewer) — hence "th
 not literally all. See CLAUDE.md gotchas and the singing-scene memory. Caveat: one room, ~3 min, one
 of three room mics dead — re-check 4+-mic summing on a fuller capture.
 
+**Update — real worship (2026-08):** in practice on the Anker S500s, several mics summed sounds
+*worse*, not better — not from acoustic comb (still ~0) but from **compounded DSP artifacts**: each
+speakerphone's independent AGC / noise-suppression / gating pumps and warbles on its own schedule, so
+summing 4 overlays four sets of artifacts (swimmy/washy). And the **lapel is a Rode — a real mic with
+no speakerphone DSP** — so it cleanly beats any Anker for singing. **Revised mic choice for the
+Singing scene: lapel if present; else a single cleanest Anker (lowest live flux-cv).** The "several
+good mics / do not collapse to one" guidance above holds only for a hypothetical set of *clean* room
+mics (a board feed / proper condensers), NOT these speakerphones.
+
 *Why manual, not auto-detected:* the automix assumes one talker at a time; singing and pre-session
 chatter break that, and the *desired action differs per scene*. Auto-detection is unproven — on the
 2026-07-05 data no reference-free signal separated singing from teaching (room-mic flux-cv rose only
 ~0.1, lapel duty-cycle and lapel↔room correlation shifted but every margin overlapped teaching's own
 variation; raw multi-mic activity was useless — 3–4 mics hot for the entire 15 min). A manual
 control is reliable. Pairs naturally with Easy UI.
+
+### 🔬 Singing auto-detect → operator prompt → auto-revert
+A semi-automatic layer over the Singing scene: best-effort **detect** likely singing, **prompt** the
+operator ("Singing? Switch to a single mic until it's over") rather than auto-switching, apply the
+scene on confirm, and **auto-revert** to the prior mode when singing ends. Mic policy in the scene:
+**if the lapel is in use, just use the lapel** (a real mic; skip the Ankers entirely); **if no
+lapel, pin the single cleanest Anker** (lowest live flux-cv) — not several (compounded speakerphone
+DSP artifacts, see the Singing scene note above).
+- *Why suggest-not-switch:* auto-detection is unproven — no reference-free signal cleanly separated
+  singing from teaching on the 2026-07-05 data (every margin overlapped teaching's own variation),
+  and a wrong auto-switch mid-service is worse than the problem. A confirm prompt keeps the operator
+  in control while removing the "notice it and reconfigure by hand" burden the operator hit live.
+- *Detector candidates (need labeled captures; flux-cv now works so replays are faithful):*
+  **room-to-room envelope correlation** (congregation unison → all room mics track each other;
+  teaching → they don't — an untested angle, unlike the lapel-based signals that failed),
+  sustained-pitch / harmonic energy, and low silent-gap fraction over a multi-second window.
+- *Revert:* detector quiet for N seconds → prompt or auto-return to regular mode.
+Pairs with Scene control + Easy UI.
 
 ### 🔲 Test-tone / output preflight
 A "send test tone to A / B" button that plays a short tone (or looped noise) out each output bus, so
@@ -114,23 +141,24 @@ assignment/discovery. *Why:* the Ankers churn; manual re-adding is error-prone f
 ### 🔬 Verify recent fixes at the next live session
 All deployed, none confirmed live yet — now verifiable from the logged transcript (gains/cv/winner):
 - Bounce fix (multiplicative natural hysteresis) — near-equal mics should stop flipping/chopping.
-- Share quality-weighting — the loud-but-bad mic should duck automatically (no manual route-disable).
+- Share quality-weighting — ⚠️ currently **inert**: the 2026-07-26 flux-CV scale change left
+  `AutoMixer.SelWeight`'s `NatCv` constants (1.0/2.5) tuned to the old inflated scale, so post-fix CV
+  (~0.4) clamps every mic to weight 1.0. Fix = rescale to the new scale (~0.40 good / ~0.55 bad),
+  validated against a labeled offline replay — do NOT tune by feel. Only affects Share+natural; Gate
+  is unaffected.
 - Prefer natural overall — sensible override rate, picks good mics.
 - Match lapel (reference-guided) — only testable when a lapel is actually in use.
 
 ### 🔬 Singing capture & analysis
 First singing captured 2026-07-05 (~3 min, one room, one of three room mics dead). Findings: (1) no
 reference-free signal cleanly separated singing from teaching → manual scene control, not
-auto-detect; (2) room mics don't comb when summed during singing (coherence 0.13) → Singing scene
-uses several mics, not one. Still needed: a *fuller* capture — longer, all room mics live, ideally a
-loud full-congregation song — to confirm 4+-mic summing stays comb-free and to re-test any
-singing-vs-speech discriminator. Analysis lives in scratchpad (`singing_vs_speech.py`,
+auto-detect; (2) room mics don't *acoustically* comb when summed (coherence 0.13) — BUT summing
+multiple Anker speakerphones stacks their independent DSP artifacts and sounds *worse* by ear (real
+worship 2026-08), so the Singing scene is **lapel-first, else a single Anker**, not several (see the
+Operator-experience Singing note). Still needed: a *fuller* capture — longer, all room mics live,
+ideally a loud full-congregation song — to re-test any singing-vs-speech discriminator (esp.
+room-to-room correlation) and confirm the mic-count call. Analysis lives in scratchpad (`singing_vs_speech.py`,
 `comb_test.py`, `find_singing.py`); fold the keepers into `tools/`.
-
-### 🛠 Offline cv-scale fidelity
-Align the Python `flux_cv` to the engine's `CurrentFluxCv` scale (offline ~0.4 vs engine ~1–3.4) so
-offline replays can validate cv *thresholds* between services, not just relative behavior. Right now
-threshold tuning is stuck waiting on live sessions.
 
 ---
 
@@ -143,9 +171,10 @@ cap the file size so it can't balloon.
 ### 🛠 Keep the validation harness current
 `tools/`: `naturalness.py`, `voice_quality.py`, `replay_natural.py`, `review_natural.py`,
 `replay_share.py`, `scene4.py`/`scene5.py`, plus the singing set (`live_wav.py`, `find_singing.py`,
-`singing_vs_speech.py`, `comb_test.py`). Re-run after each captured session; fold in the cv-scale fix
-above so they're faithful to the engine. Note `live_wav.py` reads in-progress diag WAVs that
-`soundfile` can't — reuse it for any tool that runs mid-recording.
+`singing_vs_speech.py`, `comb_test.py`). Re-run after each captured session. (Live and offline
+`flux_cv` now share a scale after the 2026-07-26 fix, so replays are faithful to the engine.) Note
+`live_wav.py` reads in-progress diag WAVs that `soundfile` can't — reuse it for any tool that runs
+mid-recording.
 
 ---
 
@@ -176,4 +205,5 @@ Single-instance guard · build-stamped log banner · live JSON state endpoint (`
 logging flag (`--log`) · per-bus A/B LEDs + dynamic route tooltips · wider outputs · reference-guided
 "Match lapel" · reference-free "Prefer natural" · quality-weighted Share (loud-bad mic ducks) ·
 multiplicative natural hysteresis (bounce fix) · gains/cv/winner logging · desktop shortcut →
-latest build with diagnostics on.
+latest build with diagnostics on · cross-buffer flux-CV windowing (live CV unfrozen, now on the
+offline scale).
