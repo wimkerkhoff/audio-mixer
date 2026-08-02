@@ -23,6 +23,9 @@ Per output, show the decision as it happens:
 - A live per-mic row: **env level**, **flux-cv**, **ref-corr**, automix **gain**, route/mute,
   priority/ducking — deciding metric highlighted, and the challenger being *blocked* called out
   (e.g. "#2 louder but held off by the 3 dB margin + 140 ms hold").
+- **Rank the non-winners** by selection score — #2 is who takes over if the leader drops; mics out
+  of the running (Bluetooth / muted for singing / idle lapel) marked "—". (Operator asked for this.)
+- Opens as a **separate resizable window** (Diagnostics), alongside a Devices tab (endpoints/BT/dongles).
 - A one-line plain-English verdict per output: e.g. "#1 winning: lowest flux-cv (0.38) among mics
   within −8 dB; #2 louder (−22 dB) but blocked by hold."
 
@@ -33,17 +36,39 @@ same snapshot on the existing ~30 Hz meter timer (NOT per-buffer). Newly worthwh
 column would have shown a frozen value). Pairs with the clarity→flux-cv readout unification and
 operator overrides below.
 
-### 🔲 "Easy UI" mode
-A simplified, operator-proof view for non-technical volunteers. Hide the advanced/per-channel
-automix controls and surface only the essentials: device pick, levels, a scene/Standby control, and
-a master mute. A toggle switches between **Easy** and **Full/Advanced**. *Why:* operators aren't
-audio-savvy; the common path has to "just work" with minimal controls to get wrong.
+### 🔲 "Easy UI" mode — *design agreed 2026-08; clickable mockup linked below*
+A simplified, operator-proof default view for non-technical volunteers, with progressive disclosure
+to everything else.
 
-### 🔲 Scene control — Standby / Teaching / Singing
+**Simple mode surfaces exactly four things:**
+1. **Scene selector** — Standby / Teaching / Prayer / Singing (see Scene control). The one control that matters.
+2. **Output "on-air" cards** — per output (Zoom/OBS, Headset): a live meter, an On-air / Off-air / Muted pill, a mute button. Answers "is audio flowing?"
+3. **Mic health dots** — one chip per mic: green live · amber idle/ducked · red dead/Bluetooth · grey off. Click a dot → jump to that input in Advanced.
+4. **Health/alert banner** — the productized in-app monitor (below). One color-coded line, dismissible, with an action button where possible.
+
+Plus **one** operator override: a coarse **Voice source** toggle — **Lapel vs Room mics** — shown only in Teaching & Singing. Operators get NO per-mic control in Simple mode (explicit call); to touch a mic they drop into Advanced.
+
+**Compact footprint (hard requirement):** the operator runs on a *single monitor* shared with YouTube, SermonAudio, OBS, and Zoom — screen space is tight. Simple mode must be **small and dockable** — a narrow, always-usable panel, not a full-width console; design to a compact minimum width and consider an always-on-top option. (The mockup shows the full layout; the shipped panel should be tighter.)
+
+**Progressive disclosure:**
+- **Advanced** toggle → today's full per-channel mixer, unchanged. Nothing hidden is more than one click away.
+- **Diagnostics** and **Settings** open as **separate resizable windows** (the main window is fixed-size).
+
+**Alert banner = the monitor, productized.** These sessions are its spec — it surfaces exactly what a human had to watch `/state` for: unrouted-lapel-while-priority (off-air presenter), stream silent, dead/stalled mic, **Anker on Bluetooth**, priority ducking the room during singing, mic reconnected → reassigned. Action buttons where possible ("How to fix →", "Switch to Singing?").
+
+**Clickable mockup (2026-08):** https://claude.ai/code/artifact/5e1b4b40-43f0-4a1a-95c2-56c60658b164 — scenes, source override, health banner, live meters, and the separate Diagnostics (ranked "why this mic" table) + Settings windows.
+
+**Suggested build order:** (1) Simple shell + scene buttons, (2) alert/health banner, (3) Settings window + device behaviors (hide-virtual, BT-warn, auto-readd), (4) Diagnostics window.
+
+*Why:* operators aren't audio-savvy; the common path has to "just work," and on a crowded single screen it has to stay small.
+
+### 🔲 Scene control — Standby / Teaching / Prayer / Singing
 One operator control that switches the whole behavior:
 - **Standby** — outputs muted, so pre-service chatter never reaches Zoom/recording.
 - **Teaching** — the current follow-the-talker automix (priority-lapel ducks the room; correct for
   one coherent talker).
+- **Prayer** — turn-taking room mics, no lapel: Gate, Prefer-natural OFF, lapel muted/unrouted (it's
+  a priority-duck hazard). See the prayer-meeting-scene memory.
 - **Singing** — **open the good room mics at flat/equal gain and suspend priority-ducking.** Do NOT
   collapse to one mic and do NOT follow-the-talker.
   1. Suspend priority-ducking — stop the lapel gating the room out (the 2026-07-05 bug: worship
