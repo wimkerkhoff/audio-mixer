@@ -46,8 +46,10 @@ public sealed class InputChannel : IDisposable
     private const int FluxHop = FluxN;          // non-overlapping windows (set < FluxN for overlap)
     private readonly float[] _fluxAccum = new float[FluxN];
     private int _fluxFill;
-    private int _fluxDbgLog;                     // one-shot: log first buffers' frame sizes (opt-in AudioLog)
     private string _label = "";
+
+    // One-shot latch: a failing AddSamples would otherwise repeat ~100x/s, so log the first one only.
+    private bool _pushErrorLogged;
 
     // --- RF-health accumulators (diagnostic) --------------------------------------------------
     // Lock-free monotonic counters incremented in the audio callback; the ~1 Hz log loop reads them
@@ -377,6 +379,16 @@ public sealed class InputChannel : IDisposable
         _fluxHasPrev = true;
     }
 
+    // Pushing to a routed output should never throw (the buffer discards on overflow). If it does, the
+    // channel is silently dead on that bus, so record it once rather than swallowing it forever.
+    private void LogPushFailure(int outputIndex, Exception ex)
+    {
+        if (_pushErrorLogged) return;
+        _pushErrorLogged = true;
+        System.Diagnostics.Trace.WriteLine($"Input '{_label}' push to output {outputIndex} failed: {ex}");
+        AudioLog.Write($"Input '{_label}' push to output {outputIndex} failed: {ex.GetType().Name}: {ex.Message}");
+    }
+
     private static bool IsUnity(float g) => g > 0.9999f && g < 1.0001f;
 
     private static BufferedWaveProvider CreateOutBuffer()
@@ -446,8 +458,6 @@ public sealed class InputChannel : IDisposable
             int read = converted.Read(rented, 0, sampleCount);
             if (read <= 0) return;
 
-            if (_fluxDbgLog < 4) { _fluxDbgLog++; AudioLog.Write($"[flux] '{_label}' srcRate={_captureFormat.SampleRate} bufFrames={read / 2} (need {FluxN})"); }
-
             InputPeak.Observe(rented, read);
 
             _analysisRecorder?.WriteSamples(rented, 0, read);
@@ -474,11 +484,12 @@ public sealed class InputChannel : IDisposable
             float rmsNow = (float)Math.Sqrt(sumSq / read);
             Volatile.Write(ref _currentLevelLinear, rmsNow);
             Volatile.Write(ref _currentPeakLinear, peak);
-            if (rmsNow > FluxVoiceRms) ComputeFlux(rented, read);
+
+            bool rfVoiced = rmsNow > FluxVoiceRms;
+            if (rfVoiced) ComputeFlux(rented, read);
 
             // RF-health tally (diagnostic; see SnapshotRfStats). Voiced/silent are mutually exclusive
             // (voice threshold >> silence floor); a voiced→silent transition is a dropout "edge".
-            bool rfVoiced = rmsNow > FluxVoiceRms;
             Interlocked.Increment(ref _rfBuffers);
             if (rfVoiced)
             {
@@ -512,7 +523,8 @@ public sealed class InputChannel : IDisposable
                             unityBytes = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
                             Buffer.BlockCopy(rented, 0, unityBytes, 0, byteCount);
                         }
-                        try { _outBuffers[o].AddSamples(unityBytes, 0, byteCount); } catch { }
+                        try { _outBuffers[o].AddSamples(unityBytes, 0, byteCount); }
+                        catch (Exception ex) { LogPushFailure(o, ex); }
                     }
                     else
                     {
@@ -522,7 +534,8 @@ public sealed class InputChannel : IDisposable
                         float step = (target - start) / read;
                         for (int i = 0; i < read; i++) { scaledFloats[i] = rented[i] * g; g += step; }
                         Buffer.BlockCopy(scaledFloats, 0, scaledBytes, 0, byteCount);
-                        try { _outBuffers[o].AddSamples(scaledBytes, 0, byteCount); } catch { }
+                        try { _outBuffers[o].AddSamples(scaledBytes, 0, byteCount); }
+                        catch (Exception ex) { LogPushFailure(o, ex); }
                     }
                     _autoMixRamp[o] = target;
                 }

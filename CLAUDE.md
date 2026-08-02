@@ -50,6 +50,7 @@ AudioMixer/
 │   ├── OutputBus.cs          # MixingSampleProvider → peak tap → volume → WasapiOut; optional recorder
 │   ├── AutoMixer.cs          # Per-output leader decision loop (level / lapel-corr / natural); off-thread
 │   ├── AutoMixMode.cs        # enum Off/Share/Gate
+│   ├── IAutoMixControl.cs    # Per-output automix setters — the VM's one dependency, not N delegates
 │   ├── AudioDeviceInfo.cs    # Device id + friendly name record
 │   ├── DelayLine.cs          # Ring buffer with adjustable read offset
 │   ├── PeakMeter.cs          # Peak dBFS per buffer, peak-hold decay

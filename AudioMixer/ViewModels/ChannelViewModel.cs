@@ -195,11 +195,7 @@ public sealed class ChannelViewModel : ViewModelBase
         if (!DeviceList.Sync(AvailableDevices, devices, SelectedDevice?.Id)) SelectedDevice = null;
     }
 
-    private static float PercentToLinear(float percent)
-    {
-        if (percent <= 0f) return 0f;
-        return percent / 100f;
-    }
+    private static float PercentToLinear(float percent) => percent / 100f;
 }
 
 public sealed class RouteToggleViewModel : ViewModelBase

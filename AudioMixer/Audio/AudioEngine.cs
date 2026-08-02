@@ -3,7 +3,7 @@ using NAudio.Wave;
 
 namespace AudioMixer.Audio;
 
-public sealed class AudioEngine : IDisposable
+public sealed class AudioEngine : IDisposable, IAutoMixControl
 {
     public const int DefaultInputCount = 3;
     public const int MinInputCount = 1;
@@ -53,10 +53,21 @@ public sealed class AudioEngine : IDisposable
     public int AutoMixActiveInput(int output) => _autoMix.ActiveInput(output);
     public AutoMixDiag AutoMixSnapshot() => _autoMix.Snapshot(Inputs.Length);
 
+    private bool _autoMixErrorLogged;
+
     private void AutoMixTick(object? state)
     {
         var inputs = Inputs; // single atomic reference read; safe vs SetInputCount's array swap
-        try { _autoMix.Tick(inputs); } catch { }
+        try { _autoMix.Tick(inputs); }
+        catch (Exception ex)
+        {
+            // A throwing Tick leaves every automix gain frozen at its last value — the mixer keeps
+            // playing but stops selecting. Latched so a repeating fault can't flood at 100 Hz.
+            if (_autoMixErrorLogged) return;
+            _autoMixErrorLogged = true;
+            System.Diagnostics.Trace.WriteLine($"AutoMixer.Tick failed: {ex}");
+            AudioLog.Write($"AutoMixer.Tick failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private void WatchdogTick(object? state)

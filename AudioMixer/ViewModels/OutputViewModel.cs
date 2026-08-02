@@ -6,12 +6,8 @@ namespace AudioMixer.ViewModels;
 public sealed class OutputViewModel : ViewModelBase
 {
     private readonly OutputBus _bus;
+    private readonly IAutoMixControl _autoMix;
     private readonly Action<int, AudioDeviceInfo?> _onDeviceChanged;
-    private readonly Action<int, AutoMixMode> _onAutoMixModeChanged;
-    private readonly Action<int, float> _onAutoMixStrengthChanged;
-    private readonly Action<int, bool> _onStableHandoffChanged;
-    private readonly Action<int, bool> _onReferenceGuidedChanged;
-    private readonly Action<int, bool> _onPreferNaturalChanged;
     private readonly Action<int> _onToggleRecord;
 
     public int Index { get; }
@@ -80,7 +76,7 @@ public sealed class OutputViewModel : ViewModelBase
         {
             if (SetField(ref _autoMixModeIndex, value))
             {
-                _onAutoMixModeChanged(Index, (AutoMixMode)value);
+                _autoMix.SetAutoMixMode(Index, (AutoMixMode)value);
                 RaisePropertyChanged(nameof(AutoMixEnabled));
                 RaisePropertyChanged(nameof(CurrentAutoMixLabel));
             }
@@ -98,7 +94,7 @@ public sealed class OutputViewModel : ViewModelBase
         set
         {
             if (SetField(ref _strengthPercent, value))
-                _onAutoMixStrengthChanged(Index, (float)(value / 100.0));
+                _autoMix.SetAutoMixStrength(Index, (float)(value / 100.0));
         }
     }
 
@@ -112,7 +108,7 @@ public sealed class OutputViewModel : ViewModelBase
         set
         {
             if (SetField(ref _stableHandoff, value))
-                _onStableHandoffChanged(Index, value);
+                _autoMix.SetAutoMixStableHandoff(Index, value);
         }
     }
 
@@ -125,7 +121,7 @@ public sealed class OutputViewModel : ViewModelBase
         set
         {
             if (SetField(ref _referenceGuided, value))
-                _onReferenceGuidedChanged(Index, value);
+                _autoMix.SetAutoMixReferenceGuided(Index, value);
         }
     }
 
@@ -138,30 +134,22 @@ public sealed class OutputViewModel : ViewModelBase
         set
         {
             if (SetField(ref _preferNatural, value))
-                _onPreferNaturalChanged(Index, value);
+                _autoMix.SetAutoMixPreferNatural(Index, value);
         }
     }
 
     public OutputViewModel(
         int index,
         OutputBus bus,
+        IAutoMixControl autoMix,
         IEnumerable<AudioDeviceInfo> availableDevices,
         Action<int, AudioDeviceInfo?> onDeviceChanged,
-        Action<int, AutoMixMode> onAutoMixModeChanged,
-        Action<int, float> onAutoMixStrengthChanged,
-        Action<int, bool> onStableHandoffChanged,
-        Action<int, bool> onReferenceGuidedChanged,
-        Action<int, bool> onPreferNaturalChanged,
         Action<int> onToggleRecord)
     {
         Index = index;
         _bus = bus;
+        _autoMix = autoMix;
         _onDeviceChanged = onDeviceChanged;
-        _onAutoMixModeChanged = onAutoMixModeChanged;
-        _onAutoMixStrengthChanged = onAutoMixStrengthChanged;
-        _onStableHandoffChanged = onStableHandoffChanged;
-        _onReferenceGuidedChanged = onReferenceGuidedChanged;
-        _onPreferNaturalChanged = onPreferNaturalChanged;
         _onToggleRecord = onToggleRecord;
         _customLabel = index == 0 ? "A — Headset" : "B — Zoom";
         AvailableDevices = new ObservableCollection<AudioDeviceInfo>(availableDevices);

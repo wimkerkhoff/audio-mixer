@@ -11,7 +11,6 @@ public sealed class OutputBus : IDisposable
 
     private readonly object _lock = new();
     private WasapiOut? _output;
-    private MixingSampleProvider? _mixer;
     private TapSampleProvider? _tap;
     private VolumeSampleProvider? _volumeProvider;
 
@@ -95,7 +94,6 @@ public sealed class OutputBus : IDisposable
 
         lock (_lock)
         {
-            _mixer = mixer;
             _tap = tap;
             _volumeProvider = volume;
             _output = output;
@@ -120,7 +118,6 @@ public sealed class OutputBus : IDisposable
         {
             prevOutput = _output;
             _output = null;
-            _mixer = null;
             _tap = null;
             _volumeProvider = null;
         }

@@ -65,6 +65,10 @@ public sealed class AutoMixer
     private const float QualityFloor = 0.35f;
     private const float CrestMs = 120f;            // crest smoothing; slower than the level envelope
 
+    // Which metric decides the leader this tick. Correlation outranks Natural, which outranks Level;
+    // each has its own beats-the-leader margin (see Beats) and Share weight (see SelWeight).
+    private enum SelectionMetric { Level, Correlation, Natural }
+
     private readonly int _outputCount;
     private readonly int[] _modes;                 // AutoMixMode as int (enum can't use Volatile<T>)
     private readonly float[] _strength;            // 0..1 per output
@@ -308,7 +312,9 @@ public sealed class AutoMixer
                 useNatural = argNatural >= 0;
             }
 
-            int selMode = useCorr ? 1 : useNatural ? 2 : 0;        // 0 level, 1 correlation, 2 natural
+            var selMode = useCorr ? SelectionMetric.Correlation
+                : useNatural ? SelectionMetric.Natural
+                : SelectionMetric.Level;
             int challenger = useCorr ? argCorr : useNatural ? argNatural : argmax;
 
             if (priorityActive)
@@ -395,27 +401,30 @@ public sealed class AutoMixer
         for (int i = 0; i < n; i++) inputs[i].IsAutoMixActive = _activeAny[i];
     }
 
-    // Challenger-beats-leader test per selection mode: 1 correlation (higher better, additive margin),
-    // 2 natural (lower flux-CV better, additive margin), else level (higher better, multiplicative dB).
-    private bool Beats(int mode, int challenger, int held) => mode switch
+    // Challenger-beats-leader test per selection metric. Correlation: higher is better, additive margin
+    // (corr is already a bounded 0..1 score). Natural: lower flux-CV is better, MULTIPLICATIVE margin —
+    // the CV scale shifts with the measurement (see NaturalHystRatio), so a fixed absolute margin is
+    // near-zero hysteresis on one scale and a lock-in on another. Level: higher is better, multiplicative
+    // (a dB ratio).
+    private bool Beats(SelectionMetric mode, int challenger, int held) => mode switch
     {
-        1 => _corr[challenger] > _corr[held] + CorrHysteresis,
-        2 => _cv[held] <= 0f || _cv[challenger] < _cv[held] * NaturalHystRatio,
+        SelectionMetric.Correlation => _corr[challenger] > _corr[held] + CorrHysteresis,
+        SelectionMetric.Natural => _cv[held] <= 0f || _cv[challenger] < _cv[held] * NaturalHystRatio,
         _ => _env[challenger] > _env[held] * HandoffHysteresis,
     };
 
-    // Per-mic quality weight for Share in non-level selection modes (1 correlation, 2 natural): 1.0 for
-    // the best mic, down to SelWeightFloor for the worst, so worse mics duck regardless of their level.
-    private float SelWeight(int i, int mode, int leader)
+    // Per-mic quality weight for Share in the non-level selection metrics: 1.0 for the best mic, down to
+    // SelWeightFloor for the worst, so worse mics duck regardless of their level.
+    private float SelWeight(int i, SelectionMetric mode, int leader)
     {
-        if (mode == 2)
+        if (mode == SelectionMetric.Natural)
         {
             float cv = _cv[i];
             if (cv <= 0f) return 1f;                          // no speech data yet -> don't penalize
             float t = Math.Clamp((cv - NatCvGood) / (NatCvBad - NatCvGood), 0f, 1f);
             return Lerp(1f, SelWeightFloor, t);
         }
-        if (mode == 1)
+        if (mode == SelectionMetric.Correlation)
         {
             float cl = _corr[leader];
             if (cl <= 1e-4f) return 1f;

@@ -80,6 +80,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public double WindowWidth => Math.Max(560, _inputCount * 96 + 240);
 
+    // Output buses are named by letter (A, B, …) everywhere the user sees them.
+    private static string OutputTag(int index) => ((char)('A' + index)).ToString();
+
     private const double BaseWindowHeight = 344;
     private const double VbCableBannerHeight = 36;
     public double WindowHeight => BaseWindowHeight + (ShowVbCablePrompt ? VbCableBannerHeight : 0);
@@ -108,13 +111,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             _recorders[o] = new MixRecorder();
             Outputs[o] = new OutputViewModel(
-                o, _engine.Outputs[o], _allOutputDevices,
+                o, _engine.Outputs[o], _engine, _allOutputDevices,
                 (idx, dev) => SetOutputDevice(idx, dev),
-                (idx, mode) => _engine.SetAutoMixMode(idx, mode),
-                (idx, strength) => _engine.SetAutoMixStrength(idx, strength),
-                (idx, on) => _engine.SetAutoMixStableHandoff(idx, on),
-                (idx, on) => _engine.SetAutoMixReferenceGuided(idx, on),
-                (idx, on) => _engine.SetAutoMixPreferNatural(idx, on),
                 ToggleRecord);
         }
 
@@ -272,7 +270,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             string Name(int i) => i < 0 ? "none"
                 : i < Channels.Count ? $"mic{i + 1} ('{Channels[i].CustomLabel}')" : $"mic{i + 1}";
             string clarity = winner >= 0 && winner < Channels.Count ? Channels[winner].ClarityText : "—";
-            AudioLog.Write($"Output {(o == 0 ? "A" : "B")} auto-mix: {Name(prev)} → {Name(winner)} (clarity {clarity})");
+            AudioLog.Write($"Output {OutputTag(o)} auto-mix: {Name(prev)} → {Name(winner)} (clarity {clarity})");
         }
     }
 
@@ -303,19 +301,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             var dev = Channels[i].SelectedDevice;
             if (dev == null) continue;
-            var bufMs = string.Join(",", Enumerable.Range(0, Outputs.Length)
-                .Select(o => _engine.Inputs[i].BufferedMs(o).ToString()));
-            var readSamples = string.Join(",", Enumerable.Range(0, Outputs.Length)
-                .Select(o => _engine.Inputs[i].ReadSamplesForOutput(o).ToString()));
-            var readCalls = string.Join(",", Enumerable.Range(0, Outputs.Length)
-                .Select(o => _engine.Inputs[i].ReadCallsForOutput(o).ToString()));
-            var gains = string.Join(",", Enumerable.Range(0, Outputs.Length)
-                .Select(o => _engine.Inputs[i].GetAutoMixGain(o).ToString("F2")));
+            var input = _engine.Inputs[i];
+            string PerOutput(Func<int, string> value) =>
+                string.Join(",", Enumerable.Range(0, Outputs.Length).Select(value));
+            var bufMs = PerOutput(o => input.BufferedMs(o).ToString());
+            var readSamples = PerOutput(o => input.ReadSamplesForOutput(o).ToString());
+            var readCalls = PerOutput(o => input.ReadCallsForOutput(o).ToString());
+            var gains = PerOutput(o => input.GetAutoMixGain(o).ToString("F2"));
             // RF-link health (offline dongle-link diagnosis): high drops/silent while voiced is high =
             // wireless dropouts; elevated fluxCv corroborates. Only meaningful while the mic is voiced.
-            var rf = _engine.Inputs[i].SnapshotRfStats();
+            var rf = input.SnapshotRfStats();
             AudioLog.Write(
-                $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} gains=[{gains}] fluxCv={_engine.Inputs[i].CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
+                $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} gains=[{gains}] fluxCv={input.CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
         }
     }
 
@@ -374,32 +371,62 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         RebuildAvailableDevices();
     }
 
+    // User-triggered actions all report failure the same way: a status-bar line naming the action.
+    private void RunGuarded(string what, Action body)
+    {
+        try { body(); }
+        catch (Exception ex) { StatusText = $"{what} failed: {ex.Message}"; }
+    }
+
     private void SetInputDevice(int index, AudioDeviceInfo? device)
     {
-        try
+        RunGuarded($"Input {index + 1}", () =>
         {
             _engine.SetInputDevice(index, device);
             StatusText = device == null ? $"Input {index + 1}: (none)" : $"Input {index + 1}: {device.FriendlyName}";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Input {index + 1} error: {ex.Message}";
-        }
+        });
         if (!_suppressRebuild) RebuildAvailableDevices();
     }
 
     private void SetOutputDevice(int index, AudioDeviceInfo? device)
     {
-        try
+        string tag = OutputTag(index);
+        RunGuarded($"Output {tag}", () =>
         {
             _engine.SetOutputDevice(index, device);
-            StatusText = device == null ? $"Output {(index == 0 ? "A" : "B")}: (none)" : $"Output {(index == 0 ? "A" : "B")}: {device.FriendlyName}";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Output {(index == 0 ? "A" : "B")} error: {ex.Message}";
-        }
+            StatusText = device == null ? $"Output {tag}: (none)" : $"Output {tag}: {device.FriendlyName}";
+        });
         if (!_suppressRebuild) RebuildAvailableDevices();
+    }
+
+    // Device pickers are exclusive: a strip may only offer devices no sibling strip has claimed.
+    private static void RefreshExclusive<T>(
+        IReadOnlyList<T> strips, IReadOnlyList<AudioDeviceInfo> all,
+        Func<T, string?> selectedId, Action<T, IEnumerable<AudioDeviceInfo>> refresh)
+    {
+        for (int i = 0; i < strips.Count; i++)
+        {
+            var excluded = new HashSet<string>();
+            for (int j = 0; j < strips.Count; j++)
+            {
+                if (j == i) continue;
+                var id = selectedId(strips[j]);
+                if (!string.IsNullOrEmpty(id)) excluded.Add(id);
+            }
+            refresh(strips[i], all.Where(d => !excluded.Contains(d.Id)));
+        }
+    }
+
+    private static void DropDuplicateSelections<T>(
+        IEnumerable<T> strips, Func<T, string?> selectedId, Action<T> clear)
+    {
+        var seen = new HashSet<string>();
+        foreach (var strip in strips)
+        {
+            var id = selectedId(strip);
+            if (string.IsNullOrEmpty(id)) continue;
+            if (!seen.Add(id)) clear(strip);
+        }
     }
 
     private void RebuildAvailableDevices()
@@ -408,28 +435,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _rebuildInProgress = true;
         try
         {
-            for (int i = 0; i < Channels.Count; i++)
-            {
-                var excluded = new HashSet<string>();
-                for (int j = 0; j < Channels.Count; j++)
-                {
-                    if (j == i) continue;
-                    var id = Channels[j].SelectedDevice?.Id;
-                    if (!string.IsNullOrEmpty(id)) excluded.Add(id);
-                }
-                Channels[i].RefreshDevices(_allInputDevices.Where(d => !excluded.Contains(d.Id)));
-            }
-            for (int o = 0; o < Outputs.Length; o++)
-            {
-                var excluded = new HashSet<string>();
-                for (int p = 0; p < Outputs.Length; p++)
-                {
-                    if (p == o) continue;
-                    var id = Outputs[p].SelectedDevice?.Id;
-                    if (!string.IsNullOrEmpty(id)) excluded.Add(id);
-                }
-                Outputs[o].RefreshDevices(_allOutputDevices.Where(d => !excluded.Contains(d.Id)));
-            }
+            RefreshExclusive(Channels, _allInputDevices,
+                c => c.SelectedDevice?.Id, (c, devices) => c.RefreshDevices(devices));
+            RefreshExclusive(Outputs, _allOutputDevices,
+                o => o.SelectedDevice?.Id, (o, devices) => o.RefreshDevices(devices));
         }
         finally
         {
@@ -439,36 +448,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void DedupeAndRebuild()
     {
-        var seenIn = new HashSet<string>();
-        foreach (var ch in Channels)
-        {
-            var id = ch.SelectedDevice?.Id;
-            if (string.IsNullOrEmpty(id)) continue;
-            if (!seenIn.Add(id)) ch.SelectedDevice = null;
-        }
-        var seenOut = new HashSet<string>();
-        foreach (var op in Outputs)
-        {
-            var id = op.SelectedDevice?.Id;
-            if (string.IsNullOrEmpty(id)) continue;
-            if (!seenOut.Add(id)) op.SelectedDevice = null;
-        }
+        DropDuplicateSelections(Channels, c => c.SelectedDevice?.Id, c => c.SelectedDevice = null);
+        DropDuplicateSelections(Outputs, o => o.SelectedDevice?.Id, o => o.SelectedDevice = null);
         RebuildAvailableDevices();
     }
 
-    private void ResyncAudio()
+    private void ResyncAudio() => RunGuarded("Resync", () =>
     {
-        try
-        {
-            _engine.RestartInputs();
-            _engine.RestartOutputs();
-            StatusText = "Audio resynced (inputs + outputs).";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Resync failed: {ex.Message}";
-        }
-    }
+        _engine.RestartInputs();
+        _engine.RestartOutputs();
+        StatusText = "Audio resynced (inputs + outputs).";
+    });
 
     private static void RunOnUi(Action action)
     {
@@ -542,19 +532,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         string folder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "AudioMixer", "recordings");
-        string tag = index == 0 ? "A" : "B";
-        string path = Path.Combine(folder, $"mix-{tag}-{DateTime.Now:yyyyMMdd-HHmmss}.wav");
-        try
+        string path = Path.Combine(folder, $"mix-{OutputTag(index)}-{DateTime.Now:yyyyMMdd-HHmmss}.wav");
+        RunGuarded("Record", () =>
         {
             recorder.Start(path, bus.InternalFormat);
             bus.Recorder = recorder;
             ovm.SetRecording(true);
             StatusText = $"Recording {ovm.CustomLabel} → {Path.GetFileName(path)}";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Record failed: {ex.Message}";
-        }
+        });
     }
 
     private void OnSettingChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -603,15 +588,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Volume = o.VolumePercent,
             }).ToArray(),
         };
-        try
+        RunGuarded("Save", () =>
         {
             _presetStore.Save(preset);
             StatusText = $"Saved {DateTime.Now:HH:mm:ss}";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Save failed: {ex.Message}";
-        }
+        });
     }
 
     private void TryLoadInitialPreset()
@@ -737,7 +718,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var active = Channels.Where(c => c.SelectedDevice != null).ToArray();
         if (active.Length == 0) { StatusText = "No inputs with a device selected to record."; return; }
 
-        try
+        RunGuarded("Input recording", () =>
         {
             Directory.CreateDirectory(folder);
             string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
@@ -750,11 +731,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged(nameof(InputDiagRecordIcon));
             RaisePropertyChanged(nameof(InputDiagRecordTooltip));
             StatusText = $"Recording {active.Length} inputs — narrate which mic is closest as people talk.";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Input recording failed: {ex.Message}";
-        }
+        });
     }
 
     private bool _delayDetectionInProgress;
