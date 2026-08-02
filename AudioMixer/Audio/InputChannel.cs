@@ -435,6 +435,95 @@ public sealed class InputChannel : IDisposable
         return provider;
     }
 
+    // Single pass for RMS + peak, latched for the automixer (which runs off-thread and only ever
+    // reads these two volatiles). Returns the RMS so the caller can gate the flux/RF work on it.
+    private float MeasureAndLatchLevels(float[] samples, int count)
+    {
+        double sumSq = 0;
+        float peak = 0f;
+        for (int i = 0; i < count; i++)
+        {
+            float s = samples[i];
+            sumSq += (double)s * s;
+            float a = s < 0 ? -s : s;
+            if (a > peak) peak = a;
+        }
+        float rms = (float)Math.Sqrt(sumSq / count);
+        Volatile.Write(ref _currentLevelLinear, rms);
+        Volatile.Write(ref _currentPeakLinear, peak);
+        return rms;
+    }
+
+    // RF-health tally (diagnostic; see SnapshotRfStats). Voiced/silent are mutually exclusive (the
+    // voice threshold is far above the silence floor); a voiced→silent transition is a dropout "edge".
+    private void TallyRfHealth(float rms, bool voiced)
+    {
+        Interlocked.Increment(ref _rfBuffers);
+        if (voiced)
+        {
+            Interlocked.Increment(ref _rfVoiced);
+            Interlocked.Add(ref _rfSumMilliDbVoiced, (long)(20000.0 * Math.Log10(rms)));
+        }
+        else if (rms < RfSilenceRms)
+        {
+            Interlocked.Increment(ref _rfSilent);
+            if (_rfPrevVoiced) Interlocked.Increment(ref _rfDropEdges);
+        }
+        _rfPrevVoiced = voiced;
+    }
+
+    // Fan the finished buffer out to each routed output, applying that output's automix gain with an
+    // intra-buffer ramp (no zipper). Both scratch buffers are rented lazily and at most once per call:
+    // the unity copy is made once and shared by every unity output, while the scaled buffers are
+    // rewritten per output (each output ramps to its own gain).
+    private void PushToOutputs(float[] samples, int count)
+    {
+        int byteCount = count * sizeof(float);
+        int mask = Volatile.Read(ref _routeMask);
+        byte[]? unityBytes = null;
+        float[]? scaledFloats = null;
+        byte[]? scaledBytes = null;
+        try
+        {
+            for (int o = 0; o < _outputCount; o++)
+            {
+                // Not routed: keep the ramp origin current so re-enabling doesn't jump from a stale gain.
+                if ((mask & (1 << o)) == 0) { _autoMixRamp[o] = Volatile.Read(ref _autoMixGain[o]); continue; }
+
+                float target = Volatile.Read(ref _autoMixGain[o]);
+                float start = _autoMixRamp[o];
+                if (IsUnity(target) && IsUnity(start))
+                {
+                    if (unityBytes == null)
+                    {
+                        unityBytes = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
+                        Buffer.BlockCopy(samples, 0, unityBytes, 0, byteCount);
+                    }
+                    try { _outBuffers[o].AddSamples(unityBytes, 0, byteCount); }
+                    catch (Exception ex) { LogPushFailure(o, ex); }
+                }
+                else
+                {
+                    scaledFloats ??= System.Buffers.ArrayPool<float>.Shared.Rent(count);
+                    scaledBytes ??= System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
+                    float g = start;
+                    float step = (target - start) / count;
+                    for (int i = 0; i < count; i++) { scaledFloats[i] = samples[i] * g; g += step; }
+                    Buffer.BlockCopy(scaledFloats, 0, scaledBytes, 0, byteCount);
+                    try { _outBuffers[o].AddSamples(scaledBytes, 0, byteCount); }
+                    catch (Exception ex) { LogPushFailure(o, ex); }
+                }
+                _autoMixRamp[o] = target;
+            }
+        }
+        finally
+        {
+            if (unityBytes != null) System.Buffers.ArrayPool<byte>.Shared.Return(unityBytes);
+            if (scaledFloats != null) System.Buffers.ArrayPool<float>.Shared.Return(scaledFloats);
+            if (scaledBytes != null) System.Buffers.ArrayPool<byte>.Shared.Return(scaledBytes);
+        }
+    }
+
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
         var fifo = _captureFifo;
@@ -472,80 +561,12 @@ public sealed class InputChannel : IDisposable
 
             PostPeak.Observe(rented, read);
 
-            double sumSq = 0;
-            float peak = 0f;
-            for (int i = 0; i < read; i++)
-            {
-                float s = rented[i];
-                sumSq += (double)s * s;
-                float a = s < 0 ? -s : s;
-                if (a > peak) peak = a;
-            }
-            float rmsNow = (float)Math.Sqrt(sumSq / read);
-            Volatile.Write(ref _currentLevelLinear, rmsNow);
-            Volatile.Write(ref _currentPeakLinear, peak);
+            float rmsNow = MeasureAndLatchLevels(rented, read);
+            bool voiced = rmsNow > FluxVoiceRms;
+            if (voiced) ComputeFlux(rented, read);
+            TallyRfHealth(rmsNow, voiced);
 
-            bool rfVoiced = rmsNow > FluxVoiceRms;
-            if (rfVoiced) ComputeFlux(rented, read);
-
-            // RF-health tally (diagnostic; see SnapshotRfStats). Voiced/silent are mutually exclusive
-            // (voice threshold >> silence floor); a voiced→silent transition is a dropout "edge".
-            Interlocked.Increment(ref _rfBuffers);
-            if (rfVoiced)
-            {
-                Interlocked.Increment(ref _rfVoiced);
-                Interlocked.Add(ref _rfSumMilliDbVoiced, (long)(20000.0 * Math.Log10(rmsNow)));
-            }
-            else if (rmsNow < RfSilenceRms)
-            {
-                Interlocked.Increment(ref _rfSilent);
-                if (_rfPrevVoiced) Interlocked.Increment(ref _rfDropEdges);
-            }
-            _rfPrevVoiced = rfVoiced;
-
-            int byteCount = read * sizeof(float);
-            int mask = Volatile.Read(ref _routeMask);
-            byte[]? unityBytes = null;
-            float[]? scaledFloats = null;
-            byte[]? scaledBytes = null;
-            try
-            {
-                for (int o = 0; o < _outputCount; o++)
-                {
-                    if ((mask & (1 << o)) == 0) { _autoMixRamp[o] = Volatile.Read(ref _autoMixGain[o]); continue; }
-
-                    float target = Volatile.Read(ref _autoMixGain[o]);
-                    float start = _autoMixRamp[o];
-                    if (IsUnity(target) && IsUnity(start))
-                    {
-                        if (unityBytes == null)
-                        {
-                            unityBytes = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
-                            Buffer.BlockCopy(rented, 0, unityBytes, 0, byteCount);
-                        }
-                        try { _outBuffers[o].AddSamples(unityBytes, 0, byteCount); }
-                        catch (Exception ex) { LogPushFailure(o, ex); }
-                    }
-                    else
-                    {
-                        scaledFloats ??= System.Buffers.ArrayPool<float>.Shared.Rent(read);
-                        scaledBytes ??= System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
-                        float g = start;
-                        float step = (target - start) / read;
-                        for (int i = 0; i < read; i++) { scaledFloats[i] = rented[i] * g; g += step; }
-                        Buffer.BlockCopy(scaledFloats, 0, scaledBytes, 0, byteCount);
-                        try { _outBuffers[o].AddSamples(scaledBytes, 0, byteCount); }
-                        catch (Exception ex) { LogPushFailure(o, ex); }
-                    }
-                    _autoMixRamp[o] = target;
-                }
-            }
-            finally
-            {
-                if (unityBytes != null) System.Buffers.ArrayPool<byte>.Shared.Return(unityBytes);
-                if (scaledFloats != null) System.Buffers.ArrayPool<float>.Shared.Return(scaledFloats);
-                if (scaledBytes != null) System.Buffers.ArrayPool<byte>.Shared.Return(scaledBytes);
-            }
+            PushToOutputs(rented, read);
         }
         finally
         {
