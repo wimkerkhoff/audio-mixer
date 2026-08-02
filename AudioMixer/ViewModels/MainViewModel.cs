@@ -405,18 +405,31 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         });
     }
 
+    // Exactly the properties PresetMapper persists. This MUST stay an allowlist: the meter tick raises
+    // a dozen display properties 30x/second, so under a blocklist any one we forgot to exclude resets
+    // the 500 ms debounce every 33 ms and the autosave timer can never elapse — which is precisely
+    // what happened (only Dispose still saved, so a crash or a kill lost the session's changes).
+    // Channel and output share the label/device/volume names, so one entry each covers both.
+    private static readonly HashSet<string> PersistedProperties = new()
+    {
+        nameof(ChannelViewModel.CustomLabel),
+        nameof(ChannelViewModel.SelectedDevice),
+        nameof(ChannelViewModel.VolumePercent),
+        nameof(ChannelViewModel.Muted),
+        nameof(ChannelViewModel.DelayMs),
+        nameof(ChannelViewModel.IsPriority),
+        nameof(RouteToggleViewModel.IsOn),
+        nameof(OutputViewModel.AutoMixModeIndex),
+        nameof(OutputViewModel.StrengthPercent),
+        nameof(OutputViewModel.StableHandoff),
+        nameof(OutputViewModel.ReferenceGuided),
+        nameof(OutputViewModel.PreferNatural),
+    };
+
     private void OnSettingChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (_suppressAutosave) return;
-        if (e.PropertyName is nameof(ChannelViewModel.InputPeakDb)
-            or nameof(ChannelViewModel.PostPeakDb)
-            or nameof(ChannelViewModel.InputPeakHoldDb)
-            or nameof(ChannelViewModel.PostPeakHoldDb)
-            or nameof(OutputViewModel.OutputPeakDb)
-            or nameof(OutputViewModel.OutputPeakHoldDb))
-        {
-            return;
-        }
+        if (e.PropertyName == null || !PersistedProperties.Contains(e.PropertyName)) return;
         _autosaveTimer.Stop();
         _autosaveTimer.Start();
     }

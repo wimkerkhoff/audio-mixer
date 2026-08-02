@@ -403,6 +403,16 @@ later judgment.
 
 ### UI / WPF
 
+- **The meter tick and the autosave debounce share one `PropertyChanged` stream, so filtering it with
+  a blocklist silently disables autosave.** `ChannelViewModel.RefreshMeters` raises ~13 display
+  properties 30x/second and `MainViewModel.OnSettingChanged` restarts a 500 ms debounce timer on any
+  property it doesn't recognise — so the four peak properties that were excluded weren't enough
+  (`IsDucking`, `IsAutoMixActive`, `RoutedA/B`, `DuckingA/B`, clarity) and the timer was reset every
+  33 ms and could never elapse. Symptom: settings persist across a *clean exit* (Dispose still calls
+  `SavePreset`) but a crash or a killed process loses the whole session. Fix: `OnSettingChanged`
+  matches an **allowlist** (`PersistedProperties`) mirroring exactly what `PresetMapper` writes. Keep
+  it that way — a new display property must never be able to break saving by omission.
+
 - **Input strips live in a `UniformGrid Rows="1"`, which divides the column equally and IGNORES each
   child's `MinWidth`.** A fixed-width window crams N strips into whatever space exists and clips the
   right-most controls (A/B route toggles vanish first). Fix: the window is non-resizable and its width
