@@ -106,44 +106,11 @@ public sealed class ChannelViewModel : ViewModelBase
     public bool IsDucking => _channel.IsDucking;
     public bool IsAutoMixActive => _channel.IsAutoMixActive;
 
-    // Per-bus LED state. A bus LED is green when the input is routed there and passing (not ducked),
-    // amber when routed but ducked by the automixer, dim when not routed to that bus.
-    public bool RoutedA => Routes.Length > 0 && Routes[0].IsOn;
-    public bool RoutedB => Routes.Length > 1 && Routes[1].IsOn;
-    public bool DuckingA => _channel.IsDuckingOn(0);
-    public bool DuckingB => _channel.IsDuckingOn(1);
-
-    // Live output labels (e.g. "MON", "HEADSET") so the LED tooltips name the actual buses.
-    private OutputViewModel? _outputA;
-    private OutputViewModel? _outputB;
-    public string OutputALabel => string.IsNullOrWhiteSpace(_outputA?.CustomLabel) ? "A" : _outputA!.CustomLabel;
-    public string OutputBLabel => string.IsNullOrWhiteSpace(_outputB?.CustomLabel) ? "B" : _outputB!.CustomLabel;
-    public string LedATooltip => $"{OutputALabel}: green = live, amber = ducked, dim = not routed";
-    public string LedBTooltip => $"{OutputBLabel}: green = live, amber = ducked, dim = not routed";
-
-    // Wires the output strips' (renameable) labels into this channel's route toggles and bus LEDs so
-    // their tooltips track the real output names. Called after the outputs exist.
+    // Wires the output strips' (renameable) labels into this channel's route toggles, so the toggle
+    // and bus-LED tooltips track the real output names. Called after the outputs exist.
     public void AttachOutputs(OutputViewModel[] outputs)
     {
-        _outputA = outputs.Length > 0 ? outputs[0] : null;
-        _outputB = outputs.Length > 1 ? outputs[1] : null;
         for (int o = 0; o < Routes.Length && o < outputs.Length; o++) Routes[o].AttachOutput(outputs[o]);
-        if (_outputA != null) _outputA.PropertyChanged += OnOutputLabelChanged;
-        if (_outputB != null) _outputB.PropertyChanged += OnOutputLabelChanged;
-        RaiseOutputLabels();
-    }
-
-    private void OnOutputLabelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(OutputViewModel.CustomLabel)) RaiseOutputLabels();
-    }
-
-    private void RaiseOutputLabels()
-    {
-        RaisePropertyChanged(nameof(OutputALabel));
-        RaisePropertyChanged(nameof(OutputBLabel));
-        RaisePropertyChanged(nameof(LedATooltip));
-        RaisePropertyChanged(nameof(LedBTooltip));
     }
 
     // Crest-derived clarity (0..1, higher = closer/cleaner). NaN when the mic hears no speech.
@@ -181,10 +148,7 @@ public sealed class ChannelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(PostPeakHoldDb));
         RaisePropertyChanged(nameof(IsDucking));
         RaisePropertyChanged(nameof(IsAutoMixActive));
-        RaisePropertyChanged(nameof(RoutedA));
-        RaisePropertyChanged(nameof(RoutedB));
-        RaisePropertyChanged(nameof(DuckingA));
-        RaisePropertyChanged(nameof(DuckingB));
+        foreach (var r in Routes) r.RefreshLed();
         RaisePropertyChanged(nameof(HasClarity));
         RaisePropertyChanged(nameof(ClarityBar));
         RaisePropertyChanged(nameof(ClarityText));
@@ -206,11 +170,23 @@ public sealed class RouteToggleViewModel : ViewModelBase
     private OutputViewModel? _output;
 
     public int OutputIndex => _outputIndex;
-    public string Label => _outputIndex == 0 ? "→ A" : "→ B";
-    public string ShortLabel => _outputIndex == 0 ? "A" : "B";
-    public string Tooltip => _output != null && !string.IsNullOrWhiteSpace(_output.CustomLabel)
-        ? $"Route to {_output.CustomLabel}"
-        : $"Route to Output {ShortLabel}";
+    public string ShortLabel => OutputViewModel.Tag(_outputIndex);
+    public string Tooltip => $"Route to {OutputLabel}";
+
+    // The bus's live name (e.g. "MON") when the operator has renamed it, else its letter.
+    private string OutputLabel => string.IsNullOrWhiteSpace(_output?.CustomLabel)
+        ? $"Output {ShortLabel}"
+        : _output!.CustomLabel;
+
+    // Per-bus LED: green when routed and passing, amber when routed but ducked by the automixer,
+    // dim when not routed. Polled from the meter tick via RefreshLed.
+    public bool IsDucking => _channel.IsDuckingOn(_outputIndex);
+    public string LedTooltip => $"{OutputLabel}: green = live, amber = ducked, dim = not routed";
+
+    // Only IsDucking is polled. IsOn must NOT be raised here: it is a persisted property, so a
+    // 30 Hz notification would reset the autosave debounce forever (see PersistedProperties). It
+    // changes only via the toggle or ApplyPreset, both of which already raise it.
+    public void RefreshLed() => RaisePropertyChanged(nameof(IsDucking));
 
     // Lets the toggle's tooltip follow the (renameable) output label.
     public void AttachOutput(OutputViewModel output)
@@ -218,12 +194,18 @@ public sealed class RouteToggleViewModel : ViewModelBase
         if (_output != null) _output.PropertyChanged -= OnOutputChanged;
         _output = output;
         _output.PropertyChanged += OnOutputChanged;
-        RaisePropertyChanged(nameof(Tooltip));
+        RaiseLabels();
     }
 
     private void OnOutputChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(OutputViewModel.CustomLabel)) RaisePropertyChanged(nameof(Tooltip));
+        if (e.PropertyName == nameof(OutputViewModel.CustomLabel)) RaiseLabels();
+    }
+
+    private void RaiseLabels()
+    {
+        RaisePropertyChanged(nameof(Tooltip));
+        RaisePropertyChanged(nameof(LedTooltip));
     }
 
     public bool IsOn

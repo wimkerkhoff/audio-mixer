@@ -332,50 +332,35 @@
                                                 <Setter Property="TextAlignment" Value="Center"/>
                                             </Style>
                                         </StackPanel.Resources>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Style="{StaticResource BusLetter}" Text="A"/>
-                                            <Ellipse Width="7" Height="7" ToolTip="{Binding LedATooltip}">
-                                                <Ellipse.Style>
-                                                    <Style TargetType="Ellipse">
-                                                        <Setter Property="Fill" Value="#333842"/>
-                                                        <Style.Triggers>
-                                                            <MultiDataTrigger>
-                                                                <MultiDataTrigger.Conditions>
-                                                                    <Condition Binding="{Binding RoutedA}" Value="True"/>
-                                                                    <Condition Binding="{Binding DuckingA}" Value="False"/>
-                                                                </MultiDataTrigger.Conditions>
-                                                                <Setter Property="Fill" Value="#3FB950"/>
-                                                            </MultiDataTrigger>
-                                                            <DataTrigger Binding="{Binding DuckingA}" Value="True">
-                                                                <Setter Property="Fill" Value="#F2A93B"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Ellipse.Style>
-                                            </Ellipse>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                            <TextBlock Style="{StaticResource BusLetter}" Text="B"/>
-                                            <Ellipse Width="7" Height="7" ToolTip="{Binding LedBTooltip}">
-                                                <Ellipse.Style>
-                                                    <Style TargetType="Ellipse">
-                                                        <Setter Property="Fill" Value="#333842"/>
-                                                        <Style.Triggers>
-                                                            <MultiDataTrigger>
-                                                                <MultiDataTrigger.Conditions>
-                                                                    <Condition Binding="{Binding RoutedB}" Value="True"/>
-                                                                    <Condition Binding="{Binding DuckingB}" Value="False"/>
-                                                                </MultiDataTrigger.Conditions>
-                                                                <Setter Property="Fill" Value="#3FB950"/>
-                                                            </MultiDataTrigger>
-                                                            <DataTrigger Binding="{Binding DuckingB}" Value="True">
-                                                                <Setter Property="Fill" Value="#F2A93B"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Ellipse.Style>
-                                            </Ellipse>
-                                        </StackPanel>
+                                        <ItemsControl ItemsSource="{Binding Routes}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                        <TextBlock Style="{StaticResource BusLetter}"
+                                                                   Text="{Binding ShortLabel}"/>
+                                                        <Ellipse Width="7" Height="7" ToolTip="{Binding LedTooltip}">
+                                                            <Ellipse.Style>
+                                                                <Style TargetType="Ellipse">
+                                                                    <Setter Property="Fill" Value="#333842"/>
+                                                                    <Style.Triggers>
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Binding="{Binding IsOn}" Value="True"/>
+                                                                                <Condition Binding="{Binding IsDucking}" Value="False"/>
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter Property="Fill" Value="#3FB950"/>
+                                                                        </MultiDataTrigger>
+                                                                        <DataTrigger Binding="{Binding IsDucking}" Value="True">
+                                                                            <Setter Property="Fill" Value="#F2A93B"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Ellipse.Style>
+                                                        </Ellipse>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                     </StackPanel>
                                     <TextBox Grid.Column="1" Style="{StaticResource EditableLabel}"
                                              Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"

@@ -407,7 +407,7 @@ later judgment.
   a blocklist silently disables autosave.** `ChannelViewModel.RefreshMeters` raises ~13 display
   properties 30x/second and `MainViewModel.OnSettingChanged` restarts a 500 ms debounce timer on any
   property it doesn't recognise — so the four peak properties that were excluded weren't enough
-  (`IsDucking`, `IsAutoMixActive`, `RoutedA/B`, `DuckingA/B`, clarity) and the timer was reset every
+  (`IsDucking`, `IsAutoMixActive`, the per-bus LED state, clarity) and the timer was reset every
   33 ms and could never elapse. Symptom: settings persist across a *clean exit* (Dispose still calls
   `SavePreset`) but a crash or a killed process loses the whole session. Fix: `OnSettingChanged`
   matches an **allowlist** (`PersistedProperties`) mirroring exactly what `PresetMapper` writes. Keep
