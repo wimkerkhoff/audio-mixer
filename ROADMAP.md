@@ -149,6 +149,45 @@ All deployed, none confirmed live yet — now verifiable from the logged transcr
 - Prefer natural overall — sensible override rate, picks good mics.
 - Match lapel (reference-guided) — only testable when a lapel is actually in use.
 
+### 🔬 Verify the 2026-08-02 refactor at the next launch
+A code-quality pass (commits `11acf2b`…`4b53877`) landed with **no behavior change intended**. Only
+the first commit has ever run: the app stayed up on the `11acf2b` build for the rest of that session,
+so `7a24649`, `5a71672`, `645b8cc` and `4b53877` are **build-verified only**. First launch is the
+verification session — do it at a desk, not five minutes before a service.
+- **Per-bus LEDs (`4b53877`) — the one real risk.** The A/B LED markup was replaced by an
+  `ItemsControl` over `Routes`, and WPF resolves binding paths at *runtime*, so a clean build proves
+  nothing. Look at the input strips: each should show a lettered LED per bus — green routed+passing,
+  amber routed+ducked, dim not routed — with a tooltip naming the bus. If they're dead or blank,
+  `git revert 4b53877` restores the old markup; nothing else depends on it.
+- **Autosave (`645b8cc`)** — it had never fired while running (the meter tick reset its debounce
+  every 33 ms); only a clean exit saved. Test: change a volume/route, wait ~2 s for "Saved HH:MM:SS"
+  in the status bar, then **kill** the process (not File→Exit) and relaunch — the change should
+  survive. Under the old code it would not have.
+- **Preset load (`7a24649`)** — device resolution moved to `Services/DeviceResolver`. Confirm all
+  four Ankers + lapel + both outputs still bind by name after a reboot that reshuffles endpoint GUIDs.
+- **Capture callback (`5a71672`)** — `OnDataAvailable` was split into three methods. Watch for any
+  new dropout/glitch and check the log for `push to output … failed` (newly logged; it used to be
+  swallowed silently, as did a throwing `AutoMixer.Tick`).
+
+### 🔲 Decide: the green "selected" LED — restore it or drop it
+CLAUDE.md documents `IsAutoMixActive` driving a per-input **green "this mic is the winner" LED**, but
+nothing in `MainWindow.xaml` binds it — `ChannelViewModel.IsAutoMixActive` *and* `IsDucking` are
+raised 30x/second and consumed by no view. So either the LED was lost in an earlier UI edit (a
+regression worth restoring — knowing which mic the automixer picked is the single most useful thing
+to see live) or the docs describe an intent that never shipped. Left in place rather than guessing.
+Decide, then either bind it or delete both properties and correct CLAUDE.md. Note the per-bus LEDs
+now show routed/ducked but *not* "winner", so the information really is missing from the UI today.
+
+### 🔲 Code-quality leftovers (from the 2026-08-02 audit)
+Lower priority than anything above; none of it is user-visible.
+- `MainViewModel` is still ~660 lines and calls `MessageBox.Show` directly in four places (the
+  delay-detection flow), which makes that flow untestable and is the last real MVVM leak.
+- The crest→`Clarity` path (~40 lines across `AutoMixer`, `AutoMixDiag`, three VM properties) feeds
+  one gear-popup bar using a metric CLAUDE.md documents as *not* predictive through the Anker DSP.
+  Keep it as an operator readout or delete it — a product call, not a cleanup.
+- `OutputViewModel.Label`/`ShortLabel` were deleted as dead; if a future UI wants bus names, use
+  `OutputViewModel.Tag(index)` rather than reintroducing A/B ternaries.
+
 ### 🔬 Singing capture & analysis
 First singing captured 2026-07-05 (~3 min, one room, one of three room mics dead). Findings: (1) no
 reference-free signal cleanly separated singing from teaching → manual scene control, not
