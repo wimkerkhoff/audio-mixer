@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -19,15 +19,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly DispatcherTimer _autosaveTimer;
     private readonly MixRecorder[] _recorders = new MixRecorder[AudioEngine.OutputCount];
     private StateServer? _stateServer;
+    private readonly DiagnosticsLog _diagnostics;
     private bool _suppressAutosave;
     private bool _suppressRebuild;
     private bool _rebuildInProgress;
     private List<AudioDeviceInfo> _allInputDevices = new();
     private List<AudioDeviceInfo> _allOutputDevices = new();
-
-    private long _lastLogTick;
-    private readonly long[] _lastTotalSamples = new long[AudioEngine.OutputCount];
-    private readonly int[] _lastAutoMixWinner = new int[AudioEngine.OutputCount];
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public OutputViewModel[] Outputs { get; }
@@ -79,9 +76,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     public double WindowWidth => Math.Max(560, _inputCount * 96 + 240);
-
-    // Output buses are named by letter (A, B, …) everywhere the user sees them.
-    private static string OutputTag(int index) => ((char)('A' + index)).ToString();
 
     private const double BaseWindowHeight = 344;
     private const double VbCableBannerHeight = 36;
@@ -143,14 +137,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             Interval = TimeSpan.FromMilliseconds(33),
         };
-        _lastLogTick = Environment.TickCount64;
-        for (int o = 0; o < _lastAutoMixWinner.Length; o++) _lastAutoMixWinner[o] = -1;
+        _diagnostics = new DiagnosticsLog(_engine, Channels, Outputs);
         _meterTimer.Tick += (_, _) =>
         {
             foreach (var ch in Channels) ch.RefreshMeters();
             foreach (var op in Outputs) op.RefreshMeters();
-            LogAutoMixSelectionChanges();
-            MaybeLogDiagnostics();
+            _diagnostics.Tick();
         };
         _meterTimer.Start();
 
@@ -184,137 +176,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         return disp == null || disp.CheckAccess() ? BuildStateJson() : disp.Invoke(BuildStateJson);
     }
 
-    private string BuildStateJson()
-    {
-        static double ToDb(double lin) => lin <= 1e-6 ? -120.0 : Math.Round(20 * Math.Log10(lin), 1);
-        var diag = _engine.AutoMixSnapshot();
-
-        var channels = new List<object>(Channels.Count);
-        for (int i = 0; i < Channels.Count; i++)
-        {
-            var ch = Channels[i];
-            var input = _engine.Inputs[i];
-            var gains = new double[AudioEngine.OutputCount];
-            for (int o = 0; o < AudioEngine.OutputCount; o++) gains[o] = Math.Round(input.GetAutoMixGain(o), 3);
-            channels.Add(new
-            {
-                index = i,
-                label = ch.CustomLabel,
-                device = ch.SelectedDevice?.FriendlyName,
-                inputDb = Math.Round(ch.InputPeakDb, 1),
-                postDb = Math.Round(ch.PostPeakDb, 1),
-                rmsDb = ToDb(input.CurrentLevelLinear),
-                envDb = i < diag.Env.Length ? ToDb(diag.Env[i]) : (double?)null,
-                crest = i < diag.Crest.Length ? Math.Round(diag.Crest[i], 2) : (double?)null,
-                refCorr = i < diag.Corr.Length ? Math.Round(diag.Corr[i], 3) : (double?)null,
-                fluxCv = i < diag.Cv.Length ? Math.Round(diag.Cv[i], 3) : (double?)null,
-                clarity = ch.HasClarity ? Math.Round(ch.ClarityBar, 2) : (double?)null,
-                routes = ch.Routes.Select(r => r.IsOn).ToArray(),
-                muted = ch.Muted,
-                volumePercent = Math.Round(ch.VolumePercent, 0),
-                delayMs = ch.DelayMs,
-                isPriority = ch.IsPriority,
-                isDucking = input.IsDucking,
-                isAutoMixActive = input.IsAutoMixActive,
-                automixGain = gains,
-            });
-        }
-
-        var outputs = new List<object>(Outputs.Length);
-        for (int o = 0; o < Outputs.Length; o++)
-        {
-            var op = Outputs[o];
-            outputs.Add(new
-            {
-                index = o,
-                label = op.CustomLabel,
-                device = op.SelectedDevice?.FriendlyName,
-                peakDb = Math.Round(op.OutputPeakDb, 1),
-                volumePercent = Math.Round(op.VolumePercent, 0),
-                recording = op.IsRecording,
-                mode = o < diag.Mode.Length ? diag.Mode[o].ToString() : "Off",
-                strengthPercent = Math.Round(op.StrengthPercent, 0),
-                stableHandoff = op.StableHandoff,
-                referenceGuided = op.ReferenceGuided,
-                preferNatural = op.PreferNatural,
-                winner = o < diag.Winner.Length ? diag.Winner[o] : -1,
-                winnerHold = o < diag.WinnerHold.Length ? diag.WinnerHold[o] : 0,
-                activeInput = o < diag.ActiveInput.Length ? diag.ActiveInput[o] : -1,
-            });
-        }
-
-        var root = new
-        {
-            ts = DateTime.Now.ToString("HH:mm:ss.fff"),
-            inputCount = InputCount,
-            status = StatusText,
-            referenceInput = diag.ReferenceInput,
-            channels,
-            outputs,
-        };
-        return System.Text.Json.JsonSerializer.Serialize(
-            root, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-    }
-
-    // Logs each automixer talker hand-off (Output B: mic1 → mic3, clarity 78%). Polled per meter
-    // tick (not throttled) so the trail captures fast switches, but only when file logging is on.
-    private void LogAutoMixSelectionChanges()
-    {
-        if (!AudioLog.Enabled) return;
-        for (int o = 0; o < Outputs.Length; o++)
-        {
-            int winner = _engine.AutoMixActiveInput(o);
-            if (winner == _lastAutoMixWinner[o]) continue;
-            int prev = _lastAutoMixWinner[o];
-            _lastAutoMixWinner[o] = winner;
-            string Name(int i) => i < 0 ? "none"
-                : i < Channels.Count ? $"mic{i + 1} ('{Channels[i].CustomLabel}')" : $"mic{i + 1}";
-            string clarity = winner >= 0 && winner < Channels.Count ? Channels[winner].ClarityText : "—";
-            AudioLog.Write($"Output {OutputTag(o)} auto-mix: {Name(prev)} → {Name(winner)} (clarity {clarity})");
-        }
-    }
-
-    // Throttled to ~1 Hz. Short-circuits when file logging is off so we don't build the per-output
-    // / per-input strings every meter tick on a normal run (logging is opt-in via AUDIOMIXER_LOG).
-    private void MaybeLogDiagnostics()
-    {
-        if (!AudioLog.Enabled) return;
-        long now = Environment.TickCount64;
-        long elapsedMs = now - _lastLogTick;
-        if (elapsedMs <= 1000) return;
-        _lastLogTick = now;
-
-        for (int o = 0; o < Outputs.Length; o++)
-        {
-            var bus = _engine.Outputs[o];
-            long total = bus.TotalSamplesRead;
-            long delta = total - _lastTotalSamples[o];
-            // A bus restart (input-count change) resets TotalSamplesRead, so a stale
-            // baseline yields a bogus negative delta — count from restart instead.
-            if (delta < 0) delta = total;
-            _lastTotalSamples[o] = total;
-            long samplesPerSec = delta * 1000 / elapsedMs;
-            AudioLog.Write(
-                $"Output {o}: playing={bus.IsPlaying} samplesPerSec={samplesPerSec} peakDb={Outputs[o].OutputPeakDb:F1} winner={_engine.AutoMixActiveInput(o)}");
-        }
-        for (int i = 0; i < Channels.Count; i++)
-        {
-            var dev = Channels[i].SelectedDevice;
-            if (dev == null) continue;
-            var input = _engine.Inputs[i];
-            string PerOutput(Func<int, string> value) =>
-                string.Join(",", Enumerable.Range(0, Outputs.Length).Select(value));
-            var bufMs = PerOutput(o => input.BufferedMs(o).ToString());
-            var readSamples = PerOutput(o => input.ReadSamplesForOutput(o).ToString());
-            var readCalls = PerOutput(o => input.ReadCallsForOutput(o).ToString());
-            var gains = PerOutput(o => input.GetAutoMixGain(o).ToString("F2"));
-            // RF-link health (offline dongle-link diagnosis): high drops/silent while voiced is high =
-            // wireless dropouts; elevated fluxCv corroborates. Only meaningful while the mic is voiced.
-            var rf = input.SnapshotRfStats();
-            AudioLog.Write(
-                $"Input {i} ('{dev.FriendlyName}'): inputDb={Channels[i].InputPeakDb:F1} postDb={Channels[i].PostPeakDb:F1} routes=[{string.Join(",", Channels[i].Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={Channels[i].Muted} gains=[{gains}] fluxCv={input.CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
-        }
-    }
+    private string BuildStateJson() =>
+        StateSnapshot.Build(_engine, Channels, Outputs, InputCount, StatusText);
 
     private ChannelViewModel CreateChannel(int index) =>
         new ChannelViewModel(
@@ -390,7 +253,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void SetOutputDevice(int index, AudioDeviceInfo? device)
     {
-        string tag = OutputTag(index);
+        string tag = OutputViewModel.Tag(index);
         RunGuarded($"Output {tag}", () =>
         {
             _engine.SetOutputDevice(index, device);
@@ -532,7 +395,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         string folder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "AudioMixer", "recordings");
-        string path = Path.Combine(folder, $"mix-{OutputTag(index)}-{DateTime.Now:yyyyMMdd-HHmmss}.wav");
+        string path = Path.Combine(folder, $"mix-{OutputViewModel.Tag(index)}-{DateTime.Now:yyyyMMdd-HHmmss}.wav");
         RunGuarded("Record", () =>
         {
             recorder.Start(path, bus.InternalFormat);
@@ -560,34 +423,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void SavePreset()
     {
-        var preset = new MixerPreset
-        {
-            Name = "Default",
-            VbCablePromptDismissed = _vbCablePromptDismissed,
-            Channels = Channels.Select(c => new ChannelPreset
-            {
-                CustomLabel = c.CustomLabel,
-                DeviceId = c.SelectedDevice?.Id,
-                DeviceName = c.SelectedDevice?.FriendlyName,
-                VolumePercent = c.VolumePercent,
-                Muted = c.Muted,
-                DelayMs = c.DelayMs,
-                Priority = c.IsPriority,
-                Routes = c.Routes.Select(r => r.IsOn).ToArray(),
-            }).ToArray(),
-            Outputs = Outputs.Select(o => new OutputPreset
-            {
-                CustomLabel = o.CustomLabel,
-                DeviceId = o.SelectedDevice?.Id,
-                DeviceName = o.SelectedDevice?.FriendlyName,
-                AutoMixMode = o.AutoMixModeIndex,
-                AutoMixStrength = o.StrengthPercent,
-                AutoMixStableHandoff = o.StableHandoff,
-                AutoMixReferenceGuided = o.ReferenceGuided,
-                AutoMixPreferNatural = o.PreferNatural,
-                Volume = o.VolumePercent,
-            }).ToArray(),
-        };
+        var preset = PresetMapper.FromViewModels(Channels, Outputs, _vbCablePromptDismissed);
         RunGuarded("Save", () =>
         {
             _presetStore.Save(preset);
@@ -600,36 +436,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var preset = _presetStore.Load();
         if (preset != null) ApplyPreset(preset);
     }
-
-    // The volatile "N- " endpoint enumerator Windows prepends inside the interface name (e.g. "(2- Anker
-    // Soundsync)"); it reshuffles across reboots so it must be ignored when matching a saved name.
-    private static readonly System.Text.RegularExpressions.Regex EnumeratorPrefix =
-        new(@"\(\d+-\s*", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    // Saved DeviceId is the WASAPI endpoint GUID, which Windows regenerates whenever a USB audio device
-    // re-enumerates (a driver-update reboot, a replug, a different port) — so an exact-ID match silently
-    // drops every hot-plug mic/headset and forces a manual remap. Fall back to the saved friendly name,
-    // normalized (only the "(2-/5- …)" enumerator stripped — Windows re-applies a device rename to the new
-    // endpoint, and for un-renamed devices the identifying part is the interface name inside the parens,
-    // so we must NOT truncate to the prefix). Searches the full master list, not a channel's pre-dedup
-    // AvailableDevices (which can be missing a device mid-apply); `used` stops two channels grabbing the
-    // same device when several normalize alike (e.g. identical un-renamed dongles).
-    private static AudioDeviceInfo? ResolveDevice(IEnumerable<AudioDeviceInfo> all, string? id, string? name, HashSet<string> used)
-    {
-        AudioDeviceInfo? match = null;
-        if (!string.IsNullOrEmpty(id))
-            match = all.FirstOrDefault(d => d.Id == id && !used.Contains(d.Id));
-        if (match == null && !string.IsNullOrWhiteSpace(name))
-        {
-            var key = DeviceNameKey(name);
-            match = all.FirstOrDefault(d => !used.Contains(d.Id) && DeviceNameKey(d.FriendlyName) == key);
-        }
-        if (match != null) used.Add(match.Id);
-        return match;
-    }
-
-    private static string DeviceNameKey(string friendlyName) =>
-        EnumeratorPrefix.Replace(friendlyName, "(").Trim();
 
     private void ApplyPreset(MixerPreset preset)
     {
@@ -654,7 +460,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 var cp = preset.Channels[i];
                 if (!string.IsNullOrEmpty(cp.CustomLabel)) Channels[i].CustomLabel = cp.CustomLabel;
-                var match = ResolveDevice(_allInputDevices, cp.DeviceId, cp.DeviceName, usedInputIds);
+                var match = DeviceResolver.Resolve(_allInputDevices, cp.DeviceId, cp.DeviceName, usedInputIds);
                 Channels[i].SelectedDevice = match;
                 Channels[i].VolumePercent = cp.VolumePercent;
                 Channels[i].Muted = cp.Muted;
@@ -670,7 +476,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 var op = preset.Outputs[o];
                 if (!string.IsNullOrEmpty(op.CustomLabel)) Outputs[o].CustomLabel = op.CustomLabel;
-                var match = ResolveDevice(_allOutputDevices, op.DeviceId, op.DeviceName, usedOutputIds);
+                var match = DeviceResolver.Resolve(_allOutputDevices, op.DeviceId, op.DeviceName, usedOutputIds);
                 Outputs[o].SelectedDevice = match;
                 Outputs[o].StrengthPercent = Math.Clamp(op.AutoMixStrength, 0f, 100f);
                 Outputs[o].StableHandoff = op.AutoMixStableHandoff;

@@ -58,14 +58,18 @@ AudioMixer/
 │   ├── MixRecorder.cs        # WaveFileWriter wrapper, thread-safe start/stop
 │   └── AudioLog.cs           # Opt-in file log (AUDIOMIXER_LOG/--log → %TEMP%\AudioMixer.log)
 ├── ViewModels/
-│   ├── MainViewModel.cs      # Engine lifecycle, device pickers, presets, record state, state JSON
+│   ├── MainViewModel.cs      # Engine lifecycle, device pickers, presets, record state, meter tick
 │   ├── ChannelViewModel.cs   # Per-input: device, volume, mute, delay, routes, meter, priority, LEDs
 │   ├── OutputViewModel.cs    # Per-output: device, meter, volume, record, automix mode + selection opts
 │   └── DeviceList.cs / RelayCommand.cs / ViewModelBase.cs
 ├── Models/MixerPreset.cs     # Serializable: device ids+names, volumes, mutes, delays, routes, automix
 ├── Services/
 │   ├── PresetStore.cs        # JSON load/save to %APPDATA%\AudioMixer\presets.json
+│   ├── PresetMapper.cs       # View-model state → MixerPreset (the reverse lives in ApplyPreset)
+│   ├── DeviceResolver.cs     # Preset device → live endpoint: id first, then friendly name (see gotcha)
 │   ├── DelayAnalyzer.cs      # "Detect Delays": onset-envelope cross-correlation → suggested delays
+│   ├── StateSnapshot.cs      # Builds the /state JSON (the selector's reasoning, not just mixer state)
+│   ├── DiagnosticsLog.cs     # Meter-tick logging: talker hand-offs + ~1 Hz output/input health dump
 │   └── StateServer.cs        # Opt-in loopback JSON state endpoint (diagnostics)
 ├── Controls/VuMeter.xaml     # Gradient bar with peak-hold tick
 └── Assets/app.ico

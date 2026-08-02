@@ -11,8 +11,9 @@ public sealed class OutputViewModel : ViewModelBase
     private readonly Action<int> _onToggleRecord;
 
     public int Index { get; }
-    public string Label => Index == 0 ? "Output A (Headset)" : "Output B (Zoom / VB-CABLE)";
-    public string ShortLabel => Index == 0 ? "A — Headset" : "B — Zoom";
+
+    // Output buses are named by letter (A, B, …) everywhere the user sees them.
+    public static string Tag(int index) => ((char)('A' + index)).ToString();
 
     private string _customLabel = "";
     public string CustomLabel
@@ -151,7 +152,7 @@ public sealed class OutputViewModel : ViewModelBase
         _autoMix = autoMix;
         _onDeviceChanged = onDeviceChanged;
         _onToggleRecord = onToggleRecord;
-        _customLabel = index == 0 ? "A — Headset" : "B — Zoom";
+        _customLabel = index switch { 0 => "A — Headset", 1 => "B — Zoom", _ => $"{Tag(index)} — Output" };
         AvailableDevices = new ObservableCollection<AudioDeviceInfo>(availableDevices);
         _bus.Volume = _volumePercent / 100f;
         ToggleRecordCommand = new RelayCommand(() => _onToggleRecord(Index));
