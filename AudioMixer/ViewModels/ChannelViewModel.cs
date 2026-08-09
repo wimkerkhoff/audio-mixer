@@ -92,6 +92,30 @@ public sealed class ChannelViewModel : ViewModelBase
         }
     }
 
+    // What this channel IS, independent of how the current scene has configured it. Scenes need a
+    // stable "which mic is the lapel" that survives Prayer clearing the priority flag, so this must
+    // not be inferred from IsPriority at apply time.
+    private Models.ChannelRole _role = Models.ChannelRole.Room;
+    public Models.ChannelRole Role
+    {
+        get => _role;
+        set
+        {
+            if (SetField(ref _role, value)) RaisePropertyChanged(nameof(IsLapel));
+        }
+    }
+
+    public bool IsLapel
+    {
+        get => _role == Models.ChannelRole.Lapel;
+        set => Role = value ? Models.ChannelRole.Lapel : Models.ChannelRole.Room;
+    }
+
+    // Simple-mode mic dots. Raised from RefreshMeters, so neither may ever be a persisted property
+    // (see PersistedProperties) — that is what the allowlist test guards.
+    public bool HasDevice => SelectedDevice != null;
+    public bool IsRoutedAnywhere => Routes.Any(r => r.IsOn);
+
     // Drives the gear icon's "customized" highlight.
     public bool HasAdvancedSettings => _delayMs != 0 || _isPriority;
 
@@ -152,6 +176,8 @@ public sealed class ChannelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasClarity));
         RaisePropertyChanged(nameof(ClarityBar));
         RaisePropertyChanged(nameof(ClarityText));
+        RaisePropertyChanged(nameof(HasDevice));
+        RaisePropertyChanged(nameof(IsRoutedAnywhere));
     }
 
     public void RefreshDevices(IEnumerable<AudioDeviceInfo> devices)

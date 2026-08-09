@@ -144,6 +144,12 @@ public sealed class InputChannel : IDisposable
     private long _lastDataTicks;
     public long LastDataTicks => Volatile.Read(ref _lastDataTicks);
 
+    // Last time this mic carried actual sound, as opposed to merely delivering buffers. Distinguishes
+    // "dead / out of range / muted at the device" from "stalled" for the health banner: a stalled
+    // capture stops delivering buffers entirely, a dead-but-connected one delivers digital silence.
+    private long _lastSoundTicks;
+    public long LastSoundTicks => Volatile.Read(ref _lastSoundTicks);
+
     private IWaveIn? _capture;
     private bool _ownsCapture;
     private WaveFormat? _captureFormat;
@@ -273,6 +279,7 @@ public sealed class InputChannel : IDisposable
         _ownsCapture = ownsCapture;
 
         _captureFormat = capture.WaveFormat;
+        Volatile.Write(ref _lastSoundTicks, Environment.TickCount64);
         _captureFifo = new BufferedWaveProvider(_captureFormat)
         {
             BufferDuration = TimeSpan.FromMilliseconds(200),
@@ -576,6 +583,7 @@ public sealed class InputChannel : IDisposable
             PostPeak.Observe(rented, read);
 
             float rmsNow = MeasureAndLatchLevels(rented, read);
+            if (rmsNow > RfSilenceRms) Volatile.Write(ref _lastSoundTicks, Environment.TickCount64);
             bool voiced = rmsNow > FluxVoiceRms;
             if (voiced) ComputeFlux(rented, read);
             TallyRfHealth(rmsNow, voiced);

@@ -24,6 +24,7 @@ public static class PresetMapper
                 DelayMs = c.DelayMs,
                 Priority = c.IsPriority,
                 Routes = c.Routes.Select(r => r.IsOn).ToArray(),
+                Role = (int)c.Role,
             }).ToArray(),
             Outputs = outputs.Select(o => new OutputPreset
             {

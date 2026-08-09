@@ -41,11 +41,21 @@ reading them:
 AudioMixer.sln
 ROADMAP.md                    # Planned work / scene design. Not a spec of what IS.
 publish.ps1                   # Single-file publish
+AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): scenes, health, autosave allowlist
 AudioMixer/
-├── App.xaml / App.xaml.cs    # Single-instance mutex; ApplyCliFlags (--log, --state[=PORT])
-├── MainWindow.xaml / .cs      # Window size is set in code-behind, NOT bound (see gotcha)
+├── App.xaml / App.xaml.cs    # Single-instance mutex; window creation; ApplyCliFlags (see Conventions)
+├── MainWindow.xaml / .cs      # Advanced view. Window size is set in code-behind, NOT bound (see gotcha)
+├── Views/                    # Operator UI. Separate files so MainWindow.xaml is never touched.
+│   ├── SimpleWindow.xaml     # Scene selector, on-air cards, mic dots, health banner (opt-in --simple)
+│   ├── DiagnosticsWindow.xaml # Ranked "why this mic?" table; own 10 Hz timer, off when closed
+│   ├── SettingsWindow.xaml   # Mic roles, device-picker options, diagnostics summary
+│   └── OperatorConverters.cs # Severity->brush, mic-dot colour, null/inverse visibility
 ├── Audio/
 │   ├── AudioEngine.cs        # Capture/render lifecycle, graph wiring, AutoMix tick + stall watchdog
+│   ├── Replay/               # Replay a recorded session instead of live mics (see "Testing")
+│   │   ├── ReplaySource.cs   # IWaveIn over a (possibly unfinalized) diag WAV
+│   │   ├── ReplayRig.cs      # One clock pumping all sources in lockstep; drives the automix tick
+│   │   └── ReplayOptions.cs  # --replay sandbox semantics
 │   ├── InputChannel.cs       # capture → mute → gain → delay → taps → per-output automix gain → push
 │   ├── OutputBus.cs          # MixingSampleProvider → peak tap → volume → WasapiOut; optional recorder
 │   ├── AutoMixer.cs          # Per-output leader decision loop (level / lapel-corr / natural); off-thread
@@ -64,6 +74,10 @@ AudioMixer/
 │   └── DeviceList.cs / RelayCommand.cs / ViewModelBase.cs
 ├── Models/MixerPreset.cs     # Serializable: device ids+names, volumes, mutes, delays, routes, automix
 ├── Services/
+│   ├── SceneTransform.cs     # PURE scene rules: (scene, override, state) -> state. Unit-tested.
+│   ├── HealthMonitor.cs      # PURE alert rules for the banner. Unit-tested.
+│   ├── PersistedProperties.cs # The autosave allowlist, extracted so its invariant is testable
+│   ├── BindingErrorListener.cs # WPF binding failures -> the log (on with --log)
 │   ├── PresetStore.cs        # JSON load/save to %APPDATA%\AudioMixer\presets.json
 │   ├── PresetMapper.cs       # View-model state → MixerPreset (the reverse lives in ApplyPreset)
 │   ├── DeviceResolver.cs     # Preset device → live endpoint: id first, then friendly name (see gotcha)
@@ -204,6 +218,33 @@ NaN when idle) shows as a "Mic clarity" bar in the gear popup — **readout only
 selection** (crest failed as a proximity cue; see finding 1). `AudioEngine.AutoMixActiveInput(o)`
 exposes the per-output winner and `MainViewModel.LogAutoMixSelectionChanges` writes each hand-off to
 `AudioLog`.
+
+## Testing without a room full of people
+
+The app used to be unexercisable without a live congregation, which blocked all UI work. It isn't now:
+
+- **Replay** (`--replay[=STAMP] --seek=MM:SS --for=MM:SS --speed=N --loop`) feeds the inputs from a
+  recorded session's `diag-input*.wav` files. Capture sits behind NAudio's `IWaveIn`, so everything
+  downstream — gain, delay, flux-CV, RF tallies, automixer, meters, LEDs, scenes — runs unmodified.
+  Two things are load-bearing: the rig emits **480-frame** buffers (WASAPI shared mode's size; at 512+
+  the cross-buffer flux accumulation is bypassed and you test different code), and **one clock pumps
+  every source in lockstep** (independent timers drift and change which mic wins).
+- **The rig drives the automix tick** (`ReplayRig.Pumped` → one tick per chunk) instead of the
+  wall-clock timer. This makes replay deterministic *and* speed-independent — before it, `--speed 2`
+  halved every hold because the automixer saw half as many ticks per second of audio.
+- `--replay` is a **sandbox**: its own single-instance mutex (so it runs alongside a live session),
+  **no preset autosave**, and **no output devices** by default (two instances both opening CABLE Input
+  would double audio into Zoom).
+- **Golden baselines**: `tools/replay-baseline.ps1 -Name <fixture> ... [-Update]`, baselines in
+  `tools/baselines/`. Compares aggregates (mode, hand-off count, occupancy, median flux-cv) — hand-off
+  count is exactly reproducible and is the sensitive signal. Record and check at the **same `-Speed`,
+  1–2**; higher saturates the process and starts dropping audio.
+- **Binding errors**: WPF resolves binding paths at runtime and swallows failures, so a clean build
+  proves nothing about the UI. `--log` enables `BindingErrorListener`, which logs them.
+  `--open-all` opens every window so one run covers all their markup.
+- **Unit tests** (`AudioMixer.Tests`) cover only pure logic — scene rules, health rules, the autosave
+  allowlist invariant. Anything needing a device or a window is verified by a replay run instead.
+- `--scene=NAME` applies a scene at startup, so the whole scene path is assertable from `/state`.
 
 ## Conventions
 
@@ -432,6 +473,18 @@ later judgment.
   `SavePreset`) but a crash or a killed process loses the whole session. Fix: `OnSettingChanged`
   matches an **allowlist** (`PersistedProperties`) mirroring exactly what `PresetMapper` writes. Keep
   it that way — a new display property must never be able to break saving by omission.
+
+- **A WPF trigger's `Value` is parsed as a STRING, so comparing it against a boolean binding is
+  unreliable** — the trigger silently never fires and every button renders unselected with no error
+  anywhere. Bind selection state to `Tag` as an `"on"`/`"off"` **string** and use a `DataTrigger` on
+  `{Binding Tag, RelativeSource={RelativeSource Self}}` (see `Views/SimpleWindow.xaml`, and the
+  `…State` string properties on `SceneController` that exist only for this).
+
+- **Scene and alert *rules* live in pure functions** (`Services/SceneTransform`, `Services/HealthMonitor`)
+  that take and return plain records, with the view models only marshalling values in and out. Scenes
+  rewrite every channel and output at once and a wrong rule drops the congregation off the stream
+  silently; alert rules fire in situations nobody can stage on demand. Keep new rules in the pure
+  layer so they stay unit-testable — do NOT put judgement in the view models.
 
 - **Input strips live in a `UniformGrid Rows="1"`, which divides the column equally and IGNORES each
   child's `MinWidth`.** A fixed-width window crams N strips into whatever space exists and clips the

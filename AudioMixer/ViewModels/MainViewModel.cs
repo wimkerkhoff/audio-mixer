@@ -133,6 +133,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         foreach (var ch in Channels) AttachChannel(ch);
         foreach (var op in Outputs) op.PropertyChanged += OnSettingChanged;
 
+        InitScenesAndHealth();
+        for (int o = 0; o < _lastOutputSound.Length; o++) _lastOutputSound[o] = Environment.TickCount64;
+
         _meterTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(33),
@@ -143,13 +146,194 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             foreach (var ch in Channels) ch.RefreshMeters();
             foreach (var op in Outputs) op.RefreshMeters();
             _diagnostics.Tick();
+            RefreshHealth();
             if (_isReplaying) RaisePropertyChanged(nameof(ReplayPositionText));
         };
         _meterTimer.Start();
 
         TryLoadInitialPreset();
         StartReplayIfRequested();
+        // After the preset, so a scene overrides saved state rather than the other way round.
+        if (App.StartupScene is { } scene) Scenes.Apply(scene);
         StartStateServer();
+    }
+
+    // --- Scenes and health (Simple mode) -------------------------------------------------------
+
+    public SceneController Scenes { get; private set; } = null!;
+
+    public RelayCommand StandbyCommand { get; private set; } = null!;
+    public RelayCommand TeachingCommand { get; private set; } = null!;
+    public RelayCommand PrayerCommand { get; private set; } = null!;
+    public RelayCommand SingingCommand { get; private set; } = null!;
+    public RelayCommand UseLapelCommand { get; private set; } = null!;
+    public RelayCommand UseRoomMicsCommand { get; private set; } = null!;
+    public RelayCommand DismissAlertCommand { get; private set; } = null!;
+
+    public ObservableCollection<HealthAlert> Alerts { get; } = new();
+    private readonly HashSet<string> _dismissedAlerts = new();
+
+    public HealthAlert? TopAlert => Alerts.Count > 0 ? Alerts[0] : null;
+    public bool HasAlert => Alerts.Count > 0;
+    public string AlertSummary => Alerts.Count switch
+    {
+        0 => "All good",
+        1 => TopAlert!.Message,
+        _ => $"{TopAlert!.Message}   (+{Alerts.Count - 1} more)",
+    };
+
+    private void InitScenesAndHealth()
+    {
+        Scenes = new SceneController(Channels, Outputs);
+        // A scene claim must not outlive a hand-edit, or the Simple-mode pill lies about what is live.
+        Scenes.SceneApplied += _ => { _autosaveTimer.Stop(); _autosaveTimer.Start(); };
+
+        StandbyCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Standby));
+        TeachingCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Teaching));
+        PrayerCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Prayer));
+        SingingCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Singing));
+        UseLapelCommand = new RelayCommand(() => Scenes.VoiceSource = Models.VoiceSource.Lapel);
+        UseRoomMicsCommand = new RelayCommand(() => Scenes.VoiceSource = Models.VoiceSource.RoomMics);
+        DismissAlertCommand = new RelayCommand(() =>
+        {
+            if (TopAlert != null) _dismissedAlerts.Add(TopAlert.Id);
+            RefreshHealth(force: true);
+        });
+    }
+
+    // --- Settings-window options ----------------------------------------------------------------
+    // Deliberately runtime-only for now: they change what the pickers *show*, not what the mixer does,
+    // and adding them to the preset means adding them to PersistedProperties too (see that file).
+
+    private bool _hideVirtualInputs;
+    public bool HideVirtualInputs
+    {
+        get => _hideVirtualInputs;
+        set { if (SetField(ref _hideVirtualInputs, value)) RefreshDevices(); }
+    }
+
+    private bool _warnOnBluetoothMics = true;
+    public bool WarnOnBluetoothMics
+    {
+        get => _warnOnBluetoothMics;
+        set => SetField(ref _warnOnBluetoothMics, value);
+    }
+
+    public string DiagnosticsSummary =>
+        $"Log: {(AudioLog.Enabled ? "on (%TEMP%\\AudioMixer.log)" : "off — relaunch with --log")}\n" +
+        $"State endpoint: {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AUDIOMIXER_STATE")) ? "off — relaunch with --state" : $"http://127.0.0.1:{Environment.GetEnvironmentVariable("AUDIOMIXER_STATE")}/state")}\n" +
+        $"Binding errors: {Services.BindingErrorListener.ErrorCount}\n" +
+        (IsReplaying ? ReplaySessionLabel : "Live capture");
+
+    private long _lastHealthTicks;
+
+    // Evaluated at ~1 Hz rather than on every meter tick: the alert set is stable on that timescale,
+    // and re-raising a collection 30x/second would churn the UI for nothing.
+    private void RefreshHealth(bool force = false)
+    {
+        long now = Environment.TickCount64;
+        if (!force && now - _lastHealthTicks < 1000) return;
+        _lastHealthTicks = now;
+
+        var snapshot = BuildHealthSnapshot(now);
+        var fresh = HealthMonitor.Evaluate(snapshot)
+            .Where(a => !_dismissedAlerts.Contains(a.Id))
+            .ToList();
+
+        // An alert that clears becomes dismissible again, so a recurrence is not silently swallowed.
+        var liveIds = fresh.Select(a => a.Id).ToHashSet();
+        _dismissedAlerts.RemoveWhere(id => !HealthMonitor
+            .Evaluate(snapshot).Any(a => a.Id == id));
+
+        if (fresh.Count == Alerts.Count && fresh.Zip(Alerts).All(p => p.First == p.Second)) return;
+
+        Alerts.Clear();
+        foreach (var a in fresh) Alerts.Add(a);
+        RaisePropertyChanged(nameof(TopAlert));
+        RaisePropertyChanged(nameof(HasAlert));
+        RaisePropertyChanged(nameof(AlertSummary));
+    }
+
+    private HealthSnapshot BuildHealthSnapshot(long now)
+    {
+        var channels = new List<ChannelHealth>(Channels.Count);
+        for (int i = 0; i < Channels.Count; i++)
+        {
+            var vm = Channels[i];
+            var input = _engine.Inputs[i];
+            channels.Add(new ChannelHealth(
+                i,
+                string.IsNullOrWhiteSpace(vm.CustomLabel) ? $"Input {i + 1}" : vm.CustomLabel,
+                vm.Role,
+                vm.SelectedDevice?.FriendlyName,
+                vm.Routes.Any(r => r.IsOn),
+                vm.Muted,
+                vm.IsPriority,
+                vm.InputPeakDb,
+                (now - input.LastDataTicks) / 1000.0,
+                (now - input.LastSoundTicks) / 1000.0));
+        }
+
+        var outputs = new List<OutputHealth>(Outputs.Length);
+        for (int o = 0; o < Outputs.Length; o++)
+        {
+            var vm = Outputs[o];
+            if (vm.OutputPeakDb > -80) _lastOutputSound[o] = now;
+            outputs.Add(new OutputHealth(
+                o,
+                string.IsNullOrWhiteSpace(vm.CustomLabel) ? OutputViewModel.Tag(o) : vm.CustomLabel,
+                vm.SelectedDevice != null,
+                vm.Muted,
+                vm.OutputPeakDb,
+                (now - _lastOutputSound[o]) / 1000.0));
+        }
+
+        return new HealthSnapshot(Scenes.Current, channels, outputs, IsReplaying);
+    }
+
+    private readonly long[] _lastOutputSound = new long[AudioEngine.OutputCount];
+
+    // --- Diagnostics ("why this mic?") ----------------------------------------------------------
+
+    public ObservableCollection<DiagnosticRow> DiagnosticRows { get; } = new();
+
+    /// <summary>
+    /// Rebuilds the ranked selection table. Driven by the Diagnostics window's own 10 Hz timer rather
+    /// than the meter tick, so it costs nothing when that window is closed.
+    /// </summary>
+    public void RefreshDiagnostics()
+    {
+        var diag = _engine.AutoMixSnapshot();
+
+        // Rank by whatever the first output is actually deciding on, so "why isn't #2 winning" is
+        // answered by reading down the column that matters rather than guessing.
+        bool natural = Outputs.Length > 0 && Outputs[0].PreferNatural;
+        bool corr = Outputs.Length > 0 && Outputs[0].ReferenceGuided;
+
+        var order = Enumerable.Range(0, Channels.Count)
+            .Where(i => Channels[i].HasDevice && !Channels[i].Muted && Channels[i].IsRoutedAnywhere)
+            .OrderByDescending(i => corr && i < diag.Corr.Length ? diag.Corr[i]
+                : natural && i < diag.Cv.Length && diag.Cv[i] > 0 ? -diag.Cv[i]
+                : i < diag.Env.Length ? diag.Env[i] : 0f)
+            .ToList();
+
+        var rows = new List<DiagnosticRow>(Channels.Count);
+        for (int i = 0; i < Channels.Count; i++)
+        {
+            int rank = order.IndexOf(i);
+            rows.Add(DiagnosticRow.Build(i, Channels[i], diag, _engine.Inputs[i],
+                AudioEngine.OutputCount, rank < 0 ? 0 : rank + 1));
+        }
+
+        // Rebuild in place: replacing the collection would drop the ItemsControl's scroll position.
+        while (DiagnosticRows.Count > rows.Count) DiagnosticRows.RemoveAt(DiagnosticRows.Count - 1);
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (i < DiagnosticRows.Count) DiagnosticRows[i] = rows[i];
+            else DiagnosticRows.Add(rows[i]);
+        }
+
+        foreach (var o in Outputs) o.RefreshVerdict(diag, Channels);
     }
 
     // --replay: drive the inputs from a recorded session instead of live mics. Runs after the preset
@@ -251,7 +435,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     private string BuildStateJson() =>
-        StateSnapshot.Build(_engine, Channels, Outputs, InputCount, StatusText);
+        StateSnapshot.Build(_engine, Channels, Outputs, InputCount, StatusText,
+            Scenes.Current?.ToString(), Alerts);
 
     private ChannelViewModel CreateChannel(int index) =>
         new ChannelViewModel(
@@ -404,9 +589,26 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         else dispatcher.BeginInvoke(action);
     }
 
+    // Virtual capture endpoints (CABLE Output, VoiceMeeter) are never the right microphone, but they
+    // clutter every input picker. Filtered from INPUTS only — VB-CABLE must stay selectable as an
+    // output, since that is the path into Zoom. A device already bound is never hidden, or the picker
+    // would show an empty selection for a working channel.
+    private static readonly string[] VirtualDeviceTags =
+        { "VB-Audio", "CABLE Output", "CABLE Input", "VoiceMeeter", "Virtual" };
+
+    private List<AudioDeviceInfo> FilterInputs(List<AudioDeviceInfo> devices)
+    {
+        if (!_hideVirtualInputs) return devices;
+        var bound = Channels.Select(c => c.SelectedDevice?.Id).Where(id => id != null).ToHashSet();
+        return devices
+            .Where(d => bound.Contains(d.Id) ||
+                        !VirtualDeviceTags.Any(t => d.FriendlyName.Contains(t, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
     private void RefreshDevices()
     {
-        _allInputDevices = AudioDeviceInfo.Enumerate(DataFlow.Capture);
+        _allInputDevices = FilterInputs(AudioDeviceInfo.Enumerate(DataFlow.Capture));
         _allOutputDevices = AudioDeviceInfo.Enumerate(DataFlow.Render);
         DedupeAndRebuild();
         UpdateVbCableStatus();
@@ -485,6 +687,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         if (_suppressAutosave) return;
         if (!PersistedProperties.Contains(e.PropertyName)) return;
+
+        // A hand-edit in Advanced invalidates the active scene, so Simple mode stops claiming one.
+        // Guarded, because applying a scene writes these same properties.
+        if (Scenes is { IsApplying: false }) Scenes.MarkCustomised();
+
         _autosaveTimer.Stop();
         _autosaveTimer.Start();
     }
@@ -538,6 +745,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Channels[i].Muted = cp.Muted;
                 Channels[i].DelayMs = cp.DelayMs;
                 Channels[i].IsPriority = cp.Priority;
+                // Presets written before scenes existed have no Role, and 0 (Room) is indistinguishable
+                // from "not set" — migrate those from the priority flag, which is what marked the lapel.
+                Channels[i].Role = cp.Role != 0
+                    ? (Models.ChannelRole)cp.Role
+                    : (cp.Priority ? Models.ChannelRole.Lapel : Models.ChannelRole.Room);
                 for (int r = 0; r < Channels[i].Routes.Length && r < cp.Routes.Length; r++)
                 {
                     Channels[i].Routes[r].IsOn = cp.Routes[r];

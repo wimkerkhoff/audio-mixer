@@ -46,9 +46,75 @@ public sealed class OutputViewModel : ViewModelBase
         get => _volumePercent;
         set
         {
-            if (SetField(ref _volumePercent, Math.Clamp(value, 0f, 100f)))
+            if (SetField(ref _volumePercent, Math.Clamp(value, 0f, 100f)) && !_muted)
                 _bus.Volume = _volumePercent / 100f;
         }
+    }
+
+    // Bus mute, used by Standby and by the Simple-mode on-air cards. Deliberately NOT persisted: a
+    // mute that survived a restart would put an operator on air-silent with no memory of why, and
+    // Standby is a runtime state, not a configuration. It applies at the bus volume, which sits AFTER
+    // the peak/recorder tap — so a muted output still meters, and you can see audio is arriving.
+    private bool _muted;
+    public bool Muted
+    {
+        get => _muted;
+        set
+        {
+            if (!SetField(ref _muted, value)) return;
+            _bus.Volume = value ? 0f : _volumePercent / 100f;
+            RaisePropertyChanged(nameof(OnAirState));
+        }
+    }
+
+    /// <summary>Muted / On air / Off air, for the Simple-mode pill.</summary>
+    public string OnAirState => _muted ? "MUTED"
+        : SelectedDevice == null ? "OFF AIR"
+        : "ON AIR";
+
+    // One-line plain-English answer to "why this mic?", for the Diagnostics window header.
+    private string _selectionVerdict = "";
+    public string SelectionVerdict
+    {
+        get => _selectionVerdict;
+        private set => SetField(ref _selectionVerdict, value);
+    }
+
+    public void RefreshVerdict(AutoMixDiag diag, IReadOnlyList<ChannelViewModel> channels)
+    {
+        if (Index >= diag.Winner.Length) return;
+
+        string Name(int i) => i < 0 || i >= channels.Count ? "—"
+            : string.IsNullOrWhiteSpace(channels[i].CustomLabel) ? $"in{i + 1}" : channels[i].CustomLabel;
+
+        var mode = Index < diag.Mode.Length ? diag.Mode[Index] : AutoMixMode.Off;
+        if (mode == AutoMixMode.Off)
+        {
+            SelectionVerdict = "automix off — every routed mic passes at unity";
+            return;
+        }
+
+        int winner = diag.Winner[Index];
+        int active = Index < diag.ActiveInput.Length ? diag.ActiveInput[Index] : -1;
+
+        if (winner < 0)
+        {
+            // -1 has three causes and they mean very different things; say which.
+            bool priority = active >= 0 && active < channels.Count && channels[active].IsPriority;
+            SelectionVerdict = priority
+                ? $"{Name(active)} is priority — every room mic is ducked"
+                : "room is silent — all routed mics open, nothing selected";
+            return;
+        }
+
+        string rule = Index < diag.ReferenceGuided.Length && diag.ReferenceGuided[Index] ? "match-lapel (corr +0.05)"
+            : Index < diag.PreferNatural.Length && diag.PreferNatural[Index] ? "prefer-natural (flux-cv x0.85)"
+            : "level (+3 dB)";
+
+        int hold = Index < diag.WinnerHold.Length ? diag.WinnerHold[Index] : 0;
+        string holdText = hold > 0 ? $", held {hold * 10} ms more" : "";
+
+        SelectionVerdict = $"{mode}: {Name(winner)} winning on {rule}{holdText}";
     }
 
     public RelayCommand ToggleRecordCommand { get; }

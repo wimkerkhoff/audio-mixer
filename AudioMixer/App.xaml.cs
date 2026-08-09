@@ -54,6 +54,7 @@ public partial class App : Application
         if (AudioLog.Enabled) Services.BindingErrorListener.Enable();
 
         base.OnStartup(e);
+        CreateWindows();
     }
 
     // Command-line equivalents of the AUDIOMIXER_LOG / AUDIOMIXER_STATE env vars, so a desktop
@@ -63,6 +64,7 @@ public partial class App : Application
     //   --state[=PORT]   enable the loopback JSON state endpoint (default port 7077)
     //   --replay[=STAMP] replay a recorded session instead of live mics (sandbox; see ReplayOptions)
     //   --speed=N        replay rate multiplier (batch runs); --loop  replay repeatedly
+    //   --simple         open the operator (Simple) panel; the full mixer stays one click away
     private static void ApplyCliFlags(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
@@ -86,6 +88,21 @@ public partial class App : Application
             {
                 ReplayOptions.Loop = true;
             }
+            else if (a.Equals("--simple", StringComparison.OrdinalIgnoreCase) ||
+                     a.Equals("--ui=simple", StringComparison.OrdinalIgnoreCase) ||
+                     a.Equals("--ui=new", StringComparison.OrdinalIgnoreCase))
+            {
+                _useSimpleUi = true;
+            }
+            else if (a.StartsWith("--scene=", StringComparison.OrdinalIgnoreCase))
+            {
+                if (Enum.TryParse<Models.Scene>(a[8..], ignoreCase: true, out var sc)) StartupScene = sc;
+            }
+            else if (a.Equals("--open-all", StringComparison.OrdinalIgnoreCase))
+            {
+                _useSimpleUi = true;
+                _openAllWindows = true;
+            }
             else if (a.StartsWith("--seek=", StringComparison.OrdinalIgnoreCase))
             {
                 ReplayOptions.Seek = ReplayOptions.ParseTime(a[7..]);
@@ -105,6 +122,56 @@ public partial class App : Application
             }
         }
     }
+
+    /// <summary>
+    /// Simple mode is opt-in (<c>--simple</c> / <c>--ui=simple</c>) and OFF by default, so the exe an
+    /// operator carries to a service opens exactly what it opens today until they choose otherwise.
+    /// Both windows bind the SAME view model, which is what makes running them side by side a valid
+    /// comparison — they cannot disagree about mixer state.
+    /// </summary>
+    private static bool _useSimpleUi;
+
+    private void CreateWindows()
+    {
+        var main = new MainWindow();
+        MainWindow = main;
+
+        if (!_useSimpleUi)
+        {
+            main.Show();
+            return;
+        }
+
+        var simple = new Views.SimpleWindow(main.ViewModel) { AdvancedWindow = main };
+
+        // Advanced starts hidden rather than closed: closing it would dispose the shared view model.
+        // With it hidden, the app must not exit on "last window closed", so shutdown is explicit.
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        simple.Closed += (_, _) =>
+        {
+            main.Close();      // disposes the view model, stopping the engine cleanly
+            Shutdown();
+        };
+        simple.Show();
+        MainWindow = simple;   // so the single-instance signal raises the panel the operator is using
+
+        // Diagnostics and Settings only resolve their bindings when opened, so a smoke run has to open
+        // them or their markup is untested. Paired with --log this turns "did I break a binding" into a
+        // one-command check across every window.
+        if (_openAllWindows)
+        {
+            main.Show();
+            simple.OpenAuxiliaryWindows();
+        }
+    }
+
+    private static bool _openAllWindows;
+
+    /// <summary>
+    /// Applied once the view model is up. Lets a desktop shortcut open straight into a scene, and lets
+    /// a smoke run assert the whole scene path (pure transform -> view models -> engine) from /state.
+    /// </summary>
+    public static Models.Scene? StartupScene { get; private set; }
 
     private void ShowListenerLoop()
     {

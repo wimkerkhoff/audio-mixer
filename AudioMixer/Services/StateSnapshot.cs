@@ -12,8 +12,10 @@ public static class StateSnapshot
     // Callers must already be on the UI thread (StateServer runs on its own).
     public static string Build(
         AudioEngine engine, IReadOnlyList<ChannelViewModel> channels,
-        IReadOnlyList<OutputViewModel> outputs, int inputCount, string status)
+        IReadOnlyList<OutputViewModel> outputs, int inputCount, string status,
+        string? scene = null, IReadOnlyList<HealthAlert>? alertList = null)
     {
+        var alerts = alertList ?? Array.Empty<HealthAlert>();
         static double ToDb(double lin) => lin <= 1e-6 ? -120.0 : Math.Round(20 * Math.Log10(lin), 1);
         var diag = engine.AutoMixSnapshot();
 
@@ -80,6 +82,8 @@ public static class StateSnapshot
             inputCount,
             status,
             referenceInput = diag.ReferenceInput,
+            scene,
+            alerts = alerts.Select(a => new { a.Id, severity = a.Severity.ToString(), a.Message }).ToArray(),
             replay = rig == null ? null : new
             {
                 stamp = rig.Stamp,

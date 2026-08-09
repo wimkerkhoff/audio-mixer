@@ -9,6 +9,9 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
 
+    /// <summary>Shared with Simple mode, which binds this exact instance rather than a copy.</summary>
+    public MainViewModel ViewModel => _viewModel;
+
     public MainWindow()
     {
         InitializeComponent();

@@ -18,6 +18,11 @@ public sealed class ChannelPreset
     public int DelayMs { get; set; }
     public bool Priority { get; set; }
     public bool[] Routes { get; set; } = Array.Empty<bool>();
+
+    // What the channel IS (0 Room, 1 Lapel), as distinct from how it is configured right now. Scenes
+    // need this to survive Prayer clearing the priority flag. Absent in presets written before scenes
+    // existed, where 0 is ambiguous — ApplyPreset migrates those from Priority.
+    public int Role { get; set; }
 }
 
 public sealed class OutputPreset

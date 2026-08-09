@@ -1,0 +1,242 @@
+﻿<Window x:Class="AudioMixer.Views.SimpleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctrl="clr-namespace:AudioMixer.Controls"
+        xmlns:v="clr-namespace:AudioMixer.Views"
+        Title="AudioMixer"
+        Icon="../Assets/app.ico"
+        Background="#1B1B20"
+        SizeToContent="Height"
+        Width="330"
+        MinWidth="300"
+        ResizeMode="CanMinimize"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+    <!--
+      Simple mode: the operator runs on ONE monitor shared with OBS, Zoom, YouTube and SermonAudio, so
+      this is a narrow dockable panel rather than a console. It surfaces exactly four things: the scene,
+      whether audio is flowing, whether the mics are alive, and anything wrong. No per-mic control on
+      purpose - to touch a mic you drop into Advanced.
+    -->
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <v:SeverityBrushConverter x:Key="SeverityBrush"/>
+        <v:NullToVisibilityConverter x:Key="NullToVis"/>
+        <v:MicDotConverter x:Key="MicDot"/>
+
+        <Style x:Key="Cap" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8A8A94"/>
+            <Setter Property="FontSize" Value="10"/>
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="#26262C"/>
+            <Setter Property="BorderBrush" Value="#3A3A42"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="7,5"/>
+        </Style>
+
+        <Style x:Key="SceneBtn" TargetType="Button">
+            <Setter Property="Background" Value="#2C2C34"/>
+            <Setter Property="Foreground" Value="#D8D8DE"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#3E3E48"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="0,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#35353F"/>
+                </Trigger>
+                <!--
+                  Selected state rides on Tag as a STRING. A bool here does not work reliably: XAML
+                  parses a trigger's Value as a string and the comparison against a boolean binding is
+                  brittle, which silently leaves every button looking unselected.
+                -->
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="on">
+                    <Setter Property="Background" Value="#2F6F3E"/>
+                    <Setter Property="BorderBrush" Value="#3FB950"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SmallBtn" TargetType="Button" BasedOn="{StaticResource SceneBtn}">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Padding" Value="6,3"/>
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="8">
+
+        <!-- Header: what scene is live, and the doors to everything else -->
+        <Grid Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="{Binding Scenes.CurrentName}" Foreground="#E8E8EE" FontSize="14" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding Scenes.CurrentDescription}" Style="{StaticResource Cap}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <ToggleButton x:Name="PinButton" Content="Pin" Width="30" Height="20" FontSize="10"
+                              Foreground="#B8B8C2" Background="#2C2C34" BorderBrush="#3E3E48"
+                              ToolTip="Keep this panel above other windows"
+                              Checked="Pin_Changed" Unchecked="Pin_Changed"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Health banner: the productised version of watching /state by hand -->
+        <Border CornerRadius="4" Padding="7,5" Margin="0,0,0,6"
+                Background="{Binding TopAlert.Severity, Converter={StaticResource SeverityBrush}}"
+                Visibility="{Binding HasAlert, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding AlertSummary}" Foreground="White"
+                           FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="{Binding TopAlert.Action}" Foreground="#FFE9A8"
+                           FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"
+                           Visibility="{Binding TopAlert.Action, Converter={StaticResource NullToVis}}"/>
+                <Button Grid.Column="2" Content="✕" Width="18" Height="18" Margin="6,0,0,0"
+                        Style="{StaticResource SmallBtn}" Background="Transparent" BorderThickness="0"
+                        Foreground="White" ToolTip="Dismiss"
+                        Command="{Binding DismissAlertCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- Scenes: the one control that matters -->
+        <UniformGrid Rows="1" Columns="4" Margin="0,0,0,6">
+            <Button Content="Standby" Margin="0,0,3,0" Command="{Binding StandbyCommand}"
+                    Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.StandbyState}"/>
+            <Button Content="Teaching" Margin="0,0,3,0" Command="{Binding TeachingCommand}"
+                    Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.TeachingState}"/>
+            <Button Content="Prayer" Margin="0,0,3,0" Command="{Binding PrayerCommand}"
+                    Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.PrayerState}"/>
+            <Button Content="Singing" Command="{Binding SingingCommand}"
+                    Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.SingingState}"/>
+        </UniformGrid>
+
+        <!-- The only operator override, and only where it means something -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,6"
+                Visibility="{Binding Scenes.ShowVoiceSource, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Text="VOICE SOURCE" Style="{StaticResource Cap}" Margin="0,0,0,3"/>
+                <UniformGrid Rows="1" Columns="2">
+                    <Button Content="Lapel" Margin="0,0,3,0" Command="{Binding UseLapelCommand}"
+                            Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.LapelState}"/>
+                    <Button Content="Room mics" Command="{Binding UseRoomMicsCommand}"
+                            Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.RoomState}"/>
+                </UniformGrid>
+            </StackPanel>
+        </Border>
+
+        <!-- On-air cards: is audio actually flowing? -->
+        <ItemsControl ItemsSource="{Binding Outputs}" Margin="0,0,0,6">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,4">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding CustomLabel}"
+                                       Foreground="#D8D8DE" FontSize="12"/>
+                            <Border Grid.Row="0" Grid.Column="1" CornerRadius="3" Padding="5,1" Margin="4,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#2F6F3E"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding OnAirState}" Value="MUTED">
+                                                <Setter Property="Background" Value="#8B1E26"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding OnAirState}" Value="OFF AIR">
+                                                <Setter Property="Background" Value="#44484F"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding OnAirState}" Foreground="White" FontSize="9"/>
+                            </Border>
+                            <ToggleButton Grid.Row="0" Grid.Column="2" Content="M" Width="20" Height="18"
+                                          FontSize="9" Foreground="#D8D8DE" Background="#2C2C34"
+                                          BorderBrush="#3E3E48" ToolTip="Mute this output"
+                                          IsChecked="{Binding Muted}"/>
+
+                            <ctrl:VuMeter Grid.Row="1" Grid.ColumnSpan="3" Height="7" Margin="0,4,0,0"
+                                          PeakDb="{Binding OutputPeakDb}"
+                                          HoldDb="{Binding OutputPeakHoldDb}"
+                                          Orientation="Horizontal"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Mic health: one dot per mic, click to jump into Advanced -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,6">
+            <StackPanel>
+                <TextBlock Text="MICS" Style="{StaticResource Cap}" Margin="0,0,0,4"/>
+                <ItemsControl ItemsSource="{Binding Channels}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,10,3">
+                                <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+                                    <Ellipse.Fill>
+                                        <MultiBinding Converter="{StaticResource MicDot}">
+                                            <Binding Path="HasDevice"/>
+                                            <Binding Path="IsRoutedAnywhere"/>
+                                            <Binding Path="Muted"/>
+                                            <Binding Path="InputPeakDb"/>
+                                            <Binding Path="IsDucking"/>
+                                        </MultiBinding>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <TextBlock Text="{Binding CustomLabel}" Foreground="#B8B8C2" FontSize="10"
+                                           Margin="4,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- Progressive disclosure: nothing is more than one click away -->
+        <UniformGrid Rows="1" Columns="3">
+            <Button Content="Advanced" Margin="0,0,3,0" Style="{StaticResource SmallBtn}" Click="Advanced_Click"/>
+            <Button Content="Diagnostics" Margin="0,0,3,0" Style="{StaticResource SmallBtn}" Click="Diagnostics_Click"/>
+            <Button Content="Settings" Style="{StaticResource SmallBtn}" Click="Settings_Click"/>
+        </UniformGrid>
+
+        <TextBlock Text="{Binding StatusText}" Style="{StaticResource Cap}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
+    </StackPanel>
+</Window>

@@ -36,7 +36,26 @@ same snapshot on the existing ~30 Hz meter timer (NOT per-buffer). Newly worthwh
 column would have shown a frozen value). Pairs with the clarity→flux-cv readout unification and
 operator overrides below.
 
-### 🔲 "Easy UI" mode — *design agreed 2026-08; clickable mockup linked below*
+### ✅ Simple mode, scenes, health banner, Diagnostics + Settings — shipped 2026-08-09
+Opt-in via `--simple` (default OFF, so the exe carried to a service opens exactly what it does today).
+Simple mode binds the **same `MainViewModel` instance** as Advanced, so the two views cannot disagree —
+which also makes running them side by side a valid comparison. `MainWindow.xaml` was not touched.
+- **Scenes** are a pure transform (`Services/SceneTransform`) with 20 unit tests, including the safety
+  property that no scene/override combination can leave the stream with nothing routed.
+- **Health banner** is a pure evaluator (`Services/HealthMonitor`, 15 tests) covering the failures
+  these sessions actually hit: stream silent, no output device, idle armed lapel, priority mic during
+  Singing, presenter off-air, stalled mic, Anker on Bluetooth, long-silent mic.
+- **Diagnostics** ranks mics by the metric the output is actually deciding on and states the verdict in
+  one line, including which of the three causes of `winner = -1` applies.
+- Verified: all four windows open with live data and **zero binding errors** (`--open-all --log`), all
+  four scenes assert correctly from `/state` (`--scene=`), and both golden baselines still PASS.
+
+**Still open from the original design:** the mic dots don't yet click through to that input in
+Advanced; there's no always-on-top persistence (the Pin button is per-session); Settings' hide-virtual
+and BT-warn options are runtime-only (not persisted); and the alert banner's action buttons are labels,
+not yet wired to actions.
+
+### 🔲 "Easy UI" mode — *original design notes; superseded by the entry above*
 A simplified, operator-proof default view for non-technical volunteers, with progressive disclosure
 to everything else.
 
