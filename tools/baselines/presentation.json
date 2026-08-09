@@ -1,0 +1,65 @@
+﻿{
+    "fixture":  "presentation",
+    "stamp":  "20260809-092931",
+    "seek":  300,
+    "duration":  60,
+    "samples":  119,
+    "channels":  [
+                     {
+                         "index":  0,
+                         "label":  "LAPEL",
+                         "medianEnv":  -64.2,
+                         "medianCv":  null
+                     },
+                     {
+                         "index":  1,
+                         "label":  "Anker #1",
+                         "medianEnv":  -26.6,
+                         "medianCv":  0.37
+                     },
+                     {
+                         "index":  2,
+                         "label":  "Anker 2",
+                         "medianEnv":  -32.6,
+                         "medianCv":  0.42
+                     },
+                     {
+                         "index":  3,
+                         "label":  "Anker 3",
+                         "medianEnv":  -27.6,
+                         "medianCv":  0.35
+                     },
+                     {
+                         "index":  4,
+                         "label":  "Anker 4",
+                         "medianEnv":  -25.2,
+                         "medianCv":  0.36
+                     }
+                 ],
+    "outputs":  [
+                    {
+                        "index":  0,
+                        "mode":  "Gate",
+                        "preferNatural":  true,
+                        "handoffs":  14,
+                        "occupancy":  {
+                                          "1":  2.5,
+                                          "-1":  13.4,
+                                          "3":  51.3,
+                                          "4":  32.8
+                                      }
+                    },
+                    {
+                        "index":  1,
+                        "mode":  "Gate",
+                        "preferNatural":  true,
+                        "handoffs":  14,
+                        "occupancy":  {
+                                          "1":  2.5,
+                                          "-1":  13.4,
+                                          "3":  51.3,
+                                          "4":  32.8
+                                      }
+                    }
+                ]
+}

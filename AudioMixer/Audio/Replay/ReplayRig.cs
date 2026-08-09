@@ -43,6 +43,18 @@ public sealed partial class ReplayRig : IDisposable
 
     public event Action? ReachedEnd;
 
+    /// <summary>
+    /// Raised after every source has been advanced by one <see cref="ChunkFrames"/> chunk, i.e. once
+    /// per 10 ms of replayed audio. The engine drives the automix tick from this instead of its own
+    /// wall-clock timer while replaying, which buys two things:
+    ///   * determinism — the selector sees exactly one tick per chunk, so a fixture replays the same
+    ///     way every run and a golden baseline can be compared meaningfully;
+    ///   * speed independence — at Speed=4 the automixer still gets one tick per 10 ms of *audio*,
+    ///     so a fast batch run behaves like the real-time one instead of quartering the hold time.
+    /// Chunk pumping is synchronous, so levels are already latched when this fires.
+    /// </summary>
+    public event Action? Pumped;
+
     public static string DefaultDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "Documents", "AudioMixer", "analysis");
@@ -187,6 +199,7 @@ public sealed partial class ReplayRig : IDisposable
                     if (s == null) continue;
                     if (!s.Pump(ChunkFrames)) ended = true;
                 }
+                Pumped?.Invoke();
             }
 
             if (!ended) return;

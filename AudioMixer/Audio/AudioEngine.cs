@@ -57,6 +57,11 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
 
     private void AutoMixTick(object? state)
     {
+        // While replaying, the rig drives the tick from the audio clock (see ReplayRig.Pumped) so the
+        // selector is deterministic and speed-independent. Letting the wall-clock timer also fire
+        // would double-tick and halve every hold.
+        if (Volatile.Read(ref _replayDrivesAutoMix) != 0 && state != null) return;
+
         var inputs = Inputs; // single atomic reference read; safe vs SetInputCount's array swap
         try { _autoMix.Tick(inputs); }
         catch (Exception ex)
@@ -155,8 +160,13 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
     // at a desk. _inputDevices stays null for replayed channels, which is what keeps the capture-stall
     // watchdog from "restarting" them (it only acts on channels that have a device).
     private Replay.ReplayRig? _replay;
+    private int _replayDrivesAutoMix;
     public Replay.ReplayRig? Replay => _replay;
     public bool IsReplaying => _replay != null;
+
+    // Called from ReplayRig.Pumped, once per 10 ms of replayed audio. `null` state distinguishes it
+    // from the wall-clock timer callback, which stands down while this is driving.
+    private void ReplayPumped() => AutoMixTick(null);
 
     public void StartReplay(Replay.ReplayRig rig)
     {
@@ -179,6 +189,8 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
             }
 
             _replay = rig;
+            Volatile.Write(ref _replayDrivesAutoMix, 1);
+            rig.Pumped += ReplayPumped;
             for (int o = 0; o < OutputCount; o++) RestartOutputBus_NoLock(o);
             rig.Start();
         }
@@ -193,6 +205,8 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
     private void StopReplay_NoLock()
     {
         if (_replay == null) return;
+        _replay.Pumped -= ReplayPumped;
+        Volatile.Write(ref _replayDrivesAutoMix, 0);
         _replay.Stop();
         foreach (var input in Inputs) input.Stop();
         _replay.Dispose();

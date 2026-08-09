@@ -305,11 +305,25 @@ flux-cv, meters, LEDs, ducking, scenes — runs unmodified.
 - Complementary **synthetic** generator — talker A/B/overlap/silence, a lapel bump crossing −40 dBFS.
   Deterministic, tiny, and can produce situations the recordings don't contain.
 
-### 🛠 `/state` golden-baseline regression harness
-`/state` already dumps the engine's whole reasoning as JSON. Run a replay fixture, sample at 1 Hz, save
-as a baseline, diff on later runs — selector drift becomes a text diff. Both halves already exist.
-Fixtures from labeled segments: 2026-08-09 singing (09:31–09:34) and presentation/Q&A (09:34+),
-2026-07-26 prayer.
+### ✅ `/state` golden-baseline regression harness — shipped 2026-08-09
+`tools/replay-baseline.ps1 -Name <fixture> -Stamp <session> -Seek <s> -For <s> [-Update]`. Baselines in
+`tools/baselines/`. Two recorded so far from the 2026-08-09 session: **singing** (seek 95) and
+**presentation** (seek 300); both re-run PASS.
+- It compares **aggregates, not raw samples** — mode, hand-off count, winner occupancy, median flux-cv.
+  Hand-off count proved exactly reproducible and is the sensitive signal. `medianEnv` is recorded but
+  only loosely checked (±4 dB): env moves fast and `/state` is polled at arbitrary phase, so tightening
+  it yields false alarms, not earlier warnings.
+- Samples are gridded in **replay-position space**, not wall-clock. Polling is wall-clock, so without
+  this a `-Speed 4` run captures half as many samples and the diff measures the poll rate.
+- **Record and check at the same `-Speed`, and stay at 1–2.** Higher speeds saturate the process:
+  `/state` polls get starved and the rig's catch-up cap starts dropping audio.
+- Found and fixed a real bug while building it: the automix tick ran on a wall clock, so `--speed`
+  changed selector behaviour (at speed 2 the automixer saw half as many ticks per audio-second,
+  halving every hold). The rig now drives the tick from the audio clock — one tick per 480-frame
+  chunk — which makes replay both deterministic and speed-independent.
+
+Still to add: a **prayer** fixture from 2026-07-26, and a synthetic generator for cases the recordings
+don't contain.
 
 ### 🛠 Scenes as a pure transform
 Implement a scene as a testable function (`Scene` → list of property assignments) separate from the code

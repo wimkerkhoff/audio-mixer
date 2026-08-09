@@ -1,0 +1,67 @@
+﻿{
+    "fixture":  "singing",
+    "stamp":  "20260809-092931",
+    "seek":  95,
+    "duration":  60,
+    "samples":  119,
+    "channels":  [
+                     {
+                         "index":  0,
+                         "label":  "LAPEL",
+                         "medianEnv":  -64.5,
+                         "medianCv":  null
+                     },
+                     {
+                         "index":  1,
+                         "label":  "Anker #1",
+                         "medianEnv":  -32.3,
+                         "medianCv":  0.47
+                     },
+                     {
+                         "index":  2,
+                         "label":  "Anker 2",
+                         "medianEnv":  -32.5,
+                         "medianCv":  0.51
+                     },
+                     {
+                         "index":  3,
+                         "label":  "Anker 3",
+                         "medianEnv":  -33.7,
+                         "medianCv":  0.43
+                     },
+                     {
+                         "index":  4,
+                         "label":  "Anker 4",
+                         "medianEnv":  -31.8,
+                         "medianCv":  0.43
+                     }
+                 ],
+    "outputs":  [
+                    {
+                        "index":  0,
+                        "mode":  "Gate",
+                        "preferNatural":  true,
+                        "handoffs":  19,
+                        "occupancy":  {
+                                          "1":  16,
+                                          "-1":  4.2,
+                                          "2":  6.7,
+                                          "3":  31.1,
+                                          "4":  42
+                                      }
+                    },
+                    {
+                        "index":  1,
+                        "mode":  "Gate",
+                        "preferNatural":  true,
+                        "handoffs":  19,
+                        "occupancy":  {
+                                          "1":  16,
+                                          "-1":  4.2,
+                                          "2":  6.7,
+                                          "3":  31.1,
+                                          "4":  42
+                                      }
+                    }
+                ]
+}
