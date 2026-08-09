@@ -144,7 +144,8 @@ public sealed class InputChannel : IDisposable
     private long _lastDataTicks;
     public long LastDataTicks => Volatile.Read(ref _lastDataTicks);
 
-    private WasapiCapture? _capture;
+    private IWaveIn? _capture;
+    private bool _ownsCapture;
     private WaveFormat? _captureFormat;
     private BufferedWaveProvider? _captureFifo;
     private ISampleProvider? _convertedSource;
@@ -254,12 +255,23 @@ public sealed class InputChannel : IDisposable
 
     public void Start(AudioDeviceInfo deviceInfo)
     {
-        Stop();
         var device = deviceInfo.Resolve()
             ?? throw new InvalidOperationException($"Capture device not found: {deviceInfo.FriendlyName}");
-        _label = deviceInfo.FriendlyName;
+        Start(new WasapiCapture(device, useEventSync: true, audioBufferMillisecondsLength: 20),
+              deviceInfo.FriendlyName, ownsCapture: true);
+    }
 
-        var capture = new WasapiCapture(device, useEventSync: true, audioBufferMillisecondsLength: 20);
+    /// <summary>
+    /// Start from any capture source. The device path builds a <see cref="WasapiCapture"/>; the replay
+    /// rig supplies a file-backed source instead, so everything downstream of here runs identically
+    /// whether the samples came from a mic or from a recorded session.
+    /// </summary>
+    public void Start(IWaveIn capture, string label, bool ownsCapture = false)
+    {
+        Stop();
+        _label = label;
+        _ownsCapture = ownsCapture;
+
         _captureFormat = capture.WaveFormat;
         _captureFifo = new BufferedWaveProvider(_captureFormat)
         {
@@ -292,7 +304,9 @@ public sealed class InputChannel : IDisposable
             {
                 try { _capture.StopRecording(); } catch { }
                 _capture.DataAvailable -= OnDataAvailable;
-                try { _capture.Dispose(); } catch { }
+                // The replay rig owns its sources and reuses them across seeks/restarts, so only
+                // dispose a capture we created ourselves.
+                if (_ownsCapture) { try { _capture.Dispose(); } catch { } }
                 _capture = null;
             }
             _captureFifo = null;

@@ -143,11 +143,85 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             foreach (var ch in Channels) ch.RefreshMeters();
             foreach (var op in Outputs) op.RefreshMeters();
             _diagnostics.Tick();
+            if (_isReplaying) RaisePropertyChanged(nameof(ReplayPositionText));
         };
         _meterTimer.Start();
 
         TryLoadInitialPreset();
+        StartReplayIfRequested();
         StartStateServer();
+    }
+
+    // --replay: drive the inputs from a recorded session instead of live mics. Runs after the preset
+    // load so routes/modes/priority flags carry over — the point is to replay a session *through* the
+    // operator's real configuration.
+    private void StartReplayIfRequested()
+    {
+        var opts = Audio.Replay.ReplayOptions.Current;
+        if (opts == null) return;
+
+        // Never let a sandbox instance open the operator's outputs — two processes both writing CABLE
+        // Input would double audio into Zoom. The operator picks an output by hand to listen.
+        if (opts.SuppressOutputDevices)
+            foreach (var op in Outputs) op.SelectedDevice = null;
+
+        RunGuarded("Replay", () =>
+        {
+            var rig = Audio.Replay.ReplayRig.Open(opts.Directory, opts.Stamp);
+            rig.Speed = Audio.Replay.ReplayOptions.Speed;
+            rig.Loop = Audio.Replay.ReplayOptions.Loop;
+            if (Audio.Replay.ReplayOptions.Seek > TimeSpan.Zero) rig.Seek(Audio.Replay.ReplayOptions.Seek);
+            _engine.StartReplay(rig);
+
+            // --for: a batch run must exit on its own so a harness can wait on the process.
+            var runFor = Audio.Replay.ReplayOptions.Duration;
+            if (runFor > TimeSpan.Zero)
+            {
+                var stopAt = rig.Position + runFor;
+                var watch = new DispatcherTimer(DispatcherPriority.Background)
+                { Interval = TimeSpan.FromMilliseconds(200) };
+                watch.Tick += (_, _) =>
+                {
+                    if (rig.Position < stopAt) return;
+                    watch.Stop();
+                    Application.Current?.Shutdown();
+                };
+                watch.Start();
+            }
+            rig.ReachedEnd += () => RunOnUi(() =>
+            {
+                StatusText = $"Replay finished — {rig.Stamp}";
+                if (!rig.Loop && Audio.Replay.ReplayOptions.Duration > TimeSpan.Zero)
+                    Application.Current?.Shutdown();
+            });
+            IsReplaying = true;
+            ReplaySessionLabel = $"REPLAY {rig.Stamp} · {rig.InputCount} inputs · {rig.Duration:hh\\:mm\\:ss}";
+            StatusText = ReplaySessionLabel;
+        });
+    }
+
+    private bool _isReplaying;
+    public bool IsReplaying
+    {
+        get => _isReplaying;
+        private set => SetField(ref _isReplaying, value);
+    }
+
+    private string _replaySessionLabel = "";
+    public string ReplaySessionLabel
+    {
+        get => _replaySessionLabel;
+        private set => SetField(ref _replaySessionLabel, value);
+    }
+
+    /// <summary>Replay position, polled by the meter timer so the UI can show a transport readout.</summary>
+    public string ReplayPositionText
+    {
+        get
+        {
+            var rig = _engine.Replay;
+            return rig == null ? "" : $"{rig.Position:hh\\:mm\\:ss} / {rig.Duration:hh\\:mm\\:ss}";
+        }
     }
 
     // Loopback JSON state endpoint for diagnostics — opt-in via AUDIOMIXER_STATE (a port number, or
@@ -436,6 +510,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void SavePreset()
     {
+        // A replay sandbox has no real input devices bound; letting it autosave would overwrite the
+        // operator's preset with replay placeholders, possibly while they are mid-service.
+        if (Audio.Replay.ReplayOptions.Current?.SuppressAutosave == true) return;
+
         var preset = PresetMapper.FromViewModels(Channels, Outputs, _vbCablePromptDismissed);
         RunGuarded("Save", () =>
         {

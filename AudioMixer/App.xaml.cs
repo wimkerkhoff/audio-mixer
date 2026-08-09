@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Windows;
 using AudioMixer.Audio;
+using AudioMixer.Audio.Replay;
 
 namespace AudioMixer;
 
@@ -14,6 +15,11 @@ public partial class App : Application
     // first instance to surface its window so the user isn't left wondering why nothing happened.
     private const string InstanceName = "AudioMixer.SingleInstance.v1";
 
+    // A --replay instance is a dev sandbox, not the operator's mixer: it must be able to run
+    // *alongside* a live session (which the single-instance guard would otherwise block), and it must
+    // never write the operator's preset or grab their output devices. See ReplayOptions.
+    private const string ReplayInstanceName = "AudioMixer.SingleInstance.Replay.v1";
+
     private Mutex? _instanceMutex;
     private bool _ownsMutex;
     private EventWaitHandle? _showEvent;
@@ -21,9 +27,12 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        _instanceMutex = new Mutex(initiallyOwned: true, InstanceName, out bool isFirst);
+        ApplyCliFlags(e.Args);
+
+        string instanceName = ReplayOptions.Current == null ? InstanceName : ReplayInstanceName;
+        _instanceMutex = new Mutex(initiallyOwned: true, instanceName, out bool isFirst);
         _ownsMutex = isFirst;
-        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, InstanceName + ".show");
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, instanceName + ".show");
 
         if (!isFirst)
         {
@@ -41,7 +50,6 @@ public partial class App : Application
         _showListener = new Thread(ShowListenerLoop) { IsBackground = true, Name = "SingleInstanceListener" };
         _showListener.Start();
 
-        ApplyCliFlags(e.Args);
         base.OnStartup(e);
     }
 
@@ -50,6 +58,8 @@ public partial class App : Application
     // these are additive. Runs before base.OnStartup so MainViewModel sees the state port on startup.
     //   --log            enable file logging (%TEMP%\AudioMixer.log)
     //   --state[=PORT]   enable the loopback JSON state endpoint (default port 7077)
+    //   --replay[=STAMP] replay a recorded session instead of live mics (sandbox; see ReplayOptions)
+    //   --speed=N        replay rate multiplier (batch runs); --loop  replay repeatedly
     private static void ApplyCliFlags(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
@@ -58,6 +68,28 @@ public partial class App : Application
             if (a.Equals("--log", StringComparison.OrdinalIgnoreCase))
             {
                 AudioLog.Enabled = true;
+            }
+            else if (a.Equals("--replay", StringComparison.OrdinalIgnoreCase) ||
+                     a.StartsWith("--replay=", StringComparison.OrdinalIgnoreCase))
+            {
+                int eq = a.IndexOf('=');
+                ReplayOptions.Current = new ReplayOptions { Stamp = eq >= 0 ? a[(eq + 1)..] : null };
+            }
+            else if (a.StartsWith("--speed=", StringComparison.OrdinalIgnoreCase))
+            {
+                if (double.TryParse(a[8..], out double sp)) ReplayOptions.Speed = sp;
+            }
+            else if (a.Equals("--loop", StringComparison.OrdinalIgnoreCase))
+            {
+                ReplayOptions.Loop = true;
+            }
+            else if (a.StartsWith("--seek=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReplayOptions.Seek = ReplayOptions.ParseTime(a[7..]);
+            }
+            else if (a.StartsWith("--for=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReplayOptions.Duration = ReplayOptions.ParseTime(a[6..]);
             }
             else if (a.Equals("--state", StringComparison.OrdinalIgnoreCase) ||
                      a.StartsWith("--state=", StringComparison.OrdinalIgnoreCase))

@@ -150,12 +150,65 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
         }
     }
 
+    // --- Replay mode -------------------------------------------------------------------------
+    // Feeds the inputs from a recorded session instead of live devices so the graph can be exercised
+    // at a desk. _inputDevices stays null for replayed channels, which is what keeps the capture-stall
+    // watchdog from "restarting" them (it only acts on channels that have a device).
+    private Replay.ReplayRig? _replay;
+    public Replay.ReplayRig? Replay => _replay;
+    public bool IsReplaying => _replay != null;
+
+    public void StartReplay(Replay.ReplayRig rig)
+    {
+        lock (_lock)
+        {
+            StopReplay_NoLock();
+            for (int i = 0; i < Inputs.Length; i++)
+            {
+                Inputs[i].Stop();
+                _inputDevices[i] = null;
+            }
+
+            SetInputCount_NoLock(Math.Clamp(rig.InputCount, MinInputCount, MaxInputCount));
+
+            for (int i = 0; i < Inputs.Length; i++)
+            {
+                var src = i < rig.Sources.Length ? rig.Sources[i] : null;
+                if (src == null) continue;
+                Inputs[i].Start(src, $"replay {System.IO.Path.GetFileName(src.Path)}");
+            }
+
+            _replay = rig;
+            for (int o = 0; o < OutputCount; o++) RestartOutputBus_NoLock(o);
+            rig.Start();
+        }
+        AudioLog.Write($"Replay started: session {rig.Stamp}, {rig.InputCount} inputs, {rig.Duration:hh\\:mm\\:ss}");
+    }
+
+    public void StopReplay()
+    {
+        lock (_lock) { StopReplay_NoLock(); }
+    }
+
+    private void StopReplay_NoLock()
+    {
+        if (_replay == null) return;
+        _replay.Stop();
+        foreach (var input in Inputs) input.Stop();
+        _replay.Dispose();
+        _replay = null;
+        AudioLog.Write("Replay stopped.");
+    }
+
     public int InputCount => Inputs.Length;
 
     public void SetInputCount(int count)
     {
-        count = Math.Clamp(count, MinInputCount, MaxInputCount);
-        lock (_lock)
+        lock (_lock) { SetInputCount_NoLock(Math.Clamp(count, MinInputCount, MaxInputCount)); }
+    }
+
+    private void SetInputCount_NoLock(int count)
+    {
         {
             int old = Inputs.Length;
             if (count == old) return;
@@ -241,6 +294,7 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
     {
         _watchdogTimer.Dispose();
         _autoMixTimer.Dispose();
+        StopReplay();
         StopAll();
         foreach (var input in Inputs) input.Dispose();
         foreach (var output in Outputs) output.Dispose();

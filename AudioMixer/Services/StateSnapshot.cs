@@ -71,12 +71,23 @@ public static class StateSnapshot
             });
         }
 
+        // In replay the wall clock is meaningless — a golden baseline has to be keyed to the position
+        // in the recording, otherwise two runs of the same fixture can't be compared line for line.
+        var rig = engine.Replay;
         var root = new
         {
             ts = DateTime.Now.ToString("HH:mm:ss.fff"),
             inputCount,
             status,
             referenceInput = diag.ReferenceInput,
+            replay = rig == null ? null : new
+            {
+                stamp = rig.Stamp,
+                positionSec = Math.Round(rig.Position.TotalSeconds, 2),
+                durationSec = Math.Round(rig.Duration.TotalSeconds, 2),
+                speed = rig.Speed,
+                paused = rig.Paused,
+            },
             channels = channelJson,
             outputs = outputJson,
         };
