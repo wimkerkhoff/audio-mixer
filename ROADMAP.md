@@ -219,9 +219,20 @@ A code-quality pass (commits `11acf2b`…`4b53877`) landed with **no behavior ch
 the first commit has ever run: the app stayed up on the `11acf2b` build for the rest of that session,
 so `7a24649`, `5a71672`, `645b8cc` and `4b53877` are **build-verified only**. First launch is the
 verification session — do it at a desk, not five minutes before a service.
-**Still open after 2026-08-09** — that service also ran `11acf2b` (log banner confirms), so none of
-the four have executed yet. Do this against the replay rig (below) *before* layering new UI on top,
-otherwise a live fault can't be attributed between the refactor and the new UI.
+**✅ Verified 2026-08-09 against the replay rig** (build `1.0.0+34188d4`, 20 s of 5-channel replayed
+audio). The 09:28 service itself still ran `11acf2b`, so this was the first execution of all four:
+- **Per-bus LEDs (`4b53877`)** — `Services/BindingErrorListener` (new, on with `--log`) routes WPF
+  binding failures into the log; the run reported **zero**, so every LED path (`IsOn`, `IsDucking`,
+  `LedTooltip`, `ShortLabel` on `RouteToggleViewModel`) resolves at runtime. This is now permanent
+  coverage — a broken binding in the *new* UI will show up as a log line instead of a blank control.
+- **Capture callback (`5a71672`)** — 5 channels × 20 s through `OnDataAvailable`, no
+  `push to output … failed`, no `AutoMixer.Tick failed`.
+- **Preset load (`7a24649`)** — `DeviceResolver` ran at startup and bound the saved channels.
+- **Autosave (`645b8cc`)** — allowlist extracted to `Services/PersistedProperties` and covered by
+  `AudioMixer.Tests/PersistedPropertiesTests` (4 tests): the meter tick and the persisted set are
+  asserted disjoint, `RefreshLed` is asserted not to raise `IsOn`, and every allowlisted name is
+  asserted to exist. **Still worth one manual pass** — move a fader, wait for "Saved HH:MM:SS", kill
+  the process, relaunch — since the test covers the mechanism, not the end-to-end write.
 - **Per-bus LEDs (`4b53877`) — the one real risk.** The A/B LED markup was replaced by an
   `ItemsControl` over `Routes`, and WPF resolves binding paths at *runtime*, so a clean build proves
   nothing. Look at the input strips: each should show a lettered LED per bus — green routed+passing,

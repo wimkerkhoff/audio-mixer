@@ -50,6 +50,9 @@ public partial class App : Application
         _showListener = new Thread(ShowListenerLoop) { IsBackground = true, Name = "SingleInstanceListener" };
         _showListener.Start();
 
+        // Must be enabled before any window is created, or bindings resolved during startup are missed.
+        if (AudioLog.Enabled) Services.BindingErrorListener.Enable();
+
         base.OnStartup(e);
     }
 

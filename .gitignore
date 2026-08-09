@@ -41,3 +41,5 @@ tools/spectro.png
 # Python
 __pycache__/
 *.pyc
+bin/
+obj/

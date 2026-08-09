@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioMixer", "AudioMixer\AudioMixer.csproj", "{4DEAB05A-4B60-4F6A-8B80-9B4C32BD7A2F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioMixer.Tests", "AudioMixer.Tests\AudioMixer.Tests.csproj", "{417140CF-DC60-4946-AC97-9E86A0EB1024}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{4DEAB05A-4B60-4F6A-8B80-9B4C32BD7A2F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4DEAB05A-4B60-4F6A-8B80-9B4C32BD7A2F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4DEAB05A-4B60-4F6A-8B80-9B4C32BD7A2F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{417140CF-DC60-4946-AC97-9E86A0EB1024}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{417140CF-DC60-4946-AC97-9E86A0EB1024}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{417140CF-DC60-4946-AC97-9E86A0EB1024}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{417140CF-DC60-4946-AC97-9E86A0EB1024}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
