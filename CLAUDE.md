@@ -76,6 +76,7 @@ AudioMixer/
 tools/                        # Offline analysis + diagnostics — validate selector changes HERE first
 ├── AnalyzeInputs/            # C#: replays selector metrics over per-mic diag WAVs
 ├── RefCorr/                  # C#: lapel-reference envelope correlation ranking
+├── gate_rate.py              # per-mic digital-silence rate + simultaneity (see finding 4)
 ├── naturalness.py            # flux-CV artifact ranking (the "natural" metric, offline)
 ├── replay_natural.py         # Replays the shipped "Prefer natural" rule over a capture
 ├── replay_share.py / scene4.py / scene5.py   # Share/scene replays
@@ -289,6 +290,25 @@ lapel ~0.41, the scratchy mic ~0.52–0.65, consistent across recordings. Offlin
 flux-CV also penalizes distant/reverberant mics (hence the level floor) and, per the behavioural
 caveat above, vetoes better than it picks. A high flux-CV can also mean **RF dropouts**, not a bad
 capsule — check range before blaming the mic.
+
+**4. The Ankers gate congregational singing to digital silence — TOGETHER — so no mix strategy can
+fix worship audio.** Measured 2026-08-09 on the live capture (`scratchpad/gate_check.py`, 20 ms
+frames, "silence" = peak < 1e-5). During singing each unit sat in **true digital silence 13–21% of
+frames**; all four were silent **simultaneously 4.6%** of frames — **51× more often than statistical
+independence predicts** (0.1%). Over 170 s that is **71 total-stream dropouts, one every 2.4 s**,
+median 60 ms, max 780 ms, 22 of them >100 ms. Operator verdict, unprompted: "interrupted constantly,
+can't follow it at all." The gates are *correlated* because every unit hears the same acoustic signal
+and its noise suppression reaches the same "this is noise" verdict at the same instant. Consequences:
+(a) **summing more mics cannot fill the holes** — the holes are in every source at once (confirmed
+live: switching Automix to Off changed nothing); (b) the mic-count question for singing is the **wrong
+variable** — single-mic and multi-mic fail identically; (c) the same mechanism nibbles at *speech*
+(341× simultaneity pre-service) but is invisible there because gate closures land in the natural pauses
+between words. Only fixes are upstream of the mixer: the S500's **Broadcast pickup mode** (untested —
+"restores original sounds by turning the speaker off", the only DSP-adjacent control Anker exposes; no
+noise-reduction or EQ toggle exists), the DSP-free Rode lapel, or a board feed. Do NOT attempt another
+selector/mix-topology fix for singing. Corollary for diagnostics: `winner = -1` has **three** causes
+(automix Off, priority-active, silent-room) — disambiguate by the logged `gains=[…]` (priority duck
+writes 0 at strength 100%; silent-room writes 1.0) before blaming a priority mic.
 
 **Validating a selector change.** Never tune the live selector from a live impression. Capture
 "record all inputs" during a real session *with operator labels* of which mic sounded better when,

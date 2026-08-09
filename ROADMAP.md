@@ -87,14 +87,20 @@ accumulated room tone / reverb / Anker gate-chatter (favors fewer) — hence "th
 not literally all. See CLAUDE.md gotchas and the singing-scene memory. Caveat: one room, ~3 min, one
 of three room mics dead — re-check 4+-mic summing on a fuller capture.
 
-**Update — real worship (2026-08):** in practice on the Anker S500s, several mics summed sounds
-*worse*, not better — not from acoustic comb (still ~0) but from **compounded DSP artifacts**: each
-speakerphone's independent AGC / noise-suppression / gating pumps and warbles on its own schedule, so
-summing 4 overlays four sets of artifacts (swimmy/washy). And the **lapel is a Rode — a real mic with
-no speakerphone DSP** — so it cleanly beats any Anker for singing. **Revised mic choice for the
-Singing scene: lapel if present; else a single cleanest Anker (lowest live flux-cv).** The "several
-good mics / do not collapse to one" guidance above holds only for a hypothetical set of *clean* room
-mics (a board feed / proper condensers), NOT these speakerphones.
+**Update — measured 2026-08-09: mic count is the WRONG VARIABLE.** Both earlier positions above are
+superseded. The Ankers gate congregational singing to **true digital silence, and they do it in
+unison** — 13–21% of frames each, all four simultaneously 4.6% of frames, **51× more than
+independence predicts**; 71 total-stream dropouts in 170 s (median 60 ms, max 780 ms). Operator
+verdict live: "interrupted constantly, can't follow it at all." Summing more mics **cannot** fill the
+holes because the holes exist in every source at the same instant — confirmed live, switching Automix
+to Off changed nothing. So single-mic and multi-mic fail identically, and the earlier "compounded DSP
+artifacts → collapse to one" reasoning was measuring texture while the real defect was dropouts. See
+CLAUDE.md finding 4 for the numbers.
+
+**What the Singing scene can therefore actually do:** nothing clever with selection. Its only honest
+job is (1) suspend priority-ducking, (2) stop follow-the-talker, (3) prefer the **Rode lapel** if it
+is in use — a real mic with no speakerphone DSP, and the only in-house source that doesn't gate. Fixing
+worship audio properly is upstream of this app: S500 Broadcast mode (below), the lapel, or a board feed.
 
 *Why manual, not auto-detected:* the automix assumes one talker at a time; singing and pre-session
 chatter break that, and the *desired action differs per scene*. Auto-detection is unproven — on the
@@ -135,6 +141,34 @@ mixer.
 
 ## Device management
 
+### 🔬 Test S500 "Broadcast" pickup mode — the only DSP lever Anker exposes
+Highest-value cheap experiment on the rig. The AnkerWork app offers two voice pickup modes: **Standard**
+("picks up all sounds from the near end") and **Broadcast** ("restores and deliver original sounds by
+turning the speaker off"). Broadcast is the *only* DSP-adjacent control that exists — there is **no**
+noise-reduction toggle, no EQ, no music mode. Its documented downside (you can't hear the far end) costs
+us nothing: the mixer only captures from the Ankers and monitoring is on the headset, so their speakers
+are dead weight. Plausible mechanism: speaker off → no acoustic echo to cancel → much of the DSP chain
+has nothing to do. Anker also recommends it specifically for USB connections, which is how the dongles
+present.
+
+- **Test design (do NOT flip all four):** set **one** unit to Broadcast, leave the other three on
+  Standard as a control, then record all inputs over sustained singing/music and compare per-unit
+  digital-silence rates (`tools/` gate-rate analyzer, from `scratchpad/gate_check.py`). Same acoustic
+  input, built-in control group. If the Broadcast unit's gating rate doesn't drop, the hypothesis is dead.
+- **Config path:** desktop AnkerWork software (software.ankerwork.com) over **USB-C** avoids Bluetooth
+  entirely — try this first; docs only confirm firmware update this way, so pickup mode needs hands-on
+  checking. The phone app is **Bluetooth-only**.
+- **Bluetooth caveat (load-bearing):** an S500 holds its Soundsync link *and* a BT link at once, so the
+  phone app works without unplugging anything — but an active BT link is a second 2.4 GHz radio that
+  garbles the **weakest** dongle in the room, not necessarily the unit being configured. So: configure,
+  then **disconnect and re-forget the pairing**, confirm the dongle link is healthy, and only *then*
+  record the test. A BT link left up during the test produces dropouts indistinguishable from the gating
+  we're measuring and would invalidate the result.
+- Check/refresh **firmware** on all four while connected — NR behaviour can change between versions.
+
+*Why:* CLAUDE.md finding 4 shows no mixer-side fix for singing exists. This is the last cheap software
+lever before the answer becomes "buy a real mic."
+
 ### 🔲 Hide VoiceMeeter / virtual devices from input pickers
 Option to filter virtual capture devices (VoiceMeeter, VB-CABLE, etc.) out of the **input** device
 lists so operators only see real microphones. Keep VB-CABLE selectable for **outputs** (that's the
@@ -164,8 +198,14 @@ assignment/discovery. *Why:* the Ankers churn; manual re-adding is error-prone f
 ## Automix validation & tuning
 
 ### 🔬 Verify recent fixes at the next live session
-All deployed, none confirmed live yet — now verifiable from the logged transcript (gains/cv/winner):
-- Bounce fix (multiplicative natural hysteresis) — near-equal mics should stop flipping/chopping.
+Now verifiable from the logged transcript (gains/cv/winner):
+- ✅ **Bounce fix (multiplicative natural hysteresis) — VALIDATED live 2026-08-09.** 155 hand-offs over
+  26.7 min (5.8/min), median dwell **7.0 s**, 11 under 2 s, **zero** under 1 s. Compare the pre-fix
+  offline replay's 113 flips. Occupancy stayed spread (37.5 / 36.5 / 21.2 / 4.8%) rather than pinning
+  one mic, and the winner tracked a real room change (#3 dominant pre-service → #4 during the
+  presentation). Prefer-natural was ON all session and did *not* reproduce the 2026-07-26 global-pin
+  failure. **Still open:** whether it picks the mic *nearest the talker* — occupancy is distribution,
+  not correctness, and no operator labels were captured. Needs a labeled Q&A segment.
 - Share quality-weighting — ⚠️ currently **inert**: the 2026-07-26 flux-CV scale change left
   `AutoMixer.SelWeight`'s `NatCv` constants (1.0/2.5) tuned to the old inflated scale, so post-fix CV
   (~0.4) clamps every mic to weight 1.0. Fix = rescale to the new scale (~0.40 good / ~0.55 bad),
@@ -179,6 +219,9 @@ A code-quality pass (commits `11acf2b`…`4b53877`) landed with **no behavior ch
 the first commit has ever run: the app stayed up on the `11acf2b` build for the rest of that session,
 so `7a24649`, `5a71672`, `645b8cc` and `4b53877` are **build-verified only**. First launch is the
 verification session — do it at a desk, not five minutes before a service.
+**Still open after 2026-08-09** — that service also ran `11acf2b` (log banner confirms), so none of
+the four have executed yet. Do this against the replay rig (below) *before* layering new UI on top,
+otherwise a live fault can't be attributed between the refactor and the new UI.
 - **Per-bus LEDs (`4b53877`) — the one real risk.** The A/B LED markup was replaced by an
   `ItemsControl` over `Routes`, and WPF resolves binding paths at *runtime*, so a clean build proves
   nothing. Look at the input strips: each should show a lettered LED per bus — green routed+passing,
@@ -226,6 +269,43 @@ room-to-room correlation) and confirm the mic-count call. Analysis lives in scra
 
 ---
 
+## Testability (foundation for the UI work)
+
+The blocker on all UI work is that the app can't be exercised without a room full of people. Every
+session already leaves five sample-aligned `diag-input*.wav` files — replaying those as capture sources
+turns "need a congregation" into "replay 2026-08-09 09:31".
+
+### 🛠 WAV replay capture source + rig
+Abstract the capture behind NAudio's `IWaveIn` (which `WasapiCapture` already implements), add a
+replay implementation over the diag WAVs, and everything downstream — automixer, hold/hysteresis,
+flux-cv, meters, LEDs, ducking, scenes — runs unmodified.
+- **Deliver ~480-frame buffers**, not 512/1024. WASAPI shared mode gives <512, which is the whole reason
+  the flux-cv accumulation path exists; replaying at 512 would silently bypass it and test different code.
+- The diag WAVs are written **pre-gain, pre-delay, post-conversion** (48 kHz stereo float32), so replay
+  re-runs gain/mute/delay/flux/automix on exactly the samples the live selector saw.
+- **One clock pumping all N sources in lockstep** — independent per-file timers would drift and desync
+  the automix decision.
+- Reader must tolerate **unfinalized WAVs** (header claims 0 frames while recording) — same trick as
+  `tools/live_wav.py`.
+- Real-time clock for eyeballing the UI; faster-than-real-time for batch regression runs.
+- `--replay` is a **sandbox**: separate mutex name (so it can run alongside the operator's mixer, which
+  the single-instance guard would otherwise block), **no preset autosave**, and **no output devices by
+  default** (two instances must not both open CABLE Input and double audio into Zoom).
+- Complementary **synthetic** generator — talker A/B/overlap/silence, a lapel bump crossing −40 dBFS.
+  Deterministic, tiny, and can produce situations the recordings don't contain.
+
+### 🛠 `/state` golden-baseline regression harness
+`/state` already dumps the engine's whole reasoning as JSON. Run a replay fixture, sample at 1 Hz, save
+as a baseline, diff on later runs — selector drift becomes a text diff. Both halves already exist.
+Fixtures from labeled segments: 2026-08-09 singing (09:31–09:34) and presentation/Q&A (09:34+),
+2026-07-26 prayer.
+
+### 🛠 Scenes as a pure transform
+Implement a scene as a testable function (`Scene` → list of property assignments) separate from the code
+that applies it, so scene behaviour is unit-testable with no audio. Scenes are the riskiest new surface
+because they *write* operator state. **Check every new persisted VM property against
+`PersistedProperties`** — the autosave allowlist fails silently in both directions (see the UI gotcha).
+
 ## Tooling
 
 ### 🛠 Log rotation / size cap
@@ -251,7 +331,11 @@ the choice.
 
 ### 💡 Operator overrides
 Per output: pin a mic always-on, or exclude a known-bad mic from the competition — a manual escape
-hatch when the automix picks wrong.
+hatch when the automix picks wrong. **Evidence 2026-08-09:** Anker #2 won only **4.8%** of the session
+(3.6% during the presentation) while carrying by far the highest flux-cv (0.53 vs the pack's ~0.42) and
+the lowest level — never wins, but stays in the competition every tick. That combination (never selected
++ high instability) is the signature of a badly-placed or RF-marginal unit; excluding it is exactly the
+escape hatch this item is for. Check which physical area #2 covers before excluding it.
 
 ---
 
