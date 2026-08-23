@@ -56,12 +56,13 @@ AudioMixer/
 │   │   ├── ReplaySource.cs   # IWaveIn over a (possibly unfinalized) diag WAV
 │   │   ├── ReplayRig.cs      # One clock pumping all sources in lockstep; drives the automix tick
 │   │   └── ReplayOptions.cs  # --replay sandbox semantics
-│   ├── InputChannel.cs       # capture → mute → gain → delay → taps → per-output automix gain → push
+│   ├── InputChannel.cs       # capture → side split → taps → low-cut → mute → gain → delay → automix → push
 │   ├── OutputBus.cs          # MixingSampleProvider → peak tap → volume → WasapiOut; optional recorder
 │   ├── AutoMixer.cs          # Per-output leader decision loop (level / lapel-corr / natural); off-thread
 │   ├── AutoMixMode.cs        # enum Off/Share/Gate
 │   ├── IAutoMixControl.cs    # Per-output automix setters — the VM's one dependency, not N delegates
 │   ├── AudioDeviceInfo.cs    # Device id + friendly name record
+│   ├── ChannelSource.cs      # Stereo/Left/Right — which transmitter of a split receiver a strip takes
 │   ├── DelayLine.cs          # Ring buffer with adjustable read offset
 │   ├── PeakMeter.cs          # Peak dBFS per buffer, peak-hold decay
 │   ├── TapSampleProvider.cs / TrackingSampleProvider.cs   # Non-consuming taps in the graph
@@ -107,9 +108,15 @@ Offline tools replay against the "record all inputs" per-mic WAVs at
 
 **Pipeline per channel:**
 ```
-WasapiCapture → resample to 48kHz stereo float32 → mute gate → gain →
-DelayLine (ring buffer w/ read offset) → peak/analysis taps → per-output automix gain → bus mixer
+WasapiCapture → resample to 48kHz stereo float32 → side split (L/R/stereo) → peak/analysis taps →
+low-cut → mute gate → gain → DelayLine (ring buffer w/ read offset) → post peak →
+level/flux/RF measurement → per-output automix gain → bus mixer
 ```
+
+The **side split** (`ChannelSource`) is deliberately the FIRST stage after resampling: everything
+downstream — meters, the analysis recorder, level/flux-CV/RF, the automixer — must see one
+transmitter, not a blend. The **low-cut** sits deliberately AFTER the analysis recorder, so "record
+all inputs" stays an unprocessed capture and the offline tools never measure our own filter.
 
 **Output bus:**
 ```
@@ -200,6 +207,14 @@ room mic and comb-filters. Multiple priority mics are intentionally allowed (pas
 leader) — do NOT restrict to one; note they don't duck *each other*, so two priority mics hearing
 one source will double. **Hazard:** an unused-but-open priority lapel that crosses −40 dBFS (bumped,
 drift) silently ducks every room mic off the stream. Unroute/clear the flag when not in use.
+
+**Split receivers.** A two-transmitter wireless receiver (RØDE Wireless PRO in Split mode) is ONE
+WASAPI endpoint carrying TX1 on the left and TX2 on the right. Bound whole it reaches the bus
+hard-panned and the automixer sees a single blended channel it cannot arbitrate. Bind it to two
+strips instead, one `ChannelSource.Left` and one `Right`. Device pickers are therefore exclusive per
+**side**, not per endpoint (`DeviceResolver.Claim`/`IsFree`, `MainViewModel.RefreshExclusiveChannels`)
+and picking a half-claimed endpoint auto-takes the free side. A Stereo claim still takes the endpoint
+whole and keeps the bare device id as its `used` key, so pre-split presets resolve unchanged.
 
 **Quality-weighted Share** (`SelWeight`). In correlation/natural mode each mic's level is scaled by
 its quality (CV for natural, corr for lapel) *before* the gain-share, so a loud-but-bad mic ducks
@@ -351,6 +366,25 @@ selector/mix-topology fix for singing. Corollary for diagnostics: `winner = -1` 
 (automix Off, priority-active, silent-room) — disambiguate by the logged `gains=[…]` (priority duck
 writes 0 at strength 100%; silent-room writes 1.0) before blaming a priority mic.
 
+**5. A DSP-free lapel does not gate at all — but its noise floor is NOT recoverable by filtering.**
+Measured 2026-08-23 on one capture of the same room and speech (`tools/gate_rate.py`, `compare_mics`/
+`hp_eval` in scratchpad). A RØDE Wireless PRO into the Realtek 3.5 mm jack vs two live Ankers:
+digital-silence **0.0%** (zero gate closures in 9 min) vs 4.1% / 7.1%; the Ankers lost **21.6 s** and
+**36.9 s** of audio to 174 and 375 gate holes (68 / 106 of them >100 ms, max ~700 ms) and still closed
+in unison (~8× independence). Flux-CV 0.317 vs 0.399 / 0.500 and hf_burst 1.06 vs 1.89 / 2.05, so the
+lapel is also the most natural mic by the metric of finding 3 — and Anker #3 beats #4 on every
+artifact column, which matches the operator's ear. This is the first thing measured on this rig that
+actually attacks finding 4. **The negative half:** the Rode's speech-band S/N is 15.3 dB vs 28–33 dB
+for the Ankers, and a high-pass does NOT close that gap — it was tempting to assume it would, since
+89% of the Rode's floor energy sits below 1 kHz. Measured per cutoff (Butterworth Q=0.707, the same
+biquad the app ships): 60/80/100/120/150 Hz cut sub-100 Hz rumble by 0.9/2.1/3.7/5.4/8.2 dB but move
+100 Hz–8 kHz S/N by only **+0.1–0.2 dB**, because the floor's bulk is at 80–200 Hz and 200 Hz–1 kHz,
+inside the voice. Run the low-cut at 80–100 Hz for rumble, handling and headroom — never as an S/N
+fix. Note the Ankers' *better* S/N is itself an artifact (their gate zeroes the floor, so gating more
+scores better — finding 1). No mains hum on the 3.5 mm path (≤2 dB at 50/60/100/120 Hz), so no ground
+loop and no notch is warranted; the untested lead for the broadband gap is the RX's **USB-C** output,
+which bypasses the Realtek preamp entirely.
+
 **Validating a selector change.** Never tune the live selector from a live impression. Capture
 "record all inputs" during a real session *with operator labels* of which mic sounded better when,
 then replay offline (`tools/AnalyzeInputs`, `tools/RefCorr`, `tools/replay_natural.py`,
@@ -403,6 +437,17 @@ later judgment.
 - Windows endpoint prefixes ("2-/3-/5-/6- Anker Soundsync") **shuffle on unplug/replug**, so "shows in
   Windows" ≠ the endpoint the mixer needs is live. A dongle can also keep its **render** endpoint alive
   while the **capture** path is down (the "half-link") — re-pair the dongle.
+- **A split two-transmitter receiver is one endpoint feeding two strips, so device exclusivity is
+  per-side.** `DeviceResolver.Claim(id, side)` keys a whole-endpoint claim on the bare id and a side
+  claim on `id|1`/`id|2`; `IsFree` makes Stereo conflict with either side. Get this wrong in either
+  direction and it fails silently — too strict and the second transmitter vanishes from the preset on
+  load, too loose and two strips push the same audio onto the bus twice.
+- **On a RØDE Wireless PRO, "Split" only means TX1→L / TX2→R while the RX's 3.5 mm jack is an
+  OUTPUT.** Plug a mic into it as an RX Mic and the routing silently changes meaning: both
+  transmitters merge onto the **left** and the RX Mic takes the **right**. Change modes with a
+  long-press of both Nav buttons (short-press Left cycles, Right selects), or in RODE Central. Do not
+  confuse Split with **Safety**, which puts a −10 dB duplicate of the same mix on channel 2 — it looks
+  like a split on a meter and carries no second mic.
 - Some Bluetooth headsets switch to HSP/HFP when used as input and output simultaneously, dropping
   quality. Workaround: BT input, wired output. (Moot on this rig — Ankers run dongle-only.)
 

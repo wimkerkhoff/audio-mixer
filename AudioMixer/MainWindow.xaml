@@ -373,6 +373,37 @@
                                                Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
                                             <Border Style="{StaticResource PopupSurface}">
                                                 <StackPanel MinWidth="200" Margin="6">
+                                                    <TextBlock Style="{StaticResource Lbl}" Text="MIC SOURCE"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0"
+                                                                IsEnabled="{Binding IsStereoCapture}">
+                                                        <RadioButton Content="Stereo" IsChecked="{Binding SourceStereo}"
+                                                                     Foreground="#DDD" FontSize="11" Margin="0,0,10,0"
+                                                                     ToolTip="Take the whole endpoint (a normal mono or stereo mic)"/>
+                                                        <RadioButton Content="Left (TX1)" IsChecked="{Binding SourceLeft}"
+                                                                     Foreground="#DDD" FontSize="11" Margin="0,0,10,0"
+                                                                     ToolTip="Take only the left channel — transmitter 1 of a receiver in Split mode"/>
+                                                        <RadioButton Content="Right (TX2)" IsChecked="{Binding SourceRight}"
+                                                                     Foreground="#DDD" FontSize="11"
+                                                                     ToolTip="Take only the right channel — transmitter 2 of a receiver in Split mode"/>
+                                                    </StackPanel>
+                                                    <TextBlock Margin="0,4,0,0" Foreground="#777" FontSize="9" TextWrapping="Wrap"
+                                                               Text="A two-transmitter receiver in Split mode puts one mic on each side of ONE device. Bind it to two inputs, one Left and one Right, to give the auto-mixer two mics it can choose between. Greyed out on a mono device."/>
+                                                    <Border Height="1" Background="#3A3A42" Margin="0,10,0,6"/>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Style="{StaticResource Lbl}" Text="LOW-CUT" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="1" Foreground="#DDD" FontSize="11" FontWeight="SemiBold"
+                                                                   Text="{Binding HighPassText}" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <Slider Minimum="0" Maximum="200" Value="{Binding HighPassHz}"
+                                                            TickFrequency="10" IsSnapToTickEnabled="True"
+                                                            SmallChange="10" LargeChange="20" Margin="0,2,0,0"/>
+                                                    <TextBlock Margin="0,4,0,0" Foreground="#777" FontSize="9" TextWrapping="Wrap"
+                                                               Text="Removes rumble, HVAC and handling thumps below the cutoff. A fixed band, never a gate — it makes no level decision, so it cannot punch holes in sustained singing. 0 = off; 80 Hz is safe for voices."/>
+                                                    <Border Height="1" Background="#3A3A42" Margin="0,10,0,6"/>
                                                     <TextBlock Style="{StaticResource Lbl}" Text="DELAY (ms)"/>
                                                     <Grid Margin="0,2,0,0">
                                                         <Grid.ColumnDefinitions>

@@ -58,10 +58,12 @@ def analyse(sig, sr, room, names, a, b, label):
         print(f"  {names[i]:10} silent {silent[i].mean()*100:5.1f}%   "
               f"voiced level {voiced_db[i]:6.1f} dBFS")
 
-    stack = np.vstack([silent[i] for i in room])
+    # mid-session the writers are at slightly different lengths — align before stacking
+    m = min(len(silent[i]) for i in room)
+    stack = np.vstack([silent[i][:m] for i in room])
     nsil = stack.sum(axis=0)
     all_sil = nsil == len(room)
-    indep = float(np.prod([silent[i].mean() for i in room]))
+    indep = float(np.prod([silent[i][:m].mean() for i in room]))
     print(f"  --> ALL silent at once {all_sil.mean()*100:5.1f}%   "
           f"independent {indep*100:5.1f}%   "
           f"simultaneity {all_sil.mean()/indep:6.1f}x" if indep > 0 else

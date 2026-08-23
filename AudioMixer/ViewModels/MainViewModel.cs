@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -502,12 +502,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void SetInputDevice(int index, AudioDeviceInfo? device)
     {
+        if (device != null && !_suppressRebuild) ClaimFreeSide(index, device);
         RunGuarded($"Input {index + 1}", () =>
         {
             _engine.SetInputDevice(index, device);
             StatusText = device == null ? $"Input {index + 1}: (none)" : $"Input {index + 1}: {device.FriendlyName}";
         });
         if (!_suppressRebuild) RebuildAvailableDevices();
+    }
+
+    // Picking an endpoint a sibling has already half-claimed means the operator is splitting a
+    // two-transmitter receiver, so take the side still free rather than doubling the same audio onto
+    // the bus. An explicit side that is still available is left alone.
+    private void ClaimFreeSide(int index, AudioDeviceInfo device)
+    {
+        var claimed = ClaimsExcept(index);
+        if (DeviceResolver.IsFree(claimed, device.Id, Channels[index].Source)) return;
+        var free = FreeSideFor(claimed, device.Id);
+        if (free != null) Channels[index].Source = free.Value;
     }
 
     private void SetOutputDevice(int index, AudioDeviceInfo? device)
@@ -539,6 +551,54 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    // Input pickers are exclusive per SIDE, not per endpoint: a split two-transmitter receiver is
+    // one WASAPI device that legitimately feeds two strips, so an endpoint stays on offer until
+    // every side of it is claimed.
+    private void RefreshExclusiveChannels()
+    {
+        for (int i = 0; i < Channels.Count; i++)
+        {
+            var claimed = ClaimsExcept(i);
+            var self = Channels[i];
+            self.RefreshDevices(_allInputDevices.Where(
+                d => d.Id == self.SelectedDevice?.Id || FreeSideFor(claimed, d.Id) != null));
+        }
+    }
+
+    private HashSet<string> ClaimsExcept(int index)
+    {
+        var claimed = new HashSet<string>();
+        for (int j = 0; j < Channels.Count; j++)
+        {
+            if (j == index) continue;
+            var id = Channels[j].SelectedDevice?.Id;
+            if (!string.IsNullOrEmpty(id)) claimed.Add(DeviceResolver.Claim(id, Channels[j].Source));
+        }
+        return claimed;
+    }
+
+    // The side of `id` a strip could still take, or null when the endpoint is fully claimed. Stereo
+    // is offered first so an untouched device still binds whole.
+    private static ChannelSource? FreeSideFor(IReadOnlySet<string> claimed, string id)
+    {
+        if (DeviceResolver.IsFree(claimed, id, ChannelSource.Stereo)) return ChannelSource.Stereo;
+        if (DeviceResolver.IsFree(claimed, id, ChannelSource.Left)) return ChannelSource.Left;
+        if (DeviceResolver.IsFree(claimed, id, ChannelSource.Right)) return ChannelSource.Right;
+        return null;
+    }
+
+    private void DropConflictingChannelSelections()
+    {
+        var claimed = new HashSet<string>();
+        foreach (var ch in Channels)
+        {
+            var id = ch.SelectedDevice?.Id;
+            if (string.IsNullOrEmpty(id)) continue;
+            if (DeviceResolver.IsFree(claimed, id, ch.Source)) claimed.Add(DeviceResolver.Claim(id, ch.Source));
+            else ch.SelectedDevice = null;
+        }
+    }
+
     private static void DropDuplicateSelections<T>(
         IEnumerable<T> strips, Func<T, string?> selectedId, Action<T> clear)
     {
@@ -557,8 +617,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _rebuildInProgress = true;
         try
         {
-            RefreshExclusive(Channels, _allInputDevices,
-                c => c.SelectedDevice?.Id, (c, devices) => c.RefreshDevices(devices));
+            RefreshExclusiveChannels();
             RefreshExclusive(Outputs, _allOutputDevices,
                 o => o.SelectedDevice?.Id, (o, devices) => o.RefreshDevices(devices));
         }
@@ -570,7 +629,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void DedupeAndRebuild()
     {
-        DropDuplicateSelections(Channels, c => c.SelectedDevice?.Id, c => c.SelectedDevice = null);
+        DropConflictingChannelSelections();
         DropDuplicateSelections(Outputs, o => o.SelectedDevice?.Id, o => o.SelectedDevice = null);
         RebuildAvailableDevices();
     }
@@ -739,7 +798,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 var cp = preset.Channels[i];
                 if (!string.IsNullOrEmpty(cp.CustomLabel)) Channels[i].CustomLabel = cp.CustomLabel;
-                var match = DeviceResolver.Resolve(_allInputDevices, cp.DeviceId, cp.DeviceName, usedInputIds);
+                // Both before the device: Start builds the conversion chain and the filter from the
+                // current side/cutoff, so setting them afterwards would open the capture wrong and
+                // immediately rebuild it.
+                Channels[i].Source = (ChannelSource)Math.Clamp(cp.Source, 0, 2);
+                Channels[i].HighPassHz = cp.HighPassHz;
+                var match = DeviceResolver.Resolve(
+                    _allInputDevices, cp.DeviceId, cp.DeviceName, usedInputIds, Channels[i].Source);
                 Channels[i].SelectedDevice = match;
                 Channels[i].VolumePercent = cp.VolumePercent;
                 Channels[i].Muted = cp.Muted;

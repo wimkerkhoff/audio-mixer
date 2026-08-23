@@ -31,6 +31,7 @@ public sealed class ChannelViewModel : ViewModelBase
             if (SetField(ref _selectedDevice, value))
             {
                 _onDeviceChanged(Index, value);
+                RaisePropertyChanged(nameof(IsStereoCapture));
                 if (wasNull && value != null && Routes != null && Routes.Length > 0
                     && Routes.All(r => !r.IsOn))
                 {
@@ -92,6 +93,78 @@ public sealed class ChannelViewModel : ViewModelBase
         }
     }
 
+    // Which transmitter of a split stereo receiver this strip carries (see ChannelSource). Two
+    // strips may share one endpoint as long as they take opposite sides.
+    private ChannelSource _source = ChannelSource.Stereo;
+    public ChannelSource Source
+    {
+        get => _source;
+        set
+        {
+            if (SetField(ref _source, value))
+            {
+                _channel.Source = value;
+                RaisePropertyChanged(nameof(SourceStereo));
+                RaisePropertyChanged(nameof(SourceLeft));
+                RaisePropertyChanged(nameof(SourceRight));
+                RaisePropertyChanged(nameof(SourceSuffix));
+                RaisePropertyChanged(nameof(HasAdvancedSettings));
+            }
+        }
+    }
+
+    // Radio-button backing. Bound directly rather than through a converter on the enum: a WPF
+    // trigger/converter comparison against a non-string value is the failure mode documented in
+    // CLAUDE.md, and three bools cost less than debugging that again.
+    public bool SourceStereo
+    {
+        get => _source == ChannelSource.Stereo;
+        set { if (value) Source = ChannelSource.Stereo; }
+    }
+
+    public bool SourceLeft
+    {
+        get => _source == ChannelSource.Left;
+        set { if (value) Source = ChannelSource.Left; }
+    }
+
+    public bool SourceRight
+    {
+        get => _source == ChannelSource.Right;
+        set { if (value) Source = ChannelSource.Right; }
+    }
+
+    // Disambiguates the two strips that share one endpoint, in the device button and the log.
+    public string SourceSuffix => _source switch
+    {
+        ChannelSource.Left => " (L)",
+        ChannelSource.Right => " (R)",
+        _ => "",
+    };
+
+    // A side selection only means something on a stereo endpoint; on a mono mic it is ignored.
+    public bool IsStereoCapture => _channel.CaptureChannels >= 2;
+
+    // Fixed-band high-pass, 0 = off. Removes the rumble/HVAC/handling energy that dominates a
+    // DSP-free mic's floor without making any level-dependent decision — see the gear popup's note.
+    private int _highPassHz;
+    public int HighPassHz
+    {
+        get => _highPassHz;
+        set
+        {
+            int clamped = value <= 0 ? 0 : Math.Clamp(value, 20, 400);
+            if (SetField(ref _highPassHz, clamped))
+            {
+                _channel.HighPassHz = clamped;
+                RaisePropertyChanged(nameof(HighPassText));
+                RaisePropertyChanged(nameof(HasAdvancedSettings));
+            }
+        }
+    }
+
+    public string HighPassText => _highPassHz <= 0 ? "off" : $"{_highPassHz} Hz";
+
     // What this channel IS, independent of how the current scene has configured it. Scenes need a
     // stable "which mic is the lapel" that survives Prayer clearing the priority flag, so this must
     // not be inferred from IsPriority at apply time.
@@ -117,7 +190,8 @@ public sealed class ChannelViewModel : ViewModelBase
     public bool IsRoutedAnywhere => Routes.Any(r => r.IsOn);
 
     // Drives the gear icon's "customized" highlight.
-    public bool HasAdvancedSettings => _delayMs != 0 || _isPriority;
+    public bool HasAdvancedSettings =>
+        _delayMs != 0 || _isPriority || _source != ChannelSource.Stereo || _highPassHz != 0;
 
     public RelayCommand ClearDeviceCommand { get; }
 

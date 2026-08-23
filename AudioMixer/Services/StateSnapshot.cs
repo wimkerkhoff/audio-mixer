@@ -31,6 +31,8 @@ public static class StateSnapshot
                 index = i,
                 label = ch.CustomLabel,
                 device = ch.SelectedDevice?.FriendlyName,
+                source = ch.Source.ToString(),
+                highPassHz = ch.HighPassHz,
                 inputDb = Math.Round(ch.InputPeakDb, 1),
                 postDb = Math.Round(ch.PostPeakDb, 1),
                 rmsDb = ToDb(input.CurrentLevelLinear),

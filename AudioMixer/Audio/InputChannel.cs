@@ -103,6 +103,54 @@ public sealed class InputChannel : IDisposable
         set => Volatile.Write(ref _isPriority, value);
     }
 
+    // Which side of a stereo endpoint to take (see ChannelSource). Changing it rebuilds the
+    // conversion chain in place rather than restarting the capture, so two strips sharing one
+    // endpoint don't have to re-open WASAPI when the operator flips a side.
+    private int _source;
+    public ChannelSource Source
+    {
+        get => (ChannelSource)Volatile.Read(ref _source);
+        set
+        {
+            lock (_stateLock)
+            {
+                if ((ChannelSource)_source == value) return;
+                Volatile.Write(ref _source, (int)value);
+                if (_captureFifo == null || _captureFormat == null) return;
+                _convertedSource = BuildConversionChain(_captureFifo.ToSampleProvider(), _captureFormat, value);
+                ResetAnalysisState();
+            }
+        }
+    }
+
+    // Channel count of the live capture, so the UI can tell whether a side selection means anything.
+    // 0 when stopped.
+    public int CaptureChannels => _captureFormat?.Channels ?? 0;
+
+    // Gentle high-pass to strip the rumble/handling/HVAC energy that dominates a DSP-free mic's
+    // noise floor. Deliberately NOT a gate or a noise suppressor: it removes a fixed band, never
+    // makes a level-dependent decision, so it cannot punch holes in sustained material the way the
+    // speakerphones' suppression does (see the singing findings). 0 = off.
+    private const float HighPassQ = 0.707f;   // Butterworth: maximally flat, no resonant bump at fc
+    private int _highPassHz;
+    private BiQuadFilter? _hpLeft, _hpRight;
+    public int HighPassHz
+    {
+        get => Volatile.Read(ref _highPassHz);
+        set
+        {
+            int hz = value <= 0 ? 0 : Math.Clamp(value, 20, 400);
+            lock (_stateLock)
+            {
+                if (_highPassHz == hz) return;
+                Volatile.Write(ref _highPassHz, hz);
+                if (hz == 0) { _hpLeft = null; _hpRight = null; return; }
+                _hpLeft = BiQuadFilter.HighPassFilter(InternalSampleRate, hz, HighPassQ);
+                _hpRight = BiQuadFilter.HighPassFilter(InternalSampleRate, hz, HighPassQ);
+            }
+        }
+    }
+
     public void SetAutoMixGain(int outputIndex, float gain)
     {
         if (outputIndex < 0 || outputIndex >= _outputCount) return;
@@ -287,8 +335,14 @@ public sealed class InputChannel : IDisposable
             ReadFully = false,
         };
 
-        _convertedSource = BuildConversionChain(_captureFifo.ToSampleProvider(), _captureFormat);
+        _convertedSource = BuildConversionChain(_captureFifo.ToSampleProvider(), _captureFormat, Source);
         _delayLine = new DelayLine(InternalSampleRate * InternalChannels * 2);
+        int hz = Volatile.Read(ref _highPassHz);
+        if (hz > 0)
+        {
+            _hpLeft = BiQuadFilter.HighPassFilter(InternalSampleRate, hz, HighPassQ);
+            _hpRight = BiQuadFilter.HighPassFilter(InternalSampleRate, hz, HighPassQ);
+        }
 
         capture.DataAvailable += OnDataAvailable;
         capture.RecordingStopped += (_, e) =>
@@ -323,8 +377,8 @@ public sealed class InputChannel : IDisposable
             PostPeak.Reset();
             Volatile.Write(ref _currentLevelLinear, 0f);
             Volatile.Write(ref _currentPeakLinear, 0f);
-            Volatile.Write(ref _currentFluxCv, 0f);
-            _prevMag = null; _fluxHasPrev = false; _fluxMean = 0f; _fluxVar = 0f; _fluxFill = 0;
+            ResetAnalysisState();
+            _hpLeft = null; _hpRight = null;
             _rfPrevVoiced = false;   // don't count a drop edge across a stop/restart
             Volatile.Write(ref _clarity, float.NaN);
             Volatile.Write(ref _isAutoMixActive, false);
@@ -334,6 +388,14 @@ public sealed class InputChannel : IDisposable
     }
 
     public void Dispose() => Stop();
+
+    // The flux EMA only means anything for one continuous signal, so clear it whenever the signal
+    // changes underneath it — a stop, or a switch to the other transmitter of a split endpoint.
+    private void ResetAnalysisState()
+    {
+        Volatile.Write(ref _currentFluxCv, 0f);
+        _prevMag = null; _fluxHasPrev = false; _fluxMean = 0f; _fluxVar = 0f; _fluxFill = 0;
+    }
 
     private static float[] MakeHann(int n)
     {
@@ -410,6 +472,20 @@ public sealed class InputChannel : IDisposable
         AudioLog.Write($"Input '{_label}' push to output {outputIndex} failed: {ex.GetType().Name}: {ex.Message}");
     }
 
+    // Interleaved stereo, so each side keeps its own biquad state. The pair is swapped in as a unit
+    // by the HighPassHz setter; a null pair means off.
+    private void ApplyHighPass(float[] interleaved, int count)
+    {
+        var l = _hpLeft;
+        var r = _hpRight;
+        if (l == null || r == null) return;
+        for (int i = 0; i + 1 < count; i += 2)
+        {
+            interleaved[i] = l.Transform(interleaved[i]);
+            interleaved[i + 1] = r.Transform(interleaved[i + 1]);
+        }
+    }
+
     private static bool IsUnity(float g) => g > 0.9999f && g < 1.0001f;
 
     private static BufferedWaveProvider CreateOutBuffer()
@@ -435,13 +511,22 @@ public sealed class InputChannel : IDisposable
         return (int)_outBuffers[outputIndex].BufferedDuration.TotalMilliseconds;
     }
 
-    private static ISampleProvider BuildConversionChain(ISampleProvider source, WaveFormat fmt)
+    internal static ISampleProvider BuildConversionChain(ISampleProvider source, WaveFormat fmt, ChannelSource side)
     {
         ISampleProvider provider = source;
 
         if (fmt.SampleRate != InternalSampleRate)
         {
             provider = new WdlResamplingSampleProvider(provider, InternalSampleRate);
+        }
+
+        // The side is taken here, upstream of every tap, so the rest of the pipeline — meters,
+        // analysis recorder, level/flux/RF, automix gain — sees only this transmitter.
+        if (side != ChannelSource.Stereo && provider.WaveFormat.Channels >= 2)
+        {
+            var one = new MultiplexingSampleProvider(new[] { provider }, 1);
+            one.ConnectInputToOutput(side == ChannelSource.Left ? 0 : 1, 0);
+            provider = one;
         }
 
         if (provider.WaveFormat.Channels == 1)
@@ -571,6 +656,10 @@ public sealed class InputChannel : IDisposable
             InputPeak.Observe(rented, read);
 
             _analysisRecorder?.WriteSamples(rented, 0, read);
+
+            // After the analysis tap on purpose: "record all inputs" must stay an unprocessed capture,
+            // or every offline tool would be measuring our own filter instead of the mic.
+            ApplyHighPass(rented, read);
 
             float gain = Muted ? 0f : GainLinear;
             if (gain != 1f)

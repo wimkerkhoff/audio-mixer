@@ -23,6 +23,13 @@ public sealed class ChannelPreset
     // need this to survive Prayer clearing the priority flag. Absent in presets written before scenes
     // existed, where 0 is ambiguous — ApplyPreset migrates those from Priority.
     public int Role { get; set; }
+
+    // Which side of a stereo endpoint this channel takes (0 Stereo, 1 Left, 2 Right) — a split
+    // two-transmitter receiver puts one mic on each side of a single device.
+    public int Source { get; set; }
+
+    // Fixed-band high-pass in Hz; 0 = off.
+    public int HighPassHz { get; set; }
 }
 
 public sealed class OutputPreset

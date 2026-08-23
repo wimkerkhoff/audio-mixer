@@ -26,6 +26,12 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
+  <!-- The capture conversion chain can only be exercised from a test by feeding it a buffer, and an
+       L/R mix-up there is silent (the wrong transmitter on the wrong strip), so it is unit-tested. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="AudioMixer.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Remove="Assets\app.ico" />
     <Resource Include="Assets\app.ico" />

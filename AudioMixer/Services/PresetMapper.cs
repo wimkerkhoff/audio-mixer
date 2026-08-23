@@ -25,6 +25,8 @@ public static class PresetMapper
                 Priority = c.IsPriority,
                 Routes = c.Routes.Select(r => r.IsOn).ToArray(),
                 Role = (int)c.Role,
+                Source = (int)c.Source,
+                HighPassHz = c.HighPassHz,
             }).ToArray(),
             Outputs = outputs.Select(o => new OutputPreset
             {

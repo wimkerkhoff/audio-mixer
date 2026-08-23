@@ -26,6 +26,8 @@ public static class PersistedProperties
         nameof(ChannelViewModel.DelayMs),
         nameof(ChannelViewModel.IsPriority),
         nameof(ChannelViewModel.Role),
+        nameof(ChannelViewModel.Source),
+        nameof(ChannelViewModel.HighPassHz),
         nameof(RouteToggleViewModel.IsOn),
         nameof(OutputViewModel.AutoMixModeIndex),
         nameof(OutputViewModel.StrengthPercent),
