@@ -26,7 +26,7 @@
         <v:MicDotConverter x:Key="MicDot"/>
 
         <Style x:Key="Cap" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#8A8A94"/>
+            <Setter Property="Foreground" Value="#A9A9B6"/>
             <Setter Property="FontSize" Value="10"/>
         </Style>
 
@@ -96,7 +96,7 @@
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                 <ToggleButton x:Name="PinButton" Content="Pin" Width="30" Height="20" FontSize="10"
-                              Foreground="#B8B8C2" Background="#2C2C34" BorderBrush="#3E3E48"
+                              Foreground="#C8C8D2" Background="#2C2C34" BorderBrush="#3E3E48"
                               ToolTip="Keep this panel above other windows"
                               Checked="Pin_Changed" Unchecked="Pin_Changed"/>
             </StackPanel>

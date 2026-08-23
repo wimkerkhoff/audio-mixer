@@ -20,7 +20,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
         <Style x:Key="Lbl" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#9A9AA4"/>
+            <Setter Property="Foreground" Value="#B4B4BE"/>
             <Setter Property="FontSize" Value="9"/>
         </Style>
 
@@ -99,7 +99,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{TemplateBinding Content}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
-                                <TextBlock Grid.Column="1" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="8" Foreground="#888" VerticalAlignment="Center" Margin="3,0,0,0"/>
+                                <TextBlock Grid.Column="1" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="8" Foreground="#B0B0BC" VerticalAlignment="Center" Margin="3,0,0,0"/>
                             </Grid>
                         </Border>
                     </ControlTemplate>
@@ -171,7 +171,7 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Background" Value="#3A3A42"/>
-            <Setter Property="Foreground" Value="#9A9AA4"/>
+            <Setter Property="Foreground" Value="#C8C8D2"/>
             <Setter Property="BorderBrush" Value="#4A4A52"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
@@ -272,13 +272,13 @@
                         Content="{Binding InputDiagRecordIcon}" ToolTip="{Binding InputDiagRecordTooltip}"
                         Command="{Binding RecordInputsCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
-                <TextBlock Text="Inputs" Foreground="#9A9AA4" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock Text="Inputs" Foreground="#B4B4BE" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"/>
                 <ComboBox ItemsSource="{Binding InputCountOptions}"
                           SelectedItem="{Binding InputCount, Mode=TwoWay}"
                           Width="44" Height="20" FontSize="11"
                           VerticalContentAlignment="Center"
                           ToolTip="Number of input channels (1–10)"/>
-                <TextBlock Text="{Binding StatusText}" Foreground="#888" FontSize="10" VerticalAlignment="Center" Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Text="{Binding StatusText}" Foreground="#A8A8B4" FontSize="10" VerticalAlignment="Center" Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
             </DockPanel>
         </Border>
@@ -340,7 +340,7 @@
                                         <StackPanel.Resources>
                                             <Style x:Key="BusLetter" TargetType="TextBlock">
                                                 <Setter Property="FontSize" Value="7"/>
-                                                <Setter Property="Foreground" Value="#8A93A0"/>
+                                                <Setter Property="Foreground" Value="#AAB2BE"/>
                                                 <Setter Property="Width" Value="7"/>
                                                 <Setter Property="VerticalAlignment" Value="Center"/>
                                                 <Setter Property="TextAlignment" Value="Center"/>
