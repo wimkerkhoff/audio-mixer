@@ -1,4 +1,4 @@
-<Window x:Class="AudioMixer.MainWindow"
+﻿<Window x:Class="AudioMixer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -22,6 +22,20 @@
         <Style x:Key="Lbl" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#9A9AA4"/>
             <Setter Property="FontSize" Value="9"/>
+        </Style>
+
+        <!-- Popup text sits on the darker #1B1B22 surface and is read deliberately rather than
+             glanced at, so it runs brighter and a point larger than the strip-level `Lbl`. -->
+        <Style x:Key="PopupLbl" TargetType="TextBlock" BasedOn="{StaticResource Lbl}">
+            <Setter Property="Foreground" Value="#C7C7D2"/>
+            <Setter Property="FontSize" Value="10"/>
+        </Style>
+
+        <Style x:Key="PopupHelp" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#9FA0AD"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
         </Style>
 
         <Style x:Key="Strip" TargetType="Border">
@@ -373,20 +387,20 @@
                                                Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
                                             <Border Style="{StaticResource PopupSurface}">
                                                 <StackPanel MinWidth="200" Margin="6">
-                                                    <TextBlock Style="{StaticResource Lbl}" Text="MIC SOURCE"/>
+                                                    <TextBlock Style="{StaticResource PopupLbl}" Text="MIC SOURCE"/>
                                                     <StackPanel Orientation="Horizontal" Margin="0,3,0,0"
                                                                 IsEnabled="{Binding IsStereoCapture}">
                                                         <RadioButton Content="Stereo" IsChecked="{Binding SourceStereo}"
-                                                                     Foreground="#DDD" FontSize="11" Margin="0,0,10,0"
+                                                                     Foreground="#E8E8EF" FontSize="11" Margin="0,0,10,0"
                                                                      ToolTip="Take the whole endpoint (a normal mono or stereo mic)"/>
                                                         <RadioButton Content="Left (TX1)" IsChecked="{Binding SourceLeft}"
-                                                                     Foreground="#DDD" FontSize="11" Margin="0,0,10,0"
+                                                                     Foreground="#E8E8EF" FontSize="11" Margin="0,0,10,0"
                                                                      ToolTip="Take only the left channel — transmitter 1 of a receiver in Split mode"/>
                                                         <RadioButton Content="Right (TX2)" IsChecked="{Binding SourceRight}"
-                                                                     Foreground="#DDD" FontSize="11"
+                                                                     Foreground="#E8E8EF" FontSize="11"
                                                                      ToolTip="Take only the right channel — transmitter 2 of a receiver in Split mode"/>
                                                     </StackPanel>
-                                                    <TextBlock Margin="0,4,0,0" Foreground="#777" FontSize="9" TextWrapping="Wrap"
+                                                    <TextBlock Style="{StaticResource PopupHelp}"
                                                                Text="A two-transmitter receiver in Split mode puts one mic on each side of ONE device. Bind it to two inputs, one Left and one Right, to give the auto-mixer two mics it can choose between. Greyed out on a mono device."/>
                                                     <Border Height="1" Background="#3A3A42" Margin="0,10,0,6"/>
                                                     <Grid>
@@ -394,17 +408,17 @@
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Style="{StaticResource Lbl}" Text="LOW-CUT" VerticalAlignment="Center"/>
-                                                        <TextBlock Grid.Column="1" Foreground="#DDD" FontSize="11" FontWeight="SemiBold"
+                                                        <TextBlock Grid.Column="0" Style="{StaticResource PopupLbl}" Text="LOW-CUT" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="1" Foreground="#E8E8EF" FontSize="11" FontWeight="SemiBold"
                                                                    Text="{Binding HighPassText}" VerticalAlignment="Center"/>
                                                     </Grid>
                                                     <Slider Minimum="0" Maximum="200" Value="{Binding HighPassHz}"
                                                             TickFrequency="10" IsSnapToTickEnabled="True"
                                                             SmallChange="10" LargeChange="20" Margin="0,2,0,0"/>
-                                                    <TextBlock Margin="0,4,0,0" Foreground="#777" FontSize="9" TextWrapping="Wrap"
+                                                    <TextBlock Style="{StaticResource PopupHelp}"
                                                                Text="Removes rumble, HVAC and handling thumps below the cutoff. A fixed band, never a gate — it makes no level decision, so it cannot punch holes in sustained singing. 0 = off; 80 Hz is safe for voices."/>
                                                     <Border Height="1" Background="#3A3A42" Margin="0,10,0,6"/>
-                                                    <TextBlock Style="{StaticResource Lbl}" Text="DELAY (ms)"/>
+                                                    <TextBlock Style="{StaticResource PopupLbl}" Text="DELAY (ms)"/>
                                                     <Grid Margin="0,2,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
@@ -416,7 +430,7 @@
                                                                  Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,0,0"/>
                                                     </Grid>
                                                     <CheckBox Margin="0,10,0,0" IsChecked="{Binding IsPriority}"
-                                                              Foreground="#DDD" FontSize="11"
+                                                              Foreground="#E8E8EF" FontSize="11"
                                                               Content="Priority mic (always on, ducks others while speaking)"
                                                               ToolTip="Always full level and out of the competition; while this mic is speaking it ducks the other (room) mics — e.g. a presenter's lapel"/>
                                                     <Border Height="1" Background="#3A3A42" Margin="0,10,0,6"/>
@@ -425,14 +439,14 @@
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Style="{StaticResource Lbl}" Text="MIC CLARITY (auto-mix)" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="0" Style="{StaticResource PopupLbl}" Text="MIC CLARITY (auto-mix)" VerticalAlignment="Center"/>
                                                         <TextBlock Grid.Column="1" Foreground="#3FB950" FontSize="11" FontWeight="SemiBold"
                                                                    Text="{Binding ClarityText}" VerticalAlignment="Center"/>
                                                     </Grid>
                                                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding ClarityBar, Mode=OneWay}"
                                                                  Height="5" Margin="0,3,0,0"
                                                                  Background="#26262C" Foreground="#3FB950" BorderThickness="0"/>
-                                                    <TextBlock Margin="0,4,0,0" Foreground="#777" FontSize="9" TextWrapping="Wrap"
+                                                    <TextBlock Style="{StaticResource PopupHelp}"
                                                                Text="How close/clean this mic sounds vs the others (crest factor). Higher wins the auto-mix. Shows '—' until it hears speech."/>
                                                 </StackPanel>
                                             </Border>
