@@ -161,7 +161,66 @@ mixer.
 
 ## Device management
 
-### 🔬 Test S500 "Broadcast" pickup mode — the only DSP lever Anker exposes
+### 🔲 Replace the room mics — 6× RØDE Wireless PRO transmitters via 3 receivers
+The path forward, decided 2026-08-23 once Broadcast mode turned out to be gone. Target layout:
+**3 transmitters per row of tables (6 room mics) + 1 lapel on the primary speaker** = 7 inputs
+against a 10-input ceiling. Four 2-channel receivers cover it; the operator has chosen 2-channel
+devices deliberately, so the `ChannelSource` widening a >2-in interface would need stays unbuilt
+(see CLAUDE.md gotcha).
+
+Why this shape, in one line each — the detail is in CLAUDE.md findings 4-6:
+- **DSP-free is the whole point.** The S500s gated congregational singing to digital silence in
+  unison; the Rodes measured **0.0%** gating over 9 minutes. Nothing else on the shortlist changes.
+- **Body-worn mics cover people, not rooms.** More transmitters is the room fix *because* they sit
+  near mouths — every halving of mic-to-mouth distance is +6 dB against a constant room floor. This
+  is worth more than any processing (finding 5b).
+- **Not shotguns.** Turn-taking prayer wants wide coverage; a shotgun favours whoever it is aimed at
+  and rejects the people beside them, and its interference tube does not extend reach indoors. The
+  Wireless PRO TX *does* take a 3.5 mm TRS mic with plug-in power if a directional capsule is ever
+  wanted — buy **one** and A/B it before six.
+
+Setup checklist (each item is a bug that has already bitten this rig once):
+- Connect receivers over **USB-C**, not the 3.5 mm jack. Two fewer conversions and no hidden Realtek
+  boost. Expect a few dB, not the 15 dB the raw S/N gap suggests (finding 5b).
+- **Rename every RX endpoint in Windows** (`RODE #1`…) before building a preset. Four devices all
+  reporting "Desktop Microphone (Wireless PRO RX)" is exactly the identical-name mis-binding the
+  Ankers caused; the resolver's name fallback then self-heals across replugs.
+- **GainAssist OFF on every transmitter** — it is AGC, and it destroys the level cue the automixer
+  depends on (CLAUDE.md gotcha).
+- Get capsules **off the table surface** on a small stand — a TX lying flat combs against the table
+  reflection and picks up every knock.
+- Space table mics per the **3:1 rule** (mic-to-mic ≥ 3× mic-to-mouth) to limit comb when two mics
+  hear one voice.
+
+Automix settings to start from: **Gate + stable hand-off on level**, prefer-natural **off**, match
+lapel **off**. See finding 6 for why, and re-validate `HandoffHysteresis` against a labelled 6-mic
+capture — with identical capsules the level spread between adjacent table mics may be under the
+current ~3 dB margin, which would make the held leader sticky.
+
+### 🔬 Scene-driven noise reduction — spectral subtraction, never a gate
+Operator-requested 2026-08-23: cut background noise during prayer without hurting singing. The toggle
+already exists — `Scene.Singing` — so this is a strength property hung off the scene, not new UI.
+
+**Technique is the whole decision.** A gate or expander attenuates based on level over time and
+punches holes in sustained material; that is the S500 failure mode and it is also what silences a
+quiet pray-er, so it is out. **Spectral subtraction** attenuates per frequency bin against a
+stationary noise estimate — it lowers the constant floor (HVAC, fans) and, with a hard cap on maximum
+attenuation, *cannot* mute anyone. Constraints: cap attenuation (6-12 dB, operator-adjustable),
+smooth the gain across frequency and time, and update the noise estimate only during confirmed
+non-speech.
+
+**Ship gate:** run it offline over a labelled capture first and confirm `flux_cv` and `hf_burst` do
+**not** rise (`tools/naturalness.py`). Musical noise from over-subtraction is the same artifact that
+makes the bad Anker sound scratchy — if the numbers rise, it does not ship. Note the automixer
+already provides most of the available win (N open mics = N× floor; Gate/Share keeps it near 1×), so
+settle mic count and automix settings before tuning this.
+
+### ❌ Test S500 "Broadcast" pickup mode — DEAD 2026-08-23, feature removed from firmware
+**Do not attempt this.** Anker support confirmed Broadcast pickup mode was removed from the S500
+firmware; there is no longer any DSP-adjacent control on the unit. They offered a refund, which is
+being taken — see "Replace the room mics" below. Everything after this paragraph is kept only so the
+reasoning isn't re-derived by a future session.
+
 Highest-value cheap experiment on the rig. The AnkerWork app offers two voice pickup modes: **Standard**
 ("picks up all sounds from the near end") and **Broadcast** ("restores and deliver original sounds by
 turning the speaker off"). Broadcast is the *only* DSP-adjacent control that exists — there is **no**

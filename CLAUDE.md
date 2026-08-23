@@ -20,6 +20,14 @@ reading them:
   "Soundsync" dongle** (never Bluetooth — see gotchas). They are *speakerphones*: aggressive AGC,
   noise suppression, and gating to true digital silence sit between the room and every sample we
   see. This single fact invalidates most textbook mic-selection metrics (see "Measured findings").
+  **Being retired (2026-08-23):** Anker confirmed Broadcast pickup mode was *removed from the
+  firmware*, which was the last remaining lever against finding 4, and offered a refund. Everything
+  below about speakerphone DSP stays — it is why the replacement rig looks the way it does — but the
+  S500s are no longer the target hardware.
+- **RØDE Wireless PRO** (2 transmitters per receiver) is becoming the primary rig. DSP-free: it does
+  not gate, which is the one thing that made the S500s unusable. See finding 5, and note it is a
+  *body-worn* mic — it covers people, not a room, so mic count and placement do the work that DSP
+  used to pretend to do.
 - **Rode lapel** on the presenter, used as a **priority** channel when present.
 - Room is ~60 ft wide; the furthest mic sits ~50 ft from the dongles — **at the edge of RF range**.
 - Outputs: a monitor headset + VB-CABLE feeding Zoom/OBS.
@@ -384,8 +392,36 @@ biquad the app ships): 60/80/100/120/150 Hz cut sub-100 Hz rumble by 0.9/2.1/3.7
 inside the voice. Run the low-cut at 80–100 Hz for rumble, handling and headroom — never as an S/N
 fix. Note the Ankers' *better* S/N is itself an artifact (their gate zeroes the floor, so gating more
 scores better — finding 1). No mains hum on the 3.5 mm path (≤2 dB at 50/60/100/120 Hz), so no ground
-loop and no notch is warranted; the untested lead for the broadband gap is the RX's **USB-C** output,
-which bypasses the Realtek preamp entirely.
+loop and no notch is warranted.
+
+**5b. That noise floor is ACOUSTIC, not the aux path — USB will not fix it.** The obvious diagnosis
+(cheap Realtek input, unbalanced cable, an extra D/A→A/D round trip through the RX's 3.5 mm output)
+is wrong here, and it is worth not re-deriving. The floor's own spectrum settles it: **83% of its
+energy is below 1 kHz and only 5.3% is above 4 kHz** (20-80 Hz 8.9%, 80-200 44.7%, 200-1k 29.3%,
+1-4k 11.0%, 4-12k 4.7%, 12-24k 0.6%). Converter/preamp noise is *hiss* — roughly flat energy per
+unit bandwidth, so it dominates the upper bands, and there is almost nothing up there; mains hum was
+separately ruled out (≤2 dB at 50/60/100/120 Hz). That low-frequency signature is the room: HVAC,
+air handling, structure-borne rumble into the capsule. The S500s were hiding it with the very
+suppression we removed. Consequences: (a) prefer the RX's **USB-C** endpoint anyway — it drops two
+conversions, removes any hidden Realtek boost/AGC, and scales to several receivers where aux jacks
+do not — but expect a few dB, not fifteen; (b) the real lever is **proximity**, since the room floor
+is constant and every halving of mic-to-mouth distance is +6 dB of signal. To separate the two
+empirically: record the aux input with the transmitters **powered off** (pure electrical floor) and
+again with them **on in a quiet room** (electrical + acoustic) — the gap is what the aux path costs.
+
+**6. On a homogeneous DSP-free rig, level selection gets BETTER and flux-CV stops discriminating.**
+Findings 1-3 are all consequences of speakerphone DSP; remove it and their conclusions move. With N
+identical Rode transmitters: (a) **level becomes a true proximity cue** rather than a survivor of
+AGC — identical capsules mean a level difference is distance, not device variation, so Gate/Share on
+smoothed level with **stable hand-off** is the right selector and the hysteresis that fixed "far mic
+wins" is still exactly as necessary (a talker's pauses still let a neighbour momentarily win);
+(b) **Prefer natural should be OFF** — flux-CV measures *over-processing artifacts*, and with no DSP
+anywhere every mic reads ~0.29-0.33, so the metric has nothing to separate and its documented
+behavioural flaw (it pins the globally lowest-CV mic regardless of who is speaking) is all that is
+left. Observed live 2026-08-23: with two Rodes and two Ankers, prefer-natural hard-gated the *only*
+room mic hearing the talker because the Rodes scored cleaner. Flux-CV keeps **diagnostic** value —
+it still rises on RF dropouts — but not selection value. (c) **Match lapel** stays off for prayer:
+it engages only while a priority lapel is *speaking*, which is never the case when the room is.
 
 **Validating a selector change.** Never tune the live selector from a live impression. Capture
 "record all inputs" during a real session *with operator labels* of which mic sounded better when,
@@ -444,6 +480,17 @@ later judgment.
   claim on `id|1`/`id|2`; `IsFree` makes Stereo conflict with either side. Get this wrong in either
   direction and it fails silently — too strict and the second transmitter vanishes from the preset on
   load, too loose and two strips push the same audio onto the bus twice.
+- **GainAssist on a Wireless PRO transmitter is AGC, and it breaks the automixer.** It normalises
+  level, which is the one selection cue that survives on this rig (finding 1) and the *only* one on a
+  DSP-free rig (finding 6) — leave it on and a distant mic's auto-gain pulls it level with the near
+  mic, re-creating the exact "far mic wins" failure the S500s caused. Turn it **off per transmitter**:
+  long-press the Left Navigation button until AUTO/DYNAMIC is replaced by a dB level, then set gain
+  manually. Modes are Auto and Dynamic; neither is safe for automixing.
+- **The capture chain takes only channels 0 and 1 of an endpoint** (`BuildConversionChain`'s >2-channel
+  branch maps a multichannel device down to the first two, verified by probe: an 8-channel input
+  yields `0,1,0,1,…`). So a multi-input USB interface silently drops everything past its second input
+  — no error anywhere. Two-channel devices (one split receiver each) are unaffected; widening
+  `ChannelSource` beyond Stereo/Left/Right is what a >2-in interface would need.
 - **On a RØDE Wireless PRO, "Split" only means TX1→L / TX2→R while the RX's 3.5 mm jack is an
   OUTPUT.** Plug a mic into it as an RX Mic and the routing silently changes meaning: both
   transmitters merge onto the **left** and the RX Mic takes the **right**. Change modes with a
