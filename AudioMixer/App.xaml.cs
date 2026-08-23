@@ -64,7 +64,7 @@ public partial class App : Application
     //   --state[=PORT]   enable the loopback JSON state endpoint (default port 7077)
     //   --replay[=STAMP] replay a recorded session instead of live mics (sandbox; see ReplayOptions)
     //   --speed=N        replay rate multiplier (batch runs); --loop  replay repeatedly
-    //   --simple         open the operator (Simple) panel; the full mixer stays one click away
+    //   --advanced       open the full mixer instead of the operator (Simple) panel
     private static void ApplyCliFlags(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
@@ -93,6 +93,12 @@ public partial class App : Application
                      a.Equals("--ui=new", StringComparison.OrdinalIgnoreCase))
             {
                 _useSimpleUi = true;
+            }
+            else if (a.Equals("--advanced", StringComparison.OrdinalIgnoreCase) ||
+                     a.Equals("--ui=advanced", StringComparison.OrdinalIgnoreCase) ||
+                     a.Equals("--ui=classic", StringComparison.OrdinalIgnoreCase))
+            {
+                _useSimpleUi = false;
             }
             else if (a.StartsWith("--scene=", StringComparison.OrdinalIgnoreCase))
             {
@@ -124,12 +130,13 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Simple mode is opt-in (<c>--simple</c> / <c>--ui=simple</c>) and OFF by default, so the exe an
-    /// operator carries to a service opens exactly what it opens today until they choose otherwise.
+    /// Simple mode is the default: a plain launch opens the operator panel, and Advanced is reachable
+    /// both from a button on that panel and from <c>--advanced</c> / <c>--ui=advanced</c>. Baseline
+    /// replay runs pass <c>--advanced</c> so they keep the window their goldens were recorded under.
     /// Both windows bind the SAME view model, which is what makes running them side by side a valid
     /// comparison — they cannot disagree about mixer state.
     /// </summary>
-    private static bool _useSimpleUi;
+    private static bool _useSimpleUi = true;
 
     private void CreateWindows()
     {

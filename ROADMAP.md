@@ -37,7 +37,8 @@ column would have shown a frozen value). Pairs with the clarity→flux-cv readou
 operator overrides below.
 
 ### ✅ Simple mode, scenes, health banner, Diagnostics + Settings — shipped 2026-08-09
-Opt-in via `--simple` (default OFF, so the exe carried to a service opens exactly what it does today).
+Shipped opt-in via `--simple`; promoted to the **default window on 2026-08-16** after a live run, with
+Advanced still one click away on the panel and available via `--advanced` / `--ui=advanced`.
 Simple mode binds the **same `MainViewModel` instance** as Advanced, so the two views cannot disagree —
 which also makes running them side by side a valid comparison. `MainWindow.xaml` was not touched.
 - **Scenes** are a pure transform (`Services/SceneTransform`) with 20 unit tests, including the safety

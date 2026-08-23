@@ -53,7 +53,9 @@ if (-not (Test-Path $baselineDir)) { New-Item -ItemType Directory -Path $baselin
 $baselinePath = Join-Path $baselineDir "$Name.json"
 
 # --- run the fixture ----------------------------------------------------------------------------
-$args = @("--replay$(if ($Stamp) { "=$Stamp" })", "--seek=$Seek", "--for=$For", "--speed=$Speed", "--state=$Port")
+# --advanced is explicit, not inherited: the goldens were recorded under the Advanced window, and a
+# fixture must not change its UI load just because the app's default window changed.
+$args = @("--replay$(if ($Stamp) { "=$Stamp" })", "--seek=$Seek", "--for=$For", "--speed=$Speed", "--state=$Port", "--advanced")
 Write-Host "Running fixture '$Name': $($args -join ' ')" -ForegroundColor Cyan
 $proc = Start-Process -FilePath $Exe -ArgumentList $args -PassThru
 

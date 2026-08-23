@@ -44,9 +44,9 @@ publish.ps1                   # Single-file publish
 AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): scenes, health, autosave allowlist
 AudioMixer/
 ├── App.xaml / App.xaml.cs    # Single-instance mutex; window creation; ApplyCliFlags (see Conventions)
-├── MainWindow.xaml / .cs      # Advanced view. Window size is set in code-behind, NOT bound (see gotcha)
+├── MainWindow.xaml / .cs      # Advanced view (--advanced). Size set in code-behind, NOT bound (see gotcha)
 ├── Views/                    # Operator UI. Separate files so MainWindow.xaml is never touched.
-│   ├── SimpleWindow.xaml     # Scene selector, on-air cards, mic dots, health banner (opt-in --simple)
+│   ├── SimpleWindow.xaml     # Scene selector, on-air cards, mic dots, health banner (DEFAULT window)
 │   ├── DiagnosticsWindow.xaml # Ranked "why this mic?" table; own 10 Hz timer, off when closed
 │   ├── SettingsWindow.xaml   # Mic roles, device-picker options, diagnostics summary
 │   └── OperatorConverters.cs # Severity->brush, mic-dot colour, null/inverse visibility
@@ -253,7 +253,9 @@ The app used to be unexercisable without a live congregation, which blocked all 
 - **Golden baselines**: `tools/replay-baseline.ps1 -Name <fixture> ... [-Update]`, baselines in
   `tools/baselines/`. Compares aggregates (mode, hand-off count, occupancy, median flux-cv) — hand-off
   count is exactly reproducible and is the sensitive signal. Record and check at the **same `-Speed`,
-  1–2**; higher saturates the process and starts dropping audio.
+  1–2**; higher saturates the process and starts dropping audio. The script passes `--advanced`
+  explicitly so a fixture keeps the window its goldens were recorded under even though the app now
+  defaults to Simple — a fixture must never inherit a UI change as a change in CPU load.
 - **Binding errors**: WPF resolves binding paths at runtime and swallows failures, so a clean build
   proves nothing about the UI. `--log` enables `BindingErrorListener`, which logs them.
   `--open-all` opens every window so one run covers all their markup.
