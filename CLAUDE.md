@@ -20,8 +20,9 @@ reading them:
   "Soundsync" dongle** (never Bluetooth — see gotchas). They are *speakerphones*: aggressive AGC,
   noise suppression, and gating to true digital silence sit between the room and every sample we
   see. This single fact invalidates most textbook mic-selection metrics (see "Measured findings").
-  **Being retired (2026-08-23):** Anker confirmed Broadcast pickup mode was *removed from the
-  firmware*, which was the last remaining lever against finding 4, and offered a refund. Everything
+  **Returned (2026-08-30):** Anker confirmed Broadcast pickup mode was *removed from the
+  firmware*, which was the last remaining lever against finding 4, and refunded them. They are gone
+  from the rig — findings 1-4 remain because they explain why the replacement looks as it does. Everything
   below about speakerphone DSP stays — it is why the replacement rig looks the way it does — but the
   S500s are no longer the target hardware.
 - **RØDE Wireless PRO** (2 transmitters per receiver) is becoming the primary rig. DSP-free: it does
@@ -99,6 +100,9 @@ AudioMixer/
 tools/                        # Offline analysis + diagnostics — validate selector changes HERE first
 ├── AnalyzeInputs/            # C#: replays selector metrics over per-mic diag WAVs
 ├── RefCorr/                  # C#: lapel-reference envelope correlation ranking
+├── RxProbe/                  # C#: captures 2 endpoints at once — verify a split receiver at
+│                             #     sample level (corr + scalar-fit) after any remap
+├── VolProbe/                 # C#: read/set a capture endpoint's Windows gain (see the gain gotcha)
 ├── gate_rate.py              # per-mic digital-silence rate + simultaneity (see finding 4)
 ├── naturalness.py            # flux-CV artifact ranking (the "natural" metric, offline)
 ├── replay_natural.py         # Replays the shipped "Prefer natural" rule over a capture
