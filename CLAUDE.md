@@ -438,6 +438,19 @@ room mic hearing the talker because the Rodes scored cleaner. Flux-CV keeps **di
 it still rises on RF dropouts — but not selection value. (c) **Match lapel** stays off for prayer:
 it engages only while a priority lapel is *speaking*, which is never the case when the room is.
 
+**7. Mixed device types cannot share one selector — AGC flattens the proximity cue the automixer
+needs.** Measured 2026-08-30 over a 179 s Q&A with 2 Ankers + a split Rode pair on one Gate bus.
+The Anker in front of the presenter and the Anker a row back read an **identical −24.6 dBFS p50**
+despite being rows apart: their AGC auto-levels, so Anker level carries *no* proximity information
+(finding 1, in its strongest form). The Rode pair, physically **closer** to the back row than either
+Anker, read −54.4 / −52.9 — a ~30 dB offset that is device gain, not distance (inverse-square across
+those rows is ~3.5 dB). Consequence: the Ankers led **68%** of the window and the Rodes **0.9%**, and
+they won on *construction*, not proximity — no level trim fixes this, because you cannot equalize an
+AGC-compressed source against an uncompressed one (the Ankers' p50 sits near their peak; the Rode's
+crest is ~20 dB, so matching RMS clips the peaks). Corollary: any level comparison **across** device
+types is meaningless — compare only within a matched set. This is the strongest argument for the
+homogeneous DSP-free rig of finding 6.
+
 **Validating a selector change.** Never tune the live selector from a live impression. Capture
 "record all inputs" during a real session *with operator labels* of which mic sounded better when,
 then replay offline (`tools/AnalyzeInputs`, `tools/RefCorr`, `tools/replay_natural.py`,
@@ -473,6 +486,20 @@ later judgment.
   `ANKER #1..4` in Windows Sound settings to match physical labels. Match by that name; never
   greedy-fill in arbitrary order. A deliberate *rename* (`ANKER 4`→`ANKER #4`) correctly won't match
   the old preset — one manual remap, then it re-saves.
+- **Endpoint gain ranges differ wildly per device, and the app's own fader cannot boost.**
+  `ChannelViewModel.PercentToLinear` is `percent / 100f` clamped 0..100 — 100% is *unity*, so a quiet
+  mic can NEVER be raised in-app, only upstream. Measured 2026-08-30: the Wireless PRO RX endpoint
+  ranges **−96 .. +30 dB**, every Anker Soundsync **−28.4 .. −0.1 dB** (already pinned at its ceiling,
+  no boost left). A Rode RX left at Windows-default 0 dB therefore sits ~30 dB under an Anker and is
+  structurally unselectable. The Windows slider taper is severely non-linear on the Rode: **53.7% =
+  0 dB, 87% = +15 dB, 100% = +30 dB** — the top eighth of the slider is 15 dB, so "turn it up to 100"
+  overshoots badly. At +30 dB the pair clipped (peaks **+5.25 / +2.81 dBFS**, ~300 samples over
+  −0.5 dBFS); +15 dB gives peak −17 / −12 dBFS with zero samples over full scale. Prefer transmitter
+  gain over endpoint gain — it lifts the signal before any conversion and doesn't spend peak headroom.
+  Note the capture is float32, so the endpoint does not saturate: over-full-scale samples pass through
+  and only clip at render, which is why a peak reading alone looks fine. Judge clipping by counting
+  samples ≥ full scale plus flat-top runs, never by peak dBFS.
+
 - **An Anker S500 can hold its Soundsync dongle link AND a Bluetooth link simultaneously** (designed
   bridging feature). So a mic feeds the mixer fine over its dongle while *also* transmitting on BT — a
   self-contending extra 2.4 GHz radio that garbles the weakest dongle input. Adaptive hopping (BT AFH +
