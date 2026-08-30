@@ -216,6 +216,21 @@ leader) — do NOT restrict to one; note they don't duck *each other*, so two pr
 one source will double. **Hazard:** an unused-but-open priority lapel that crosses −40 dBFS (bumped,
 drift) silently ducks every room mic off the stream. Unroute/clear the flag when not in use.
 
+**Priority hangover** (`PriorityHoldTicks` ~1.2 s, `PriorityBreakInRms` ~−50 dBFS). The duck used to
+be recomputed bare each tick, while the *leader* had both a hold and hysteresis — so a presenter's
+sentence gap released it and Gate handed the bus to a room mic. The envelope release (250 ms) needs
+~575 ms to fall from speech to `PriorityActiveRms`, which an ordinary pause exceeds. Measured live
+2026-08-30 on the headset bus: **13 hand-offs in 40 s** (median 250 ms, max 0.89 s), every one with
+the lapel envelope just under −40 dBFS, to an S500 sitting on the presenter's own table (−28 dBFS in
+his pauses vs −17 while he spoke — no AGC pumping, every mic fell together). After the fix, 0 in 40 s
+with the duck verifiably held (gain 0.00 through every pause). The hold is **broken immediately** by
+a non-priority mic above `PriorityBreakInRms`, because at strength 100% `pduck` is a hard mute and a
+blind hold would swallow an audience interjection. Two caveats: (a) break-in can only separate a real
+talker from the presenter's residual when **no room mic sits near the presenter** — one on his table
+reads −28 dBFS, louder than a genuine interjection across the room (−43); (b) margin is thin —
+measured residual on a 15 ft mic peaked at −53.8 dBFS, only ~4 dB under the threshold, and that is
+also *above* `SilenceFloorRms`, so the silence floor alone would not have prevented the hand-off.
+
 **Split receivers.** A two-transmitter wireless receiver (RØDE Wireless PRO in Split mode) is ONE
 WASAPI endpoint carrying TX1 on the left and TX2 on the right. Bound whole it reaches the bus
 hard-panned and the automixer sees a single blended channel it cannot arbitrate. Bind it to two

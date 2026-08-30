@@ -13,6 +13,23 @@ public sealed class AutoMixer
     private const float SilenceFloorRms = 0.0018f; // ~ -55 dBFS; below this, don't duck a quiet room
     private const float PriorityActiveRms = 0.01f;  // ~ -40 dBFS; a priority mic above this is "speaking"
 
+    // A presenter pauses between sentences. The envelope release (250 ms) needs ~575 ms to fall from
+    // speech to PriorityActiveRms, which an ordinary sentence gap exceeds — so without a hangover the
+    // duck releases mid-talk and Gate hands the bus to whatever room mic is loudest, for ~250 ms at a
+    // time. Measured live 2026-08-30: 13 such hand-offs in 40 s, every one with the lapel envelope
+    // just under the threshold, to a speakerphone sitting on the presenter's own table (-28 dBFS).
+    // The leader selection is already protected this way (HandoffHoldTicks); this is the same guard
+    // for the duck. Sized from that capture: every observed gap was <= 0.89 s.
+    private const int PriorityHoldTicks = 120;      // ~1.2 s the duck is held after the lapel goes quiet
+
+    // The hangover must not swallow a genuine interjection: at strength 100% the duck is a hard mute,
+    // so holding it blindly would silence an audience question asked in the presenter's pause. A room
+    // mic this loud during the hangover is a real talker, not the presenter's residual, so break the
+    // hold immediately. Sits above SilenceFloorRms and below a talker at normal room distance.
+    // NOTE: this can only separate the two when no room mic sits next to the presenter — one on his
+    // own table reads far louder than a real interjection across the room (measured: -28 vs -43 dBFS).
+    private const float PriorityBreakInRms = 0.0032f;  // ~ -50 dBFS
+
     // Stable hand-off: the selected mic is held with hysteresis so a brief louder moment on another
     // mic can't steal it. This is what fixes the speakerphones — their AGC applies make-up gain in a
     // talker's pauses, momentarily out-leveling the close mic; without a hold the selection chatters
@@ -79,6 +96,8 @@ public sealed class AutoMixer
     private readonly int[] _activeInput;           // per output, selected channel index (-1 = none)
     private readonly int[] _winner;                // per output held leader, -1 = none
     private readonly int[] _winnerHold;            // per output hold countdown
+    private readonly int[] _priorityHold;          // per output, ticks the priority duck stays latched
+    private readonly int[] _priorityArg;           // per output, priority channel that latched the duck
 
     private readonly int[] _refEnabled;            // per output, reference-guided selection (0/1)
     private readonly int[] _preferNatural;         // per output, reference-free natural-mic selection (0/1)
@@ -104,12 +123,15 @@ public sealed class AutoMixer
         _activeInput = new int[outputCount];
         _winner = new int[outputCount];
         _winnerHold = new int[outputCount];
+        _priorityHold = new int[outputCount];
+        _priorityArg = new int[outputCount];
         for (int o = 0; o < outputCount; o++)
         {
             _strength[o] = 0.5f;
             _stableOn[o] = 1;      // stable hand-off on by default
             _winner[o] = -1;
             _activeInput[o] = -1;
+            _priorityArg[o] = -1;
         }
         _env = new float[maxChannels];
         _crest = new float[maxChannels];
@@ -265,6 +287,7 @@ public sealed class AutoMixer
             // While a priority mic is active it ducks the room mics, so the same voice can't reach
             // the bus through both the clean lapel and a delayed room mic (which would comb-filter).
             bool priorityActive = false;
+            bool anyPriority = false;
             float pmax = 0f;
             int pArg = -1;
             float lmax = 0f;
@@ -276,6 +299,7 @@ public sealed class AutoMixer
                 if (!inputs[i].GetRoute(o)) continue;
                 if (inputs[i].IsPriority)
                 {
+                    anyPriority = true;
                     inputs[i].SetAutoMixGain(o, 1f);
                     if (_env[i] > PriorityActiveRms)
                     {
@@ -316,6 +340,35 @@ public sealed class AutoMixer
                 : useNatural ? SelectionMetric.Natural
                 : SelectionMetric.Level;
             int challenger = useCorr ? argCorr : useNatural ? argNatural : argmax;
+
+            // Hold the duck across the presenter's sentence gaps, so a pause can't hand the bus to a
+            // room mic for a quarter second at a time (see PriorityHoldTicks).
+            if (priorityActive)
+            {
+                _priorityHold[o] = PriorityHoldTicks;
+                _priorityArg[o] = pArg;
+            }
+            else if (anyPriority && _priorityHold[o] > 0)
+            {
+                int held = _priorityArg[o];
+                bool heldStale = held < 0 || held >= n || !inputs[held].GetRoute(o) || !inputs[held].IsPriority;
+                if (heldStale || lmax > PriorityBreakInRms)
+                {
+                    _priorityHold[o] = 0;
+                    _priorityArg[o] = -1;
+                }
+                else
+                {
+                    _priorityHold[o]--;
+                    priorityActive = true;
+                    pArg = held;
+                }
+            }
+            else
+            {
+                _priorityHold[o] = 0;
+                _priorityArg[o] = -1;
+            }
 
             if (priorityActive)
             {
