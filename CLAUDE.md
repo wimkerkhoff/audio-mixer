@@ -498,8 +498,17 @@ later judgment.
   structurally unselectable. The Windows slider taper is severely non-linear on the Rode: **53.7% =
   0 dB, 87% = +15 dB, 100% = +30 dB** — the top eighth of the slider is 15 dB, so "turn it up to 100"
   overshoots badly. At +30 dB the pair clipped (peaks **+5.25 / +2.81 dBFS**, ~300 samples over
-  −0.5 dBFS); +15 dB gives peak −17 / −12 dBFS with zero samples over full scale. Prefer transmitter
-  gain over endpoint gain — it lifts the signal before any conversion and doesn't spend peak headroom.
+  −0.5 dBFS); +15 dB gives peak −17 / −12 dBFS with zero samples over full scale. **Endpoint gain does not survive a port change**, so on a
+  rig whose devices move between hub ports it is the wrong place for this setting: the value is
+  stored against the endpoint GUID, which is keyed to the port-derived USB instance path
+  (`...MI_01&6941B14&0&0001` — no serial). Same port and it persists (an unplugged RX still
+  reports its 15.0 dB); a different port mints a fresh endpoint at the 0 dB default and loses the
+  rename with it. The Anker endpoints show the residue — `2-`/`3-`/`4-`/`5-`/`7-` prefixed records
+  from separate ports, several with orphaned volume stores. Set gain at the **transmitter**: it
+  lives in hardware, travels with the device, and doesn't spend peak headroom.
+  `tools/VolProbe "Wireless PRO" 15` is the stopgap when it does reset. Corollary: any scheme that
+  leans on a Windows **rename** to tell identical receivers apart needs a dedicated labelled port
+  per unit.
   Note the capture is float32, so the endpoint does not saturate: over-full-scale samples pass through
   and only clip at render, which is why a peak reading alone looks fine. Judge clipping by counting
   samples ≥ full scale plus flat-top runs, never by peak dBFS.
