@@ -49,6 +49,8 @@ reading them:
 ```
 AudioMixer.sln
 ROADMAP.md                    # Planned work / scene design. Not a spec of what IS.
+RODE-PRO-RIG.md               # The 6x Wireless PRO replacement rig: plan, watch-list,
+                              #   commissioning checklist. Fold results here, then delete it.
 publish.ps1                   # Single-file publish
 AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): scenes, health, autosave allowlist
 AudioMixer/
