@@ -2,9 +2,14 @@ using System.IO;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-// Captures two WASAPI endpoints (shared mode, alongside the running mixer) to WAV
-// so we can test at SAMPLE level whether the Realtek "R0de wireless" channel is the
-// same receiver's 3.5 mm output as the USB "Wireless PRO RX" endpoint.
+// Captures two or more WASAPI endpoints simultaneously (shared mode, so it runs alongside the live
+// mixer) to WAV, for sample-level comparison offline. Originally written to test whether the Realtek
+// "R0de wireless" channel was the same receiver's 3.5 mm output as the USB "Wireless PRO RX"
+// endpoint; the endpoints are now arguments so any two devices can be compared in the same room at
+// the same instant — which is the only way to judge one mic against another (finding 7: a level
+// comparison across device types is meaningless unless the acoustic input is identical).
+//
+//   RxProbe [seconds] [outDir] [endpointNameSubstring ...]
 
 int seconds = args.Length > 0 ? int.Parse(args[0]) : 12;
 string outDir = args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "rxprobe");
@@ -21,7 +26,15 @@ MMDevice Pick(string needle)
     return d;
 }
 
-var targets = new (string needle, string name)[] { ("Wireless PRO RX", "rx_usb"), ("R0de wireless", "realtek_aux") };
+static string Slug(string s)
+{
+    var chars = s.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '_').ToArray();
+    return new string(chars);
+}
+
+var targets = args.Length > 2
+    ? args.Skip(2).Select(a => (needle: a, name: Slug(a))).ToArray()
+    : new (string needle, string name)[] { ("Wireless PRO RX", "rx_usb"), ("R0de wireless", "realtek_aux") };
 var caps = new List<(WasapiCapture cap, WaveFileWriter w)>();
 
 foreach (var (needle, name) in targets)
