@@ -563,6 +563,23 @@ later judgment.
   and only clip at render, which is why a peak reading alone looks fine. Judge clipping by counting
   samples ≥ full scale plus flat-top runs, never by peak dBFS.
 
+- **A Wireless PRO in its charging case enumerates as USB *storage*, not audio.** Observed 2026-08-31:
+  two `RODE Wireless PRO USB Device` DiskDrives live (`VEN_RODE&PROD_WIRELESS_PRO&REV_V332`) while the
+  `Wireless PRO RX` audio interface (`VID_19F7&PID_0058&MI_01`) and its endpoint were both absent, so
+  the only live Rode path was the 3.5 mm aux. Two volumes and not three is the tell: the **transmitters**
+  hold the on-board recording storage and the RX has none, so a case containing RX + 2 TX mounts exactly
+  two drives. Connect the RX **directly** by its own USB-C to get a capture endpoint. Diagnostic value:
+  "I see RODE mass-storage volumes" means the gear is in the case, i.e. not live — check that before
+  hunting for a driver problem.
+- **Each TX records 32-bit float on board (32 GB, 40+ h) — a gain-proof backup fixture.** 32-bit float
+  cannot clip and cannot be too quiet to recover losslessly, so an on-board recording is immune to the
+  gain-staging mistake that has already ruined one capture (the Q&A fixture came out ~30 dB low and
+  unusable). Arm it for any session whose recording matters. Two limits keep it a *complement*, not a
+  replacement: it is captured **before the RF link**, so it cannot show dropouts and cannot validate the
+  selector (which only ever sees the post-RF signal) — but that same property makes it the decisive test
+  for "bad mic or bad link", since a glitch present in the app capture and absent on board is RF by
+  construction.
+
 - **An Anker S500 can hold its Soundsync dongle link AND a Bluetooth link simultaneously** (designed
   bridging feature). So a mic feeds the mixer fine over its dongle while *also* transmitting on BT — a
   self-contending extra 2.4 GHz radio that garbles the weakest dongle input. Adaptive hopping (BT AFH +

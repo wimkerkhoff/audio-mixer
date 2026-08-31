@@ -290,6 +290,14 @@ column is 230 px, not the 150 px the docs claimed.
 **Before people arrive**
 
 - Spread the six TX across the tables for coverage, each on its stand, back on its tape mark.
+- **Take the RX out of the charging case and connect it directly by USB-C.** In the case it
+  enumerates as *mass storage* and presents no audio endpoint at all — if you see `RODE Wireless PRO
+  USB Device` drives and no `Wireless PRO RX` capture device, that is why.
+- **Arm on-board recording on every TX.** 32-bit float, so it cannot clip and cannot be too quiet to
+  recover — it is the one capture immune to a gain-staging mistake, which is exactly how the last
+  fixture was lost. It sits *before* the RF link, so it is a complement to "record all inputs", not a
+  replacement: it cannot show dropouts, but a glitch that appears in the app capture and not on board
+  is RF by construction.
 - Power on, confirm all 7 strips show level; check the health banner is clear.
 - Verify the presenter's lapel is on and reads speech, then set the scene:
   **Teaching / Q&A / study → Teaching. Prayer → Prayer.**
