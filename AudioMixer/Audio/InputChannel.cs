@@ -78,6 +78,15 @@ public sealed class InputChannel : IDisposable
         return new RfStats((int)nb, meanDb, vp, sp, (int)nd, CurrentFluxCv);
     }
 
+    // --- Gain calibration (diagnostic) ----------------------------------------------------------
+    // Fed from the same post-fader RMS the automixer's absolute thresholds read, so the operator's
+    // reading means exactly what those constants mean. See CalibrationHistogram for the why.
+    private readonly CalibrationHistogram _calibration = new();
+
+    public CalibrationHistogram.Stats SnapshotCalibration() => _calibration.Snapshot();
+
+    public void ResetCalibration() => _calibration.Reset();
+
     // Smoothed crest-derived clarity weight (0..1, NaN when no recent speech), written by AutoMixer
     // for display. Higher = closer/cleaner mic.
     private float _clarity = float.NaN;
@@ -119,6 +128,7 @@ public sealed class InputChannel : IDisposable
                 if (_captureFifo == null || _captureFormat == null) return;
                 _convertedSource = BuildConversionChain(_captureFifo.ToSampleProvider(), _captureFormat, value);
                 ResetAnalysisState();
+                ResetCalibration();
             }
         }
     }
@@ -378,6 +388,7 @@ public sealed class InputChannel : IDisposable
             Volatile.Write(ref _currentLevelLinear, 0f);
             Volatile.Write(ref _currentPeakLinear, 0f);
             ResetAnalysisState();
+            ResetCalibration();
             _hpLeft = null; _hpRight = null;
             _rfPrevVoiced = false;   // don't count a drop edge across a stop/restart
             Volatile.Write(ref _clarity, float.NaN);
@@ -676,6 +687,7 @@ public sealed class InputChannel : IDisposable
             bool voiced = rmsNow > FluxVoiceRms;
             if (voiced) ComputeFlux(rented, read);
             TallyRfHealth(rmsNow, voiced);
+            _calibration.Add(rmsNow, voiced);
 
             PushToOutputs(rented, read);
         }

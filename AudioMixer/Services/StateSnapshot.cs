@@ -26,6 +26,7 @@ public static class StateSnapshot
             var input = engine.Inputs[i];
             var gains = new double[AudioEngine.OutputCount];
             for (int o = 0; o < AudioEngine.OutputCount; o++) gains[o] = Math.Round(input.GetAutoMixGain(o), 3);
+            var cal = input.SnapshotCalibration();
             channelJson.Add(new
             {
                 index = i,
@@ -36,6 +37,9 @@ public static class StateSnapshot
                 inputDb = Math.Round(ch.InputPeakDb, 1),
                 postDb = Math.Round(ch.PostPeakDb, 1),
                 rmsDb = ToDb(input.CurrentLevelLinear),
+                speechDb = float.IsNaN(cal.SpeechDb) ? (double?)null : Math.Round(cal.SpeechDb, 1),
+                floorDb = float.IsNaN(cal.FloorDb) ? (double?)null : Math.Round(cal.FloorDb, 1),
+                calBuffers = cal.TotalBuffers,
                 envDb = i < diag.Env.Length ? ToDb(diag.Env[i]) : (double?)null,
                 crest = i < diag.Crest.Length ? Math.Round(diag.Crest[i], 2) : (double?)null,
                 refCorr = i < diag.Corr.Length ? Math.Round(diag.Corr[i], 3) : (double?)null,
@@ -69,6 +73,10 @@ public static class StateSnapshot
                 stableHandoff = op.StableHandoff,
                 referenceGuided = op.ReferenceGuided,
                 preferNatural = op.PreferNatural,
+                levelerEnabled = op.LevelerEnabled,
+                levelerStrength = op.LevelerStrength.ToString(),
+                levelerGainDb = Math.Round(op.LevelerGainDb, 1),
+                levelerIdleFloorDb = Math.Round(op.LevelerIdleFloorDb, 1),
                 winner = o < diag.Winner.Length ? diag.Winner[o] : -1,
                 winnerHold = o < diag.WinnerHold.Length ? diag.WinnerHold[o] : 0,
                 activeInput = o < diag.ActiveInput.Length ? diag.ActiveInput[o] : -1,

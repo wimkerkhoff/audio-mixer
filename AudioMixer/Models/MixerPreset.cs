@@ -43,4 +43,17 @@ public sealed class OutputPreset
     public bool AutoMixReferenceGuided { get; set; }   // pick the room mic best matching the lapel reference
     public bool AutoMixPreferNatural { get; set; }     // reference-free: prefer the most natural (stable) mic
     public float Volume { get; set; } = 100f;          // percent
+
+    // Bus leveler. Property initialisers, not a constructor: System.Text.Json leaves them alone when
+    // a key is absent, so every preset written before the leveler existed loads with it OFF and sane
+    // defaults rather than a silent zero threshold.
+    public bool LevelerEnabled { get; set; }
+    public int LevelerStrength { get; set; } = 1;      // 0 Gentle, 1 Medium, 2 Strong
+    public float LevelerThresholdDb { get; set; } = -26f;
+    public float LevelerRatio { get; set; } = 3f;
+    public float LevelerAttackMs { get; set; } = 100f;
+    public float LevelerReleaseMs { get; set; } = 2000f;
+    public float LevelerMaxGainDb { get; set; } = 10f;
+    public float LevelerIdleFloorDb { get; set; } = -45f;
+    public float LimiterCeilingDb { get; set; } = -1f;
 }

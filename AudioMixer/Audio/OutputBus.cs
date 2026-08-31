@@ -13,6 +13,14 @@ public sealed class OutputBus : IDisposable
     private WasapiOut? _output;
     private TapSampleProvider? _tap;
     private VolumeSampleProvider? _volumeProvider;
+    private BusLeveler? _leveler;
+
+    // Settings live on the bus, not on the provider, so they survive the stop/start that
+    // AudioEngine.RestartOutputBus_NoLock performs on a device or input-count change. (Outputs[] is
+    // allocated once in the engine's constructor and never replaced, unlike Inputs[].)
+    public BusLevelerSettings Leveler { get; } = new();
+
+    public float LevelerGainDb => _leveler?.AppliedGainDb ?? 0f;
 
     private float _volume = 1f;
     // Final output trim applied AFTER the peak/recorder tap, so the meter and recordings reflect
@@ -52,8 +60,14 @@ public sealed class OutputBus : IDisposable
         foreach (var input in inputs) { mixer.AddMixerInput(input); inputCount++; }
         AudioLog.Write($"  mixer inputs={inputCount} format={mixer.WaveFormat}");
 
-        var tap = new TapSampleProvider(mixer);
+        // Leveler BEFORE the tap, so the meter and the per-output recording show what actually went
+        // out; Volume stays after it as a pure device trim.
+        var leveler = new BusLeveler(mixer, Leveler);
+        var tap = new TapSampleProvider(leveler);
         var volume = new VolumeSampleProvider(tap) { Volume = _volume };
+        AudioLog.Write($"  leveler enabled={Leveler.Enabled} strength={Leveler.Strength} " +
+                       $"thr={Leveler.ThresholdDb} ratio={Leveler.Ratio} maxGain={Leveler.MaxGainDb} " +
+                       $"idle={Leveler.IdleFloorDb} ceil={Leveler.CeilingDb}");
 
         IWaveProvider source = volume.ToWaveProvider();
         AudioLog.Write($"  source format={source.WaveFormat}");
@@ -96,6 +110,7 @@ public sealed class OutputBus : IDisposable
         {
             _tap = tap;
             _volumeProvider = volume;
+            _leveler = leveler;
             _output = output;
         }
     }
@@ -120,6 +135,7 @@ public sealed class OutputBus : IDisposable
             _output = null;
             _tap = null;
             _volumeProvider = null;
+            _leveler = null;
         }
         if (prevOutput != null)
         {

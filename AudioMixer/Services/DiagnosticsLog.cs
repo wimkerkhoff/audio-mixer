@@ -88,8 +88,14 @@ public sealed class DiagnosticsLog
             // RF-link health (offline dongle-link diagnosis): high drops/silent while voiced is high =
             // wireless dropouts; elevated fluxCv corroborates. Only meaningful while the mic is voiced.
             var rf = input.SnapshotRfStats();
+            // Gain calibration: the median of this mic's voiced buffers is the level every absolute-RMS
+            // threshold in AutoMixer is fitted against, so a capture's own log has to carry the level it
+            // was taken at — otherwise a retune from the fixture is guessing at the scale.
+            var cal = input.SnapshotCalibration();
+            string calSpeech = float.IsNaN(cal.SpeechDb) ? "-" : cal.SpeechDb.ToString("F0");
+            string calFloor = float.IsNaN(cal.FloorDb) ? "-" : cal.FloorDb.ToString("F0");
             AudioLog.Write(
-                $"Input {i} ('{dev.FriendlyName}'): inputDb={ch.InputPeakDb:F1} postDb={ch.PostPeakDb:F1} routes=[{string.Join(",", ch.Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={ch.Muted} gains=[{gains}] fluxCv={input.CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
+                $"Input {i} ('{dev.FriendlyName}'): inputDb={ch.InputPeakDb:F1} postDb={ch.PostPeakDb:F1} routes=[{string.Join(",", ch.Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={ch.Muted} gains=[{gains}] fluxCv={input.CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] cal=[speech={calSpeech} floor={calFloor} n={cal.TotalBuffers}] bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
         }
     }
 }

@@ -134,8 +134,34 @@ all inputs" stays an unprocessed capture and the offline tools never measure our
 
 **Output bus:**
 ```
-MixingSampleProvider (sums routed channels) → peak tap → [optional recorder tap] → volume → WasapiOut
+MixingSampleProvider (sums routed channels) → bus leveler + limiter → peak tap →
+  [optional recorder tap] → volume → WasapiOut
 ```
+
+**The bus leveler is the ONLY dynamics stage in the app, and it may never move upstream of the
+mixer.** `BusLeveler` (per output, default OFF) is a slow broadcast-style leveler — ratio/threshold/
+attack/release, a hard-capped make-up lift and a brick-wall limiter — for talkers who are quieter,
+louder, or further from a table mic. It sits deliberately *after* the automixer: `AutoMixer` picks
+the active mic by comparing per-channel smoothed RMS latched in `InputChannel.MeasureAndLatchLevels`,
+so any compression ahead of that flattens the level differences that encode *which mic is closest to
+the talker*. That is precisely what a transmitter's own AGC does, which is why GainAssist has to be
+off on this rig (finding 6a/7) — a per-channel compressor would be the same bug in software.
+
+Three constraints that are load-bearing rather than taste:
+- **Make-up lift is capped (`BusLeveler.MakeupCeilingDb` = 12 dB).** The room floor is acoustic HVAC
+  (finding 5b) and speech-band S/N is ~15 dB, so every dB of lift is a dB of rumble that no filter
+  takes back out. The cap is a noise budget.
+- **Idle hold, never a gate.** Below `IdleFloorDb` the gain *freezes* — `LevelerCore.Step` has no
+  path that lowers gain while idle, so it cannot punch holes in sustained material the way the
+  speakerphones did (finding 4). It also stops the leveler ramping into a priority duck and slamming
+  back. `IdleFloorDb` must be **calibrated per room**: a bus summing several open mics can sit above
+  the −45 dBFS default during "silence", and then the hold never engages.
+- **Off is a true bypass** (early return), so a disabled leveler is bit-identical and free.
+
+Settings live on `OutputBus.Leveler` (a `BusLevelerSettings`), not on the provider, so they survive
+`AudioEngine.RestartOutputBus_NoLock`; `OutputViewModel` writes them through directly the way it does
+`Volume`, with no `IAutoMixControl` involvement — the leveler is a bus device, not an automix
+decision.
 
 **Key facts:**
 - Internal mix format: **48 kHz, stereo, float32**. All captures resample to this.
@@ -280,11 +306,23 @@ The app used to be unexercisable without a live congregation, which blocked all 
   **no preset autosave**, and **no output devices** by default (two instances both opening CABLE Input
   would double audio into Zoom).
 - **Golden baselines**: `tools/replay-baseline.ps1 -Name <fixture> ... [-Update]`, baselines in
-  `tools/baselines/`. Compares aggregates (mode, hand-off count, occupancy, median flux-cv) — hand-off
-  count is exactly reproducible and is the sensitive signal. Record and check at the **same `-Speed`,
-  1–2**; higher saturates the process and starts dropping audio. The script passes `--advanced`
-  explicitly so a fixture keeps the window its goldens were recorded under even though the app now
-  defaults to Simple — a fixture must never inherit a UI change as a change in CPU load.
+  `tools/baselines/`. Compares aggregates (mode, hand-off count, occupancy, median flux-cv). Record
+  and check at the **same `-Speed`, 1–2**; higher saturates the process and starts dropping audio.
+  The script passes `--advanced` explicitly so a fixture keeps the window its goldens were recorded
+  under even though the app now defaults to Simple — a fixture must never inherit a UI change as a
+  change in CPU load.
+- **⚠ The baselines are NOT hermetic and currently cannot gate a regression.** `--replay` suppresses
+  autosave and output devices but **not preset *loading*** — `MainViewModel` calls
+  `TryLoadInitialPreset()` unconditionally before `StartReplayIfRequested()`, so every fixture runs
+  against whatever `%APPDATA%\AudioMixer\preset.json` happens to hold *today*: routing, low-cut,
+  split `ChannelSource`, automix mode. Change your routing and every golden "drifts" with no code
+  change. Verified 2026-08-30 by running the `presentation` fixture at **`5c597e9`, the very commit
+  that recorded it**: 60 hand-offs vs its own stored 14, with output B's occupancy shifted from
+  51.3%/32.8% to 0%/80% — exactly what that day's preset (only ch4 routed to B; ch1/ch2 on 90/100 Hz
+  low-cuts and Left/Right split) predicts. So a `DRIFT` report means "the preset moved" at least as
+  often as "the selector moved", and `-Update` silently launders the difference. Do **not** conclude
+  a selector regression from a baseline diff without first checking the preset's mtime; and don't
+  re-record to make it green. Fix (ROADMAP): give each baseline its own preset.
 - **Binding errors**: WPF resolves binding paths at runtime and swallows failures, so a clean build
   proves nothing about the UI. `--log` enables `BindingErrorListener`, which logs them.
   `--open-all` opens every window so one run covers all their markup.
@@ -308,6 +346,16 @@ The app used to be unexercisable without a live congregation, which blocked all 
   loop writes ~1 line/sec, so we don't grow a file on every run. First line is a banner with exe
   path, assembly version (`1.0.0+<git-sha>`, stamped by an MSBuild target) and build time — identify
   *which build* produced a log from the log alone; don't cross-reference DLL mtimes.
+- **Gain calibration** rides on the same per-input log line as `cal=[speech=<p50 dB> floor=<p50 dB>
+  n=<buffers>]`, and shows as `speech`/`floor` columns in the Diagnostics window (green within ±3 dB
+  of the −24 dBFS target) plus `speechDb`/`floorDb` in `/state`. `CalibrationHistogram` tallies every
+  capture buffer's RMS into 1 dB bins, voiced separately from the rest, at the **same post-fader tap
+  the automixer's absolute thresholds read** — so the number means what `PriorityActiveRms` and
+  friends mean. A peak meter cannot do this job: a DSP-free wireless mic's crest factor is ~20 dB, so
+  its peak says nothing about where speech sits, which is how a whole session's fixture once came out
+  30 dB low and unusable. Deliberately **cumulative** (a settling number is what makes gain-setting a
+  matching exercise), so it must be reset — Diagnostics → *Reset calibration* — after every
+  transmitter gain change, or the pre-change buffers keep dragging the median.
 - **RF-link health** rides on the per-input log line: `rf=[lvl=<voiced mean dB> voiced=<%>
   silent=<%> drops=<n>]` (`InputChannel.SnapshotRfStats`, lock-free counters latched in the audio
   callback), for **offline** diagnosis of a marginal Soundsync link. A dropping link shows
@@ -640,13 +688,21 @@ later judgment.
 - **Input strips live in a `UniformGrid Rows="1"`, which divides the column equally and IGNORES each
   child's `MinWidth`.** A fixed-width window crams N strips into whatever space exists and clips the
   right-most controls (A/B route toggles vanish first). Fix: the window is non-resizable and its width
-  is computed from input count (`MainViewModel.WindowWidth = max(500, count*96 + 160)`), applied in
+  is computed from input count (`MainViewModel.WindowWidth = max(560, count*96 + 240)`), applied in
   `MainWindow` code-behind. Don't bind `Window.Width` in XAML — `DataContext` is set *after*
   `InitializeComponent`, so the binding isn't reliably applied at startup and it falls back to the
   literal. Set `Width` in code-behind after assigning `DataContext` and on `WindowWidth`
-  PropertyChanged. `WindowHeight` follows the same pattern (base 320 px + the VB-CABLE banner when
-  `ShowVbCablePrompt`). Also: outputs live in a fixed-width column (150 px), NOT `Auto` — an `Auto`
-  column lets device-name buttons expand to their full untrimmed text and blows out the layout.
+  PropertyChanged. `WindowHeight` follows the same pattern (`BaseWindowHeight` + the VB-CABLE banner
+  when `ShowVbCablePrompt`). Also: outputs live in a fixed-width column (**230 px**), NOT `Auto` — an
+  `Auto` column lets device-name buttons expand to their full untrimmed text and blows out the layout.
+- **Adding a row to the output template clips it silently.** The window is `CanMinimize` with its
+  height from the `BaseWindowHeight` constant, and there is no scrollbar — a new `RowDefinition` in
+  the output `DataTemplate` just doesn't render, with no error and nothing in the log. Bump
+  `BaseWindowHeight` in the same change (the leveler row cost +60 px). The two outputs share that
+  230 px column via `UniformGrid Rows="1"`, so each strip is only ~115 px wide: put a collapsed
+  `ToggleButton` + `Popup` in the column and every slider *inside* the popup, which is its own
+  top-level window and unconstrained by the column. That is why the automix mode picker, the device
+  picker and the leveler are all popups.
 - WPF's temporary XAML-compilation project (`*_wpftmp.csproj`) does not reliably honor
   `ImplicitUsings` for `System.IO` — add an explicit `using System.IO;` in any file using
   `Path`/`Directory`/`File`.

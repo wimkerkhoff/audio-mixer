@@ -388,6 +388,29 @@ flux-cv, meters, LEDs, ducking, scenes — runs unmodified.
 - Complementary **synthetic** generator — talker A/B/overlap/silence, a lapel bump crossing −40 dBFS.
   Deterministic, tiny, and can produce situations the recordings don't contain.
 
+### 🔲 Refine the operator UI after the first Rode live test
+Requested 2026-08-30, before the test: the current surfaces (calibration columns in Diagnostics, the
+leveler popup in the output column) were designed against a rig nobody has run yet. Revisit once
+there is real operating experience — what the operator actually reached for, what they had to hunt
+for, and whether the leveler's Gentle/Medium/Strong split is the right first knob. Do not
+pre-emptively redesign; collect the session first.
+
+### 🛠 Make the golden baselines hermetic — they currently gate nothing
+Found 2026-08-30. `--replay` is a sandbox for autosave and output devices but **not for preset
+loading**: `MainViewModel.TryLoadInitialPreset()` runs unconditionally before
+`StartReplayIfRequested()`, so every fixture inherits the operator's live
+`%APPDATA%\AudioMixer\preset.json` — routing, low-cut, split `ChannelSource`, automix mode. Proof:
+the `presentation` fixture fails against its own baseline **at `5c597e9`, the commit that recorded
+it** (60 hand-offs vs 14; output B occupancy 51.3%/32.8% → 0%/80%), which is precisely what that
+day's preset predicts. Every `DRIFT` seen so far has been configuration, not code, and `-Update`
+launders it away.
+
+*Fix:* add `--preset=<path>`, store a preset beside each baseline JSON, have `replay-baseline.ps1`
+pass it and `-Update` snapshot it. `--no-preset` alone is not enough — the defaults route only
+channel 0, so the fixture would exercise no selection at all. Until this lands, treat a baseline diff
+as **unproven**: check the preset's mtime before blaming the selector, and do not re-record to make
+it green (that destroys the only evidence).
+
 ### ✅ `/state` golden-baseline regression harness — shipped 2026-08-09
 `tools/replay-baseline.ps1 -Name <fixture> -Stamp <session> -Seek <s> -For <s> [-Update]`. Baselines in
 `tools/baselines/`. Two recorded so far from the 2026-08-09 session: **singing** (seek 95) and

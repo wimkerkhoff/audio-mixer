@@ -224,10 +224,142 @@ public sealed class OutputViewModel : ViewModelBase
         ToggleRecordCommand = new RelayCommand(() => _onToggleRecord(Index));
     }
 
+    // --- Bus leveler ---------------------------------------------------------------------------
+    // Settings live on the OutputBus (they must survive an engine-driven restart), so these are thin
+    // write-throughs like VolumePercent — no IAutoMixControl involvement: the leveler is a bus device,
+    // not an automix decision.
+
+    private bool _levelerEnabled;
+    public bool LevelerEnabled
+    {
+        get => _levelerEnabled;
+        set
+        {
+            if (!SetField(ref _levelerEnabled, value)) return;
+            _bus.Leveler.Enabled = value;
+            RaiseLevelerDisplay();
+        }
+    }
+
+    public LevelerStrength[] LevelerStrengthOptions { get; } =
+        Enum.GetValues<LevelerStrength>();
+
+    private LevelerStrength _levelerStrength = LevelerStrength.Medium;
+    public LevelerStrength LevelerStrength
+    {
+        get => _levelerStrength;
+        set
+        {
+            if (!SetField(ref _levelerStrength, value)) return;
+            _bus.Leveler.Strength = value;
+            // The preset moves with it, so a strength choice is one persisted decision, not four.
+            _levelerThresholdDb = _bus.Leveler.ThresholdDb;
+            _levelerRatio = _bus.Leveler.Ratio;
+            _levelerMaxGainDb = _bus.Leveler.MaxGainDb;
+            RaisePropertyChanged(nameof(LevelerThresholdDb));
+            RaisePropertyChanged(nameof(LevelerRatio));
+            RaisePropertyChanged(nameof(LevelerMaxGainDb));
+            RaiseLevelerDisplay();
+        }
+    }
+
+    public int LevelerStrengthIndex
+    {
+        get => (int)_levelerStrength;
+        set { if (value >= 0) LevelerStrength = (LevelerStrength)value; }
+    }
+
+    private float _levelerThresholdDb = -26f;
+    public float LevelerThresholdDb
+    {
+        get => _levelerThresholdDb;
+        set
+        {
+            if (!SetField(ref _levelerThresholdDb, value)) return;
+            _bus.Leveler.ThresholdDb = value;
+            _levelerThresholdDb = _bus.Leveler.ThresholdDb;
+            RaiseLevelerDisplay();
+        }
+    }
+
+    private float _levelerRatio = 3f;
+    public float LevelerRatio
+    {
+        get => _levelerRatio;
+        set
+        {
+            if (!SetField(ref _levelerRatio, value)) return;
+            _bus.Leveler.Ratio = value;
+            _levelerRatio = _bus.Leveler.Ratio;
+            RaiseLevelerDisplay();
+        }
+    }
+
+    private float _levelerAttackMs = 100f;
+    public float LevelerAttackMs
+    {
+        get => _levelerAttackMs;
+        set { if (SetField(ref _levelerAttackMs, value)) { _bus.Leveler.AttackMs = value; _levelerAttackMs = _bus.Leveler.AttackMs; } }
+    }
+
+    private float _levelerReleaseMs = 2000f;
+    public float LevelerReleaseMs
+    {
+        get => _levelerReleaseMs;
+        set { if (SetField(ref _levelerReleaseMs, value)) { _bus.Leveler.ReleaseMs = value; _levelerReleaseMs = _bus.Leveler.ReleaseMs; } }
+    }
+
+    private float _levelerMaxGainDb = 10f;
+    public float LevelerMaxGainDb
+    {
+        get => _levelerMaxGainDb;
+        set
+        {
+            if (!SetField(ref _levelerMaxGainDb, value)) return;
+            _bus.Leveler.MaxGainDb = value;
+            _levelerMaxGainDb = _bus.Leveler.MaxGainDb;
+            RaiseLevelerDisplay();
+        }
+    }
+
+    private float _levelerIdleFloorDb = -45f;
+    public float LevelerIdleFloorDb
+    {
+        get => _levelerIdleFloorDb;
+        set { if (SetField(ref _levelerIdleFloorDb, value)) { _bus.Leveler.IdleFloorDb = value; _levelerIdleFloorDb = _bus.Leveler.IdleFloorDb; } }
+    }
+
+    private float _limiterCeilingDb = -1f;
+    public float LimiterCeilingDb
+    {
+        get => _limiterCeilingDb;
+        set { if (SetField(ref _limiterCeilingDb, value)) { _bus.Leveler.CeilingDb = value; _limiterCeilingDb = _bus.Leveler.CeilingDb; } }
+    }
+
+    // Settings-derived display. Raised from the setters ONLY — never from RefreshMeters, or it would
+    // restart the autosave debounce 30x/second and autosave would never fire.
+    public string LevelerState => _levelerEnabled ? "on" : "off";
+    public string LevelerSummary => _levelerEnabled ? $"{_levelerStrength} {_levelerRatio:F0}:1" : "Leveler off";
+
+    private void RaiseLevelerDisplay()
+    {
+        RaisePropertyChanged(nameof(LevelerState));
+        RaisePropertyChanged(nameof(LevelerSummary));
+    }
+
+    // Display-only, polled at 30 Hz. MUST NOT be added to PersistedProperties.
+    public float LevelerGainDb => _bus.LevelerGainDb;
+    public string LevelerGainText => !_levelerEnabled ? "—" : $"{_bus.LevelerGainDb:+0.0;-0.0;0.0} dB";
+    public double LevelerLiftBar =>
+        Math.Clamp(_bus.LevelerGainDb / Math.Max(1f, _levelerMaxGainDb), 0, 1);
+
     public void RefreshMeters()
     {
         RaisePropertyChanged(nameof(OutputPeakDb));
         RaisePropertyChanged(nameof(OutputPeakHoldDb));
+        RaisePropertyChanged(nameof(LevelerGainDb));
+        RaisePropertyChanged(nameof(LevelerGainText));
+        RaisePropertyChanged(nameof(LevelerLiftBar));
     }
 
     public void RefreshDevices(IEnumerable<AudioDeviceInfo> devices)

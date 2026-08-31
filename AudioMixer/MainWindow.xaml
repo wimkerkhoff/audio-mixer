@@ -557,6 +557,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Grid Grid.Row="0">
                                     <Grid.ColumnDefinitions>
@@ -669,6 +670,77 @@
                                             Margin="3,0,0,0" VerticalAlignment="Center"
                                             ToolTip="{Binding StrengthPercent, StringFormat={}{0:F0}% duck strength}"/>
                                 </Grid>
+
+                                <StackPanel Grid.Row="6" Margin="0,3,0,0">
+                                    <TextBlock Style="{StaticResource Lbl}" Text="Leveler"/>
+                                    <Grid>
+                                        <ToggleButton x:Name="LvlBtn" Style="{StaticResource DeviceSelBtn}"
+                                                      Content="{Binding LevelerSummary}"
+                                                      ToolTip="Evens out quiet and loud talkers on this bus, then limits. Off by default. Flip it while someone is talking - that is the A/B. It is a trim, not a gain stage: if a mic is 15 dB low, fix that at the transmitter."/>
+                                        <Popup IsOpen="{Binding IsChecked, ElementName=LvlBtn}"
+                                               PlacementTarget="{Binding ElementName=LvlBtn}"
+                                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                            <Border Style="{StaticResource PopupSurface}">
+                                                <StackPanel MinWidth="250" Margin="8">
+                                                    <CheckBox IsChecked="{Binding LevelerEnabled}" Foreground="#CCC" FontSize="11">
+                                                        <TextBlock Text="Leveler on"/>
+                                                    </CheckBox>
+
+                                                    <TextBlock Style="{StaticResource Lbl}" Text="Strength" Margin="0,8,0,2"/>
+                                                    <ListBox Style="{StaticResource PopupList}"
+                                                             ItemsSource="{Binding LevelerStrengthOptions}"
+                                                             SelectedIndex="{Binding LevelerStrengthIndex, Mode=TwoWay}"
+                                                             IsEnabled="{Binding LevelerEnabled}"/>
+                                                    <TextBlock Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                               Text="Start on Medium. Too strong and the room noise swells in the gaps between sentences; too weak and a soft question from the back is still soft."/>
+
+                                                    <Expander Header="Advanced" Foreground="#CCC" FontSize="11" Margin="0,8,0,0"
+                                                              IsEnabled="{Binding LevelerEnabled}">
+                                                        <StackPanel Margin="0,4,0,0">
+                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerThresholdDb, StringFormat=Threshold {0:F0} dBFS}"/>
+                                                            <Slider Minimum="-60" Maximum="0" Value="{Binding LevelerThresholdDb}"
+                                                                    ToolTip="Above this level the leveler starts working."/>
+                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerRatio, StringFormat=Ratio {0:F1}:1}" Margin="0,4,0,0"/>
+                                                            <Slider Minimum="1" Maximum="10" Value="{Binding LevelerRatio}"
+                                                                    ToolTip="How hard it pulls the loud parts down."/>
+                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerAttackMs, StringFormat=Attack {0:F0} ms}" Margin="0,4,0,0"/>
+                                                            <Slider Minimum="5" Maximum="500" Value="{Binding LevelerAttackMs}"
+                                                                    ToolTip="How quickly it reacts to someone getting louder."/>
+                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerReleaseMs, StringFormat=Release {0:F0} ms}" Margin="0,4,0,0"/>
+                                                            <Slider Minimum="200" Maximum="8000" Value="{Binding LevelerReleaseMs}"
+                                                                    ToolTip="How quickly it recovers. Too fast and quiet passages breathe."/>
+                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerMaxGainDb, StringFormat=Max boost {0:F0} dB}" Margin="0,4,0,0"/>
+                                                            <Slider Minimum="0" Maximum="12" Value="{Binding LevelerMaxGainDb}"
+                                                                    ToolTip="The most it will ever lift a quiet talker. Room noise rises with it one-for-one, and this room's floor is HVAC that no filter removes - so this is a noise budget, capped at 12 dB."/>
+                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerIdleFloorDb, StringFormat=Idle hold {0:F0} dBFS}" Margin="0,4,0,0"/>
+                                                            <Slider Minimum="-70" Maximum="-20" Value="{Binding LevelerIdleFloorDb}"
+                                                                    ToolTip="Below this the gain freezes instead of hunting in the silence. It never attenuates, so it cannot cut off a quiet talker. Calibrate it: watch the bus meter with the room empty and set this about 6 dB above what you see."/>
+                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LimiterCeilingDb, StringFormat=Limiter ceiling {0:F1} dBFS}" Margin="0,4,0,0"/>
+                                                            <Slider Minimum="-12" Maximum="-0.1" Value="{Binding LimiterCeilingDb}"
+                                                                    ToolTip="Protective brick wall after the leveler. If it is working constantly, lower Max boost rather than raising this."/>
+                                                        </StackPanel>
+                                                    </Expander>
+
+                                                    <TextBlock Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                               Text="Set both buses the same unless you have a reason not to - levelling Zoom but not the headset means you stop hearing what the stream hears."/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Popup>
+                                    </Grid>
+                                    <Grid Margin="0,2,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ProgressBar Grid.Column="0" Minimum="0" Maximum="1" Height="4"
+                                                     Value="{Binding LevelerLiftBar, Mode=OneWay}"
+                                                     Background="#26262C" Foreground="#3FB950" BorderThickness="0"
+                                                     VerticalAlignment="Center"
+                                                     ToolTip="How much the leveler is currently lifting."/>
+                                        <TextBlock Grid.Column="1" Foreground="#B8B8C2" FontSize="10" Margin="4,0,0,0"
+                                                   Text="{Binding LevelerGainText}"/>
+                                    </Grid>
+                                </StackPanel>
                             </Grid>
                         </Border>
                     </DataTemplate>

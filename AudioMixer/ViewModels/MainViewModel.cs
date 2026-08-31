@@ -36,6 +36,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand DownloadVbCableCommand { get; }
     public RelayCommand DismissVbCablePromptCommand { get; }
     public RelayCommand OpenDocumentationCommand { get; }
+    public RelayCommand ResetCalibrationCommand { get; }
 
     private const string VbCableUrl = "https://vb-audio.com/Cable/";
     private const string DocsUrl = "https://github.com/wimkerkhoff/audio-mixer";
@@ -77,7 +78,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public double WindowWidth => Math.Max(560, _inputCount * 96 + 240);
 
-    private const double BaseWindowHeight = 344;
+    private const double BaseWindowHeight = 404;   // grows with the output column's rows (leveler = +60)
     private const double VbCableBannerHeight = 36;
     public double WindowHeight => BaseWindowHeight + (ShowVbCablePrompt ? VbCableBannerHeight : 0);
 
@@ -117,6 +118,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         DownloadVbCableCommand = new RelayCommand(OpenVbCableDownload);
         DismissVbCablePromptCommand = new RelayCommand(DismissVbCablePrompt);
         OpenDocumentationCommand = new RelayCommand(() => OpenUrl(DocsUrl));
+        ResetCalibrationCommand = new RelayCommand(ResetCalibration);
 
         UpdateVbCableStatus();
 
@@ -216,7 +218,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public bool WarnOnBluetoothMics
     {
         get => _warnOnBluetoothMics;
-        set => SetField(ref _warnOnBluetoothMics, value);
+        set { if (SetField(ref _warnOnBluetoothMics, value)) RefreshHealth(force: true); }
     }
 
     public string DiagnosticsSummary =>
@@ -229,6 +231,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     // Evaluated at ~1 Hz rather than on every meter tick: the alert set is stable on that timescale,
     // and re-raising a collection 30x/second would churn the UI for nothing.
+    // The Bluetooth rule and its remediation text are written for the Anker speakerphones, which had
+    // to run over their Soundsync dongles. On a rig without them the advice is wrong — and the rule
+    // matches on a bare "Headset" substring, so any endpoint named that way trips it. Filtering by Id
+    // here rather than gating HealthMonitor keeps that pure evaluator (and its tests) untouched, and
+    // makes the Settings checkbox real: it was bound to the UI and read by nothing.
+    private bool IsAlertWanted(HealthAlert alert) =>
+        _warnOnBluetoothMics || !alert.Id.EndsWith(".bluetooth", StringComparison.Ordinal);
+
     private void RefreshHealth(bool force = false)
     {
         long now = Environment.TickCount64;
@@ -238,6 +248,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var snapshot = BuildHealthSnapshot(now);
         var fresh = HealthMonitor.Evaluate(snapshot)
             .Where(a => !_dismissedAlerts.Contains(a.Id))
+            .Where(IsAlertWanted)
             .ToList();
 
         // An alert that clears becomes dismissible again, so a recurrence is not silently swallowed.
@@ -301,6 +312,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// Rebuilds the ranked selection table. Driven by the Diagnostics window's own 10 Hz timer rather
     /// than the meter tick, so it costs nothing when that window is closed.
     /// </summary>
+    // Clear every input's speech/floor histogram. The readings are cumulative on purpose (a settling
+    // number is what makes gain setting a matching exercise), so they must be cleared by hand after
+    // changing a transmitter's gain — otherwise the pre-change buffers keep dragging the median.
+    private void ResetCalibration()
+    {
+        foreach (var input in _engine.Inputs) input.ResetCalibration();
+        StatusText = "Calibration histograms cleared.";
+    }
+
     public void RefreshDiagnostics()
     {
         var diag = _engine.AutoMixSnapshot();
@@ -833,6 +853,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Outputs[o].PreferNatural = op.AutoMixPreferNatural;
                 Outputs[o].AutoMixModeIndex = Math.Clamp(op.AutoMixMode, 0, 2);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
+
+                // Strength first (it rewrites threshold/ratio/cap), then the individual values, so a
+                // preset that was tuned away from its strength preset keeps the tuned numbers.
+                // Enabled LAST: never engage on half-applied settings.
+                Outputs[o].LevelerStrength = (LevelerStrength)Math.Clamp(op.LevelerStrength, 0, 2);
+                Outputs[o].LevelerThresholdDb = op.LevelerThresholdDb;
+                Outputs[o].LevelerRatio = op.LevelerRatio;
+                Outputs[o].LevelerAttackMs = op.LevelerAttackMs;
+                Outputs[o].LevelerReleaseMs = op.LevelerReleaseMs;
+                Outputs[o].LevelerMaxGainDb = op.LevelerMaxGainDb;
+                Outputs[o].LevelerIdleFloorDb = op.LevelerIdleFloorDb;
+                Outputs[o].LimiterCeilingDb = op.LimiterCeilingDb;
+                Outputs[o].LevelerEnabled = op.LevelerEnabled;
             }
         }
         finally

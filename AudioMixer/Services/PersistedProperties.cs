@@ -34,6 +34,18 @@ public static class PersistedProperties
         nameof(OutputViewModel.StableHandoff),
         nameof(OutputViewModel.ReferenceGuided),
         nameof(OutputViewModel.PreferNatural),
+        // Leveler SETTINGS only. LevelerGainDb / LevelerGainText / LevelerLiftBar are raised 30x/s by
+        // RefreshMeters — allowlisting one would restart the 500 ms debounce every 33 ms and autosave
+        // would silently never fire.
+        nameof(OutputViewModel.LevelerEnabled),
+        nameof(OutputViewModel.LevelerStrength),
+        nameof(OutputViewModel.LevelerThresholdDb),
+        nameof(OutputViewModel.LevelerRatio),
+        nameof(OutputViewModel.LevelerAttackMs),
+        nameof(OutputViewModel.LevelerReleaseMs),
+        nameof(OutputViewModel.LevelerMaxGainDb),
+        nameof(OutputViewModel.LevelerIdleFloorDb),
+        nameof(OutputViewModel.LimiterCeilingDb),
     };
 
     public static bool Contains(string? propertyName) =>

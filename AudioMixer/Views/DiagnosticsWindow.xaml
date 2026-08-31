@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="AudioMixer — Diagnostics"
         Background="#1B1B20"
-        Width="720" Height="440"
-        MinWidth="560" MinHeight="320"
+        Width="880" Height="440"
+        MinWidth="640" MinHeight="320"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display">
     <!--
@@ -30,9 +30,17 @@
     </Window.Resources>
 
     <DockPanel Margin="8">
-        <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Cap}" Margin="0,6,0,0"
-                   TextWrapping="Wrap"
-                   Text="Rank is the current selection order. A mic can read hot here and still be ducked — automix gain is applied after the meter tap."/>
+        <Grid DockPanel.Dock="Bottom" Margin="0,6,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Style="{StaticResource Cap}" TextWrapping="Wrap" VerticalAlignment="Center"
+                       Text="Rank is the current selection order. A mic can read hot here and still be ducked — automix gain is applied after the meter tap. speech/floor accumulate until reset."/>
+            <Button Grid.Column="1" Content="Reset calibration" Margin="8,0,0,0" Padding="8,3"
+                    Command="{Binding ResetCalibrationCommand}"
+                    ToolTip="Clear the speech/floor histograms on every input. Do this after changing a transmitter's gain — the old readings would otherwise keep dragging the median."/>
+        </Grid>
 
         <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Outputs}" Margin="0,0,0,8">
             <ItemsControl.ItemTemplate>
@@ -60,6 +68,8 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="34"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="64"/>
+                    <ColumnDefinition Width="60"/>
                     <ColumnDefinition Width="70"/>
                     <ColumnDefinition Width="60"/>
                     <ColumnDefinition Width="60"/>
@@ -69,12 +79,16 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="rank" Style="{StaticResource Head}"/>
                 <TextBlock Grid.Column="1" Text="mic" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="2" Text="env dB" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="3" Text="flux-cv" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="4" Text="corr" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="5" Text="gain A" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="6" Text="gain B" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="7" Text="state" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="2" Text="speech" Style="{StaticResource Head}"
+                           ToolTip="Median level of this mic's voiced buffers, in dBFS. This is what transmitter gain is set against — aim for -24, green means within 3 dB of it. A peak meter cannot show this."/>
+                <TextBlock Grid.Column="3" Text="floor" Style="{StaticResource Head}"
+                           ToolTip="Median level of its non-voiced buffers: the room floor this mic actually hears. Read it with the room empty to derive the automixer's silence floor."/>
+                <TextBlock Grid.Column="4" Text="env dB" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="5" Text="flux-cv" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="6" Text="corr" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="7" Text="gain A" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="8" Text="gain B" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="9" Text="state" Style="{StaticResource Head}"/>
             </Grid>
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
@@ -86,6 +100,8 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="34"/>
                                         <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="64"/>
+                                        <ColumnDefinition Width="60"/>
                                         <ColumnDefinition Width="70"/>
                                         <ColumnDefinition Width="60"/>
                                         <ColumnDefinition Width="60"/>
@@ -95,12 +111,15 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding Rank}" Style="{StaticResource Cell}"/>
                                     <TextBlock Grid.Column="1" Text="{Binding Label}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding EnvDb}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="3" Text="{Binding FluxCv}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="4" Text="{Binding Corr}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="5" Text="{Binding GainA}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="6" Text="{Binding GainB}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="7" Text="{Binding State}" Style="{StaticResource Cell}"
+                                    <TextBlock Grid.Column="2" Text="{Binding Speech}" Style="{StaticResource Cell}"
+                                               Foreground="{Binding SpeechBrush}"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding Floor}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="4" Text="{Binding EnvDb}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="5" Text="{Binding FluxCv}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="6" Text="{Binding Corr}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="7" Text="{Binding GainA}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="8" Text="{Binding GainB}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="9" Text="{Binding State}" Style="{StaticResource Cell}"
                                                Foreground="{Binding StateBrush}"/>
                                 </Grid>
                             </Border>

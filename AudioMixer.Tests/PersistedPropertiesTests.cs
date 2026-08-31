@@ -44,6 +44,47 @@ public class PersistedPropertiesTests
             "autosave will never fire. Either stop raising it on the meter tick or stop persisting it.");
     }
 
+    private sealed class StubAutoMix : IAutoMixControl
+    {
+        public void SetAutoMixMode(int output, AutoMixMode mode) { }
+        public void SetAutoMixStrength(int output, float strength) { }
+        public void SetAutoMixStableHandoff(int output, bool on) { }
+        public void SetAutoMixReferenceGuided(int output, bool on) { }
+        public void SetAutoMixPreferNatural(int output, bool on) { }
+    }
+
+    private static OutputViewModel MakeOutput(OutputBus bus) =>
+        new(0, bus, new StubAutoMix(), Array.Empty<AudioDeviceInfo>(), (_, _) => { }, _ => { });
+
+    [Fact]
+    public void OutputMeterTick_RaisesNothingThatTriggersAutosave()
+    {
+        // The twin of the channel test above, which did NOT exist — so the same silent-autosave bug
+        // was reachable through any output display property (the leveler's gain readout is one).
+        using var bus = new OutputBus();
+        var op = MakeOutput(bus);
+
+        var raised = CaptureRaised(op, op.RefreshMeters);
+
+        Assert.NotEmpty(raised);
+        var offenders = raised.Where(PersistedProperties.Contains).Distinct().ToList();
+        Assert.True(offenders.Count == 0,
+            $"OutputViewModel.RefreshMeters raises persisted propert{(offenders.Count == 1 ? "y" : "ies")} " +
+            $"[{string.Join(", ", offenders)}] — this resets the autosave debounce 30x/second and " +
+            "autosave will never fire. Either stop raising it on the meter tick or stop persisting it.");
+    }
+
+    [Fact]
+    public void ChangingALevelerSetting_IsSeenByTheAllowlist()
+    {
+        // The inverse failure: a setting that never triggers autosave is silently lost on a crash.
+        using var bus = new OutputBus();
+        var op = MakeOutput(bus);
+
+        var raised = CaptureRaised(op, () => op.LevelerThresholdDb = -30f);
+        Assert.Contains(raised, PersistedProperties.Contains);
+    }
+
     [Fact]
     public void RouteLedRefresh_DoesNotRaiseTheRouteToggleItself()
     {
