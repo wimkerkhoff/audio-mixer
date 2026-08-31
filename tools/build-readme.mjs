@@ -1,5 +1,6 @@
-// Regenerates README.html from README.md. README.html is a build artifact — do NOT hand-edit it;
-// edit README.md and run `node tools/build-readme.mjs`.
+// Regenerates an HTML page from a Markdown file. The .html is a build artifact — do NOT hand-edit
+// it; edit the .md and re-run. Defaults to README.md -> README.html; pass another file to convert
+// it instead: `node tools/build-readme.mjs RODE-PRO-RIG.md [out.html]`.
 //
 // Dependency-free (no npm install). Supports the Markdown subset this README uses: ATX headings
 // (## get slug ids for anchors), paragraphs, **bold**, *italic*, `code`, [links](url),
@@ -13,7 +14,15 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const md = readFileSync(join(root, 'README.md'), 'utf8');
+const inputArg = process.argv[2] ?? 'README.md';
+const outputArg = process.argv[3] ?? inputArg.replace(/\.md$/i, '') + '.html';
+const inputPath = join(root, inputArg);
+const outputPath = join(root, outputArg);
+const md = readFileSync(inputPath, 'utf8');
+
+// The tab/window title is the document's own H1 when it has one, so a converted file isn't
+// mislabelled as the README.
+const docTitle = (md.match(/^#\s+(.+)$/m)?.[1] ?? 'AudioMixer').replace(/[*`]/g, '').trim();
 
 const LIGHT_VARS = `
     --bg: #ffffff;
@@ -316,7 +325,7 @@ const html = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AudioMixer</title>
+<title>${docTitle}</title>
 <style>${CSS}
 </style>
 <script>${HEAD_SCRIPT}</script>
@@ -337,5 +346,5 @@ ${out.join('\n\n')}
 </html>
 `;
 
-writeFileSync(join(root, 'README.html'), html, 'utf8');
-console.log('Wrote README.html (' + out.length + ' blocks)');
+writeFileSync(outputPath, html, 'utf8');
+console.log('Wrote ' + outputArg + ' from ' + inputArg + ' (' + out.length + ' blocks)');

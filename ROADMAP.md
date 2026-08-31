@@ -164,16 +164,20 @@ mixer.
 ### 🔲 Replace the room mics — 6× RØDE Wireless PRO transmitters via 3 receivers
 The path forward, decided 2026-08-23 once Broadcast mode turned out to be gone. Target layout:
 **3 transmitters per row of tables (6 room mics) + 1 lapel on the primary speaker** = 7 inputs
-against a 10-input ceiling. Four 2-channel receivers cover it; the operator has chosen 2-channel
+against a 10-input ceiling. Three 2-channel Wireless PRO receivers cover the room mics and the
+presenter's lapel arrives on its own receiver; the operator has chosen 2-channel
 devices deliberately, so the `ChannelSource` widening a >2-in interface would need stays unbuilt
 (see CLAUDE.md gotcha).
 
 Why this shape, in one line each — the detail is in CLAUDE.md findings 4-6:
 - **DSP-free is the whole point.** The S500s gated congregational singing to digital silence in
   unison; the Rodes measured **0.0%** gating over 9 minutes. Nothing else on the shortlist changes.
-- **Body-worn mics cover people, not rooms.** More transmitters is the room fix *because* they sit
-  near mouths — every halving of mic-to-mouth distance is +6 dB against a constant room floor. This
-  is worth more than any processing (finding 5b).
+- **Proximity is the room fix, not directionality.** More transmitters wins *because* each sits
+  nearer a mouth — every halving of mic-to-mouth distance is +6 dB against a constant room floor,
+  worth more than any processing (finding 5b). Note only the teaching lapel is actually *body-worn*;
+  in every other scene these are **table mics** on stands using the TX's own capsule, so distance is
+  a placement problem to re-solve every week, not one solved by construction (see the deployment
+  strategy below).
 - **Not shotguns.** Turn-taking prayer wants wide coverage; a shotgun favours whoever it is aimed at
   and rejects the people beside them, and its interference tube does not extend reach indoors. The
   Wireless PRO TX *does* take a 3.5 mm TRS mic with plug-in power if a directional capsule is ever

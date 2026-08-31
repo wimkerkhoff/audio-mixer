@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RØDE Wireless PRO room rig (up to 6 TX) — plan, changes and watch-list</title>
+<style>
+  :root {
+    --bg: #1e1e22;
+    --panel: #26262c;
+    --border: #3a3a42;
+    --fg: #e8e8ea;
+    --muted: #9a9aa4;
+    --link: #6aa9ff;
+    --code-bg: #16161a;
+    --accent: #f2a93b;
+    --strong: #fff;
+  }
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --panel: #f4f4f6;
+    --border: #dcdce2;
+    --fg: #1c1c20;
+    --muted: #65656e;
+    --link: #2563eb;
+    --code-bg: #f3f3f5;
+    --accent: #b9791a;
+    --strong: #000;
+  }
+  @media (prefers-color-scheme: light) {
+    :root[data-theme="auto"] {
+    --bg: #ffffff;
+    --panel: #f4f4f6;
+    --border: #dcdce2;
+    --fg: #1c1c20;
+    --muted: #65656e;
+    --link: #2563eb;
+    --code-bg: #f3f3f5;
+    --accent: #b9791a;
+    --strong: #000;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.15s, color 0.15s;
+  }
+  .layout {
+    display: flex;
+    gap: 36px;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 40px 32px 80px;
+    align-items: flex-start;
+  }
+  main {
+    flex: 1 1 auto;
+    max-width: 820px;
+    min-width: 0;
+  }
+  .toc {
+    position: sticky;
+    top: 24px;
+    flex: 0 0 200px;
+    width: 200px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+  .toc-title {
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 11px;
+    margin: 0 0 8px 8px;
+  }
+  .toc ul { list-style: none; padding: 0; margin: 0; }
+  .toc li { margin: 1px 0; }
+  .toc a {
+    display: block;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 3px 8px;
+    border-left: 2px solid transparent;
+    border-radius: 0 3px 3px 0;
+  }
+  .toc a:hover { color: var(--fg); background: var(--panel); }
+  .toc a.toc-h3 { padding-left: 18px; font-size: 12px; }
+  .toc a.active { color: var(--accent); border-left-color: var(--accent); }
+  @media (max-width: 900px) {
+    .toc { display: none; }
+    .layout { padding: 40px 24px 80px; }
+  }
+  h1 { font-size: 32px; margin: 0 0 8px; }
+  h2 { font-size: 22px; margin: 32px 0 10px; padding-top: 12px; border-top: 1px solid var(--border); scroll-margin-top: 16px; }
+  h3 { font-size: 17px; margin: 24px 0 6px; color: var(--fg); scroll-margin-top: 16px; }
+  p { margin: 8px 0 12px; }
+  a { color: var(--link); }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  strong { color: var(--strong); }
+  img.screenshot {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 16px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  code {
+    font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 14px;
+    overflow-x: auto;
+  }
+  pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+  blockquote {
+    margin: 12px 0;
+    padding: 2px 14px;
+    border-left: 3px solid var(--border);
+    color: var(--muted);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: 600; }
+  .lead { color: var(--muted); font-size: 16px; }
+  .toolbar-item { color: var(--accent); }
+  #theme-toggle {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 10;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font: 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    cursor: pointer;
+  }
+  #theme-toggle:hover { border-color: var(--accent); }
+</style>
+<script>(function(){try{document.documentElement.dataset.theme=localStorage.getItem('theme')||'auto';}catch(e){document.documentElement.dataset.theme='auto';}})();</script>
+</head>
+<body>
+<button id="theme-toggle" aria-label="Toggle color theme" title="Theme: auto / light / dark"></button>
+<div class="layout">
+<nav class="toc" aria-label="Contents">
+  <div class="toc-title">Contents</div>
+  <ul>
+    <li><a class="toc-h2" href="#target-configuration">Target configuration</a></li>
+    <li><a class="toc-h2" href="#why-this-rig">Why this rig</a></li>
+    <li><a class="toc-h2" href="#verified-wiring-facts">Verified wiring facts</a></li>
+    <li><a class="toc-h2" href="#scene-matrix">Scene matrix</a></li>
+    <li><a class="toc-h2" href="#the-one-invariant-the-classic-is-priority-or-it-is-out">The one invariant: the Classic is priority, or it is out</a></li>
+    <li><a class="toc-h2" href="#placement">Placement</a></li>
+    <li><a class="toc-h2" href="#the-calibration-target-is-a-number-not-taste">The calibration target is a number, not taste</a></li>
+    <li><a class="toc-h2" href="#what-is-allowed-to-act-where">What is allowed to act where</a></li>
+    <li><a class="toc-h2" href="#nothing-dynamic-upstream-of-the-bus-ever">Nothing dynamic upstream of the bus — ever</a></li>
+    <li><a class="toc-h2" href="#the-bus-leveler">The bus leveler</a></li>
+    <li><a class="toc-h2" href="#what-levelling-cannot-fix">What levelling cannot fix</a></li>
+    <li><a class="toc-h2" href="#the-tension-to-not-fix-the-wrong-way">The tension to not "fix" the wrong way</a></li>
+    <li><a class="toc-h2" href="#one-time-commissioning">One-time commissioning</a></li>
+    <li><a class="toc-h2" href="#every-session">Every session</a></li>
+    <li><a class="toc-h2" href="#symptom-first-check">Symptom → first check</a></li>
+    <li><a class="toc-h3" href="#1-device-identity-the-biggest-operational-risk-on-this-rig">1. Device identity — the biggest operational risk on this rig</a></li>
+    <li><a class="toc-h3" href="#2-gain-has-to-live-in-the-transmitter">2. Gain has to live in the transmitter</a></li>
+    <li><a class="toc-h3" href="#3-gainassist-off-on-every-transmitter">3. GainAssist OFF on every transmitter</a></li>
+    <li><a class="toc-h3" href="#4-rx-mode-confusion">4. RX mode confusion</a></li>
+    <li><a class="toc-h3" href="#5-automixer-settings-for-this-rig">5. Automixer settings for this rig</a></li>
+    <li><a class="toc-h3" href="#6-hand-off-chatter-retune-before-the-units-arrive">6. Hand-off chatter — retune before the units arrive</a></li>
+    <li><a class="toc-h3" href="#7-placement-keep-room-mics-away-from-the-lectern">7. Placement — keep room mics away from the lectern</a></li>
+    <li><a class="toc-h3" href="#8-priority-duck-and-the-scenes">8. Priority duck and the scenes</a></li>
+    <li><a class="toc-h3" href="#9-the-noise-floor-is-acoustic-proximity-is-the-only-lever">9. The noise floor is acoustic — proximity is the only lever</a></li>
+    <li><a class="toc-h3" href="#10-rf-unverified">10. RF — unverified</a></li>
+    <li><a class="toc-h2" href="#open-questions">Open questions</a></li>
+  </ul>
+</nav>
+<main>
+
+<h1>RØDE Wireless PRO room rig (up to 6 TX) — plan, changes and watch-list</h1>
+
+<p class="lead">Status: <strong>planned</strong>, nothing bought beyond the first kit. Written 2026-08-30. Scope owner: this file — how the rig is used, what changes in the code and UI, and what the operator does. <code>CLAUDE.md</code> documents what IS; <code>ROADMAP.md</code> holds the wider backlog. Fold each item's <em>result</em> into <code>CLAUDE.md</code> as it is established, and delete this file once the rig is commissioned and stable.</p>
+
+<p>---</p>
+
+<h2 id="target-configuration">Target configuration</h2>
+
+<table>
+  <thead><tr><th>Role</th><th>Hardware</th><th>Mixer binding</th></tr></thead>
+  <tbody>
+    <tr><td>Presenter</td><td>RØDE Classic (single TX) → RX 3.5 mm → Realtek jack</td><td>1 strip, <strong>priority</strong>, Role=Lapel</td></tr>
+    <tr><td>Room ×6</td><td>3× Wireless PRO kits = 3 RX (USB-C) × 2 TX, <strong>built-in mics</strong>, no lavs plugged</td><td>6 strips, 2 per RX</td></tr>
+    <tr><td>Outputs</td><td>monitor headset + VB-CABLE → <strong>Zoom reads CABLE Output directly</strong></td><td>2 buses</td></tr>
+  </tbody>
+</table>
+
+<p>7 mixer inputs total, inside <code>AudioEngine.MaxInputCount</code> (10). The TX units are spread across the tables for audience coverage, not worn — only the presenter's lapel is body-worn.</p>
+
+<p><strong>Zoom takes CABLE Output directly; OBS is not in the path.</strong> Every processing decision below follows from that: an OBS filter would cover nothing, so anything we want on the stream has to exist in this app.</p>
+
+<h2 id="why-this-rig">Why this rig</h2>
+
+<p>The S500s were retired because their DSP gated congregational singing to digital silence <em>in unison</em> (<code>CLAUDE.md</code> finding 4), which no mix topology can repair. The Wireless PRO is DSP-free: measured <strong>0.0% digital silence in 9 minutes</strong> against 4.1% / 7.1% for two live Ankers, which lost 21.6 s and 36.9 s of audio to gate holes over the same capture (finding 5). Six identical DSP-free capsules also restore the automixer's core assumption — with no AGC anywhere, a level difference is <em>distance</em>, so Gate on smoothed level with stable hand-off becomes a true proximity selector (finding 6a).</p>
+
+<h2 id="verified-wiring-facts">Verified wiring facts</h2>
+
+<ul>
+  <li><strong>Each RX is ONE 2-channel WASAPI endpoint</strong> — TX1 on left, TX2 on right, in Split mode. Bind it</li>
+</ul>
+
+<p>  to two strips via <code>ChannelSource.Left</code> / <code>Right</code>; device exclusivity is per <em>side</em>, not per   endpoint.</p>
+
+<ul>
+  <li>The split is genuine, verified at sample level 2026-08-30 with <code>tools/RxProbe</code>: sample-level</li>
+</ul>
+
+<p>  corr(L,R) <strong>0.28</strong> at −0.38 ms, best-scalar fit residual only <strong>0.08 dB</strong> below R (so R is not a   scaled copy of L), envelope corr 0.86. A Safety-mode duplicate would read ~1.0.</p>
+
+<ul>
+  <li>The capture chain takes <strong>only channels 0 and 1</strong> of an endpoint, so 2 ch per RX is safe. A</li>
+</ul>
+
+<p>  &gt;2-input USB interface would silently drop everything past its second input.</p>
+
+<p>---</p>
+
+<h1>How the rig is used</h1>
+
+<h2 id="scene-matrix">Scene matrix</h2>
+
+<p>Decided 2026-08-30. The presenter wears the lapel with <strong>priority ON</strong> for teaching, Q&amp;A <em>and</em> theology study; only prayer runs with no lapel at all.</p>
+
+<table>
+  <thead><tr><th>Scene</th><th>Presenter</th><th>Room TX</th><th>Automix</th><th>Priority</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Standby</strong></td><td>—</td><td>—</td><td>untouched</td><td>outputs muted</td></tr>
+    <tr><td><strong>Teaching</strong></td><td>Classic lapel, worn</td><td>all routed</td><td>Gate + stable hand-off</td><td><strong>ON</strong> — ducks the room, 1.2 s hangover</td></tr>
+    <tr><td><strong>Q&amp;A</strong></td><td>same as Teaching</td><td>all routed</td><td>Gate + stable hand-off</td><td><strong>ON</strong></td></tr>
+    <tr><td><strong>Theology study</strong></td><td>same as Teaching</td><td>all routed</td><td>Gate + stable hand-off</td><td><strong>ON</strong></td></tr>
+    <tr><td><strong>Prayer</strong></td><td>none — scene mutes <em>and</em> unroutes the lapel</td><td>all routed</td><td>Gate + stable hand-off</td><td>none</td></tr>
+    <tr><td><strong>Singing</strong></td><td>operator taste</td><td>all routed, flat</td><td><strong>Off</strong></td><td>suspended</td></tr>
+  </tbody>
+</table>
+
+<p><strong>No new scenes are needed.</strong> Q&amp;A and theology study are behaviourally identical to Teaching, and <code>Scene.Teaching</code> already produces exactly that plan; <code>Scene.Prayer</code> already mutes, unroutes <em>and</em> de-prioritises the lapel, which is the documented duck hazard closed off in the pure layer. The only thing that could justify splitting Q&amp;A out later is the priority hangover — see code change 5.</p>
+
+<h2 id="the-one-invariant-the-classic-is-priority-or-it-is-out">The one invariant: the Classic is priority, or it is out</h2>
+
+<p>The presenter's Classic reaches the mixer over a completely different gain path (RX 3.5 mm → Realtek) from six USB-C Wireless PROs. Finding 7 says a level comparison <strong>across</strong> device types is meaningless — an AGC'd or differently-trimmed source cannot be ranked against an uncompressed one.</p>
+
+<p>That never bites here <em>as long as</em> the Classic is either a <strong>priority</strong> channel (priority mics are held at full level and taken out of the leader competition entirely) or <strong>unrouted</strong>. Both of the two states the scenes produce satisfy it. What must never happen is the Classic sitting routed with priority cleared: it would then compete on level against six mics on another scale and either dominate the bus or never win, arbitrarily.</p>
+
+<p>Fallback if the Classic proves troublesome in practice: move the presenter onto a Wireless PRO TX with a wired lav. That makes the whole rig homogeneous and dissolves this invariant, at the cost of one room mic or a fourth kit.</p>
+
+<h2 id="placement">Placement</h2>
+
+<p>The exclusion zone is around the <strong>teaching position</strong>, not "the presenter" — he stands at the lectern with a lapel in three scenes and sits at a table like everybody else in prayer, so a rule worded around the person is unsatisfiable.</p>
+
+<ul>
+  <li><strong>No room TX within ~10–15 ft of the lectern</strong>, or put the front-most unit at the first row facing</li>
+</ul>
+
+<p>  outward. Measured 2026-08-30: an S500 on the presenter's own table read <strong>−30.6 dBFS median /   −19.0 max during his speech pauses</strong> while a genuine interjection 15 ft away lands near <strong>−43.2</strong>   — its idle residual beat a real question in <strong>71%</strong> of pause samples, so no level threshold can   separate them and the priority break-in cannot rescue that geometry.</p>
+
+<ul>
+  <li><strong>Spread for coverage before people arrive.</strong> Target ≤3 ft from the nearest talker at each table.</li>
+</ul>
+
+<p>  Proximity is the whole S/N budget — the room floor is constant, and every halving of mic-to-mouth   distance is +6 dB (finding 5b).</p>
+
+<ul>
+  <li><strong>Off the table surface</strong> on a low stand. Flat on laminate combs against the table reflection and</li>
+</ul>
+
+<p>  picks up every knock, pen and cup.</p>
+
+<ul>
+  <li><strong>3:1 spacing</strong> — mic-to-mic ≥ 3× mic-to-mouth — to limit comb when two mics hear one voice.</li>
+  <li><strong>Tape-mark the table positions and always return TX #N to the same table.</strong> Seating changes every</li>
+</ul>
+
+<p>  week; the mic <em>positions</em> must not. That is what keeps a preset, the diagnostics table and a "mic   4 sounds bad" report meaningful across sessions.</p>
+
+<ul>
+  <li><strong>Mute the strip for a table nobody sat at.</strong> Gate mostly hides an idle mic, but it is still room</li>
+</ul>
+
+<p>  floor that can win the bus during a lull.</p>
+
+<p>---</p>
+
+<h1>Levelling</h1>
+
+<h2 id="the-calibration-target-is-a-number-not-taste">The calibration target is a number, not taste</h2>
+
+<p><strong>Aim for normal speech reading ≈ −24 dBFS RMS (≈ −12 dBFS peak) at the mixer input.</strong></p>
+
+<p>That number is not a preference. Five decision thresholds in the automixer are absolute linear RMS, and every one was fitted while all room mics were AGC'd Ankers whose speech sat at a <strong>−24.6 dBFS p50</strong> (finding 7):</p>
+
+<table>
+  <thead><tr><th>Constant</th><th>Value</th><th>≈ dBFS</th><th>What breaks if the scale moves</th></tr></thead>
+  <tbody>
+    <tr><td><code>AutoMixer.SilenceFloorRms</code></td><td><code>0.0018f</code></td><td>−55</td><td>quiet room mis-classified as speech, or real speech as silence</td></tr>
+    <tr><td><code>AutoMixer.PriorityActiveRms</code></td><td><code>0.01f</code></td><td>−40</td><td>the presenter stops ducking the room</td></tr>
+    <tr><td><code>AutoMixer.PriorityBreakInRms</code></td><td><code>0.0032f</code></td><td>−50</td><td>interjections can't break the duck, or every rustle does</td></tr>
+    <tr><td><code>AutoMixer.RefSpeechRms</code></td><td><code>0.01f</code></td><td>−40</td><td>"Match lapel" never engages (off on this rig, but still)</td></tr>
+    <tr><td><code>InputChannel.FluxVoiceRms</code></td><td><code>0.006f</code></td><td>−44</td><td>flux-CV stops accumulating; the RF-drop signal goes dead</td></tr>
+  </tbody>
+</table>
+
+<p><code>BROADCAST-MODE.md</code> planned to absorb the lost AGC make-up with <strong>channel gain</strong> — "one preset change beats six retuned constants." <strong>That option does not exist on this rig.</strong> The fader is <code>percent / 100f</code> clamped at unity: attenuation only. So the scale has to be restored <em>at the transmitter</em>, which makes TX gain a code-constant dependency rather than an operator preference. Land speech near −24 dBFS and all five constants keep the regime they were fitted to. Land 12 dB low — which is where a Wireless PRO sits at Windows-default gain — and the priority duck silently stops engaging.</p>
+
+<p><strong>One constant must be re-derived anyway:</strong> <code>SilenceFloorRms</code>. The Ankers gated their noise floor to true zero, so −55 dBFS was safely below anything real. The Rodes don't gate and the floor is a genuine acoustic room (finding 5b), so −55 dBFS may now sit inside occupied signal. Derive it as measured quiet-room RMS × 2 from the first capture, not from the old value.</p>
+
+<h2 id="what-is-allowed-to-act-where">What is allowed to act where</h2>
+
+<table>
+  <thead><tr><th>Stage</th><th>Setting</th><th>Rule</th></tr></thead>
+  <tbody>
+    <tr><td><strong>TX gain</strong> (hardware)</td><td>manual dB, <strong>identical on all six</strong></td><td>the calibration. GainAssist <strong>off</strong>. Travels with the device, spends no headroom</td></tr>
+    <tr><td>RX endpoint (Windows)</td><td>one documented value per labelled port</td><td>trim only. Re-apply with <code>tools/VolProbe</code> after a port change. Never the calibration</td></tr>
+    <tr><td>Channel fader</td><td>unity</td><td>attenuation only, and only to correct a <em>measured device</em> offset — never a seating offset (it cannot boost anyway)</td></tr>
+    <tr><td>Low-cut</td><td>80–100 Hz, matched across all six</td><td>rumble, handling and headroom. Measured <strong>+0.1–0.2 dB</strong> of speech-band S/N — never an S/N fix</td></tr>
+    <tr><td>Automixer (Gate)</td><td>on, stable hand-off</td><td>the per-talker leveller in disguise: it guarantees the bus carries the <em>closest</em> mic, killing N× floor and comb. It does <strong>not</strong> normalise a loud talker against a quiet one</td></tr>
+    <tr><td><strong>Bus leveler</strong></td><td>new — see below</td><td>the only dynamic stage, and only <em>post</em>-automix</td></tr>
+    <tr><td>Limiter</td><td>−1 dBFS brick wall on the CABLE bus</td><td>protective only</td></tr>
+  </tbody>
+</table>
+
+<h2 id="nothing-dynamic-upstream-of-the-bus-ever">Nothing dynamic upstream of the bus — ever</h2>
+
+<p><code>InputChannel</code> latches <code>_currentLevelLinear</code> (:558) and runs <code>PostPeak</code> / <code>ComputeFlux</code> (:672–677) <em>after</em> gain and delay, and that value is the automixer's entire input. A per-channel compressor anywhere in that chain is GainAssist reimplemented in software: it flattens the distance cue, which is the one selector this rig has (findings 6a and 7, and the GainAssist gotcha). It would also make every replay baseline measure our own processing rather than the room.</p>
+
+<h2 id="the-bus-leveler">The bus leveler</h2>
+
+<p>Because Zoom reads CABLE Output directly, this is the only place stream levelling can live.</p>
+
+<ul>
+  <li><strong>Placement in code:</strong> <code>OutputBus.Start</code>, between <code>mixer</code> and <code>tap</code>. Meters and per-output</li>
+</ul>
+
+<p>  recordings then reflect what actually went out, and <code>Volume</code> stays a pure post-tap device trim.   The per-input analysis recorder is upstream and untouched, so the offline tools and golden   baselines stay faithful.</p>
+
+<ul>
+  <li><strong>Slow leveler, not a peak compressor.</strong> The variance here is <em>between utterances</em> — a different</li>
+</ul>
+
+<p>  person at a different distance every time — not within a syllable. A fast compressor squashes   syllables and pumps without touching talker-to-talker offset. Start at ratio 3:1, threshold   ≈ −26 dBFS, attack ≈ 100 ms, release ≈ 2 s.</p>
+
+<ul>
+  <li><strong>Cap total upward gain at ~10–12 dB.</strong> Speech-band S/N on this rig is ~15 dB and the floor is</li>
+</ul>
+
+<p>  acoustic; every dB of make-up is a dB of HVAC in the gaps. That cap is the noise budget.</p>
+
+<ul>
+  <li><strong>Idle gain hold</strong> — freeze the gain when the bus is below ≈ −45 dBFS RMS instead of ramping up</li>
+</ul>
+
+<p>  into the silence. It only ever <em>declines to add</em> gain; it never attenuates, so it cannot silence a   quiet pray-er. That is the line finding 4 forbids crossing, and it is also why this can't be an   off-the-shelf compressor even if OBS were in the path.</p>
+
+<ul>
+  <li><strong>Default OFF on both buses.</strong> Enable on CABLE; leave the monitor honest — the operator needs to</li>
+</ul>
+
+<p>  hear what the mics actually did.</p>
+
+<ul>
+  <li>Expose a <strong>gain-reduction readout</strong> so it is visibly working rather than suspected.</li>
+</ul>
+
+<h2 id="what-levelling-cannot-fix">What levelling cannot fix</h2>
+
+<p>Distance-driven S/N. Bringing a 10 ft talker up 12 dB brings their share of the room floor up 12 dB with it. Proximity is the lever; the leveler only tidies what is left after placement and the Gate.</p>
+
+<h2 id="the-tension-to-not-fix-the-wrong-way">The tension to not "fix" the wrong way</h2>
+
+<p>Matched TX gains are what make a level difference mean <em>distance</em> — and they simultaneously maximise how often two adjacent mics sit inside <code>HandoffHysteresis</code>. Watch-list item 6 measured <strong>72 leader switches in 179 s</strong> with just two mics a median <strong>3.1 dB</strong> apart. If hand-off chatters with six mics, retune the hold and hysteresis. <strong>Never de-match a transmitter to calm it down</strong> — that trades a fixable timing problem for an unfixable selection problem.</p>
+
+<p>---</p>
+
+<h1>Changes to make in the code</h1>
+
+<ol>
+  <li><strong>Bus leveler + limiter</strong> — new <code>Audio/BusLeveler.cs</code> (an <code>ISampleProvider</code>), wired into</li>
+</ol>
+
+<p>   <code>OutputBus.Start</code> between <code>mixer</code> and <code>tap</code>, per output, default off, with the idle hold above.    Persist enable/threshold/ratio/max-gain: add them to <code>Models/MixerPreset</code>, <code>PresetMapper</code> <strong>and    <code>Services/PersistedProperties</code></strong> — a persisted setting missing from the autosave allowlist    silently never saves, and the failure only shows up after a crash.</p>
+
+<ol>
+  <li><strong>Ambiguous-device guard.</strong> All three receivers report <code>Desktop Microphone (Wireless PRO RX)</code>, and</li>
+</ol>
+
+<p>   <code>DeviceResolver.DeviceNameKey</code> strips the <code>(N- …)</code> enumerator, collapsing them to one key. The    preset's name fallback then cannot tell them apart and the <code>used</code> set only stops double-grabbing,    so strips fill in <strong>arbitrary order</strong> — mics bound to the wrong side of the room, silently. Change:    when two or more live endpoints share a <code>DeviceNameKey</code>, <strong>refuse</strong> the name fallback for that key    and raise a health alert instead of guessing. Pure logic, so it belongs in <code>DeviceResolver</code> +    <code>HealthMonitor</code> with unit tests.</p>
+
+<ol>
+  <li><strong>Re-derive <code>SilenceFloorRms</code></strong> from the first capture — quiet-room RMS × 2. The old value assumed</li>
+</ol>
+
+<p>   a gated-to-zero floor that no longer exists.</p>
+
+<ol>
+  <li><strong>Retune <code>HandoffHoldTicks</code> / <code>HandoffHysteresis</code> for N=6</strong> offline against the fixture, before</li>
+</ol>
+
+<p>   deployment, never from a live impression. Six mics hearing one questioner will sit inside the    3 dB band far more often than the two-mic case that already produced 72 switches in 179 s.</p>
+
+<ol>
+  <li><strong>Priority hangover, possibly per scene.</strong> <code>PriorityHoldTicks</code> ≈ 1.2 s is right for a monologue and</li>
+</ol>
+
+<p>   may be too long for a Q&amp;A interjection. Only split <code>Scene.Teaching</code> into Teaching/Q&amp;A if the    fixture actually shows it — otherwise leave the scene surface as it is.</p>
+
+<ol>
+  <li><strong>Calibration readout</strong> — per-channel voiced-speech RMS p50 against the −24 dBFS target, in</li>
+</ol>
+
+<p>   <code>DiagnosticsWindow</code>. Turns TX gain setting into number-matching instead of guesswork, and it is    what makes changes 3 and 4 verifiable at the next session rather than the one after.</p>
+
+<ol>
+  <li><strong>No new scenes.</strong> Verify with the existing <code>SceneTransform</code> unit tests that Teaching yields</li>
+</ol>
+
+<p>   lapel-priority-on + all room mics routed, and Prayer yields lapel muted <strong>and</strong> unrouted <strong>and</strong>    de-prioritised. Do not add surface area that the answers above don't require.</p>
+
+<ol>
+  <li><em>(Later, optional)</em> <strong>RF-health veto</strong> — with no gating, exact digital silence can only mean an RF</li>
+</ol>
+
+<p>   drop, so a mic with recent drop edges could be excluded from winning the election. This is    flux-CV's one surviving job; it is a diagnostic signal, not a selection metric.</p>
+
+<h1>Changes to make in the UI</h1>
+
+<ol>
+  <li><strong>Per-output Leveler control</strong> in the output column: on/off, strength, and a gain-reduction bar.</li>
+</ol>
+
+<p>   Default off, and visibly off — an invisible dynamics stage is how you end up debugging the room.</p>
+
+<ol>
+  <li><strong>Zone labels on the strips.</strong> <code>ChannelViewModel.CustomLabel</code> already exists and is already shown</li>
+</ol>
+
+<p>   in <code>SettingsWindow</code>; set it to the table position (<code>Table 1 L</code>, <code>Table 1 R</code>, …) and surface it on    SimpleWindow's mic dots and in the Diagnostics table, so "mic 4" names a <em>place in the room</em>    rather than a strip index.</p>
+
+<ol>
+  <li><strong>Health-banner alert for duplicate device names</strong> (code change 2) — "3 devices named Wireless PRO</li>
+</ol>
+
+<p>   RX; bind manually." This is the single highest-consequence silent failure on the rig.</p>
+
+<ol>
+  <li><strong>Calibration column</strong> in <code>DiagnosticsWindow</code> (code change 6).</li>
+  <li>Nothing needed in <code>MainWindow.xaml</code> layout: 7 inputs computes to <code>max(500, 7×96 + 160)</code> = 832 px,</li>
+</ol>
+
+<p>   well within the fixed-width scheme.</p>
+
+<p>---</p>
+
+<h1>Operator procedure</h1>
+
+<h2 id="one-time-commissioning">One-time commissioning</h2>
+
+<ol>
+  <li><strong>One labelled USB port per receiver</strong> — physically labelled, and each RX always goes back to its</li>
+</ol>
+
+<p>   own port. Then rename each in Windows Sound (<code>ROOM RX #1/2/3</code>). Renaming alone is not enough: the    rename, the endpoint GUID and the endpoint gain are all keyed to the port-derived instance path.</p>
+
+<ol>
+  <li><strong>GainAssist OFF on all six TX</strong>; set manual gain, matched, to hit the −24 dBFS speech target.</li>
+  <li>Confirm each RX is in <strong>Split</strong>, with <strong>nothing plugged into its 3.5 mm jack</strong>.</li>
+  <li><code>tools/RxProbe</code> on each RX — confirm a genuine split, not Safety, not an RX-Mic merge.</li>
+  <li>Bind two strips per RX (<code>Left</code> / <code>Right</code>); confirm all 7 inputs resolve and the preset re-saves.</li>
+  <li>Label every strip with its table position; tape-mark the table positions to match.</li>
+  <li>Low-cut 80–100 Hz, matched across all six.</li>
+  <li>Gate + stable hand-off on; prefer-natural and match-lapel <strong>off</strong>.</li>
+  <li>Place no room TX within ~10–15 ft of the lectern.</li>
+  <li>Leveler <strong>off</strong> for the first session — capture the room untouched.</li>
+  <li><strong>Record all inputs for the first full session.</strong> That capture is the retune fixture for</li>
+</ol>
+
+<p>    <code>SilenceFloorRms</code>, the hand-off constants and the leveler settings. Nothing gets tuned before it.</p>
+
+<h2 id="every-session">Every session</h2>
+
+<p><strong>Before people arrive</strong></p>
+
+<ul>
+  <li>Spread the six TX across the tables for coverage, each on its stand, back on its tape mark.</li>
+  <li>Power on, confirm all 7 strips show level; check the health banner is clear.</li>
+  <li>Verify the presenter's lapel is on and reads speech, then set the scene:</li>
+</ul>
+
+<p>  <strong>Teaching / Q&amp;A / study → Teaching. Prayer → Prayer.</strong></p>
+
+<p><strong>During</strong></p>
+
+<ul>
+  <li>Mute the strip for any table nobody sat at.</li>
+  <li>Watch the health banner, not the meters.</li>
+  <li>If the presenter takes the lapel off mid-session, switch to Prayer or mute his strip — an open</li>
+</ul>
+
+<p>  lapel lying on a desk that drifts over −40 dBFS ducks every room mic off the stream with no   visible cause.</p>
+
+<p><strong>After</strong></p>
+
+<ul>
+  <li>Stop recording; note anything that sounded wrong and roughly when. Operator labels are what make a</li>
+</ul>
+
+<p>  capture usable for tuning — an unlabelled recording cannot settle a selector question.</p>
+
+<h2 id="symptom-first-check">Symptom → first check</h2>
+
+<table>
+  <thead><tr><th>Symptom</th><th>Look at</th></tr></thead>
+  <tbody>
+    <tr><td>A mic is bound to the wrong part of the room</td><td>duplicate <code>Wireless PRO RX</code> names — did an RX move ports?</td></tr>
+    <tr><td>Audience inaudible on the stream but fine on the headset</td><td>priority duck: is the lapel open and above −40 dBFS?</td></tr>
+    <tr><td>Selection flickers between two mics</td><td>hand-off hysteresis/hold, <strong>not</strong> the transmitters</td></tr>
+    <tr><td>One mic is consistently quiet</td><td>TX gain, then endpoint gain (<code>tools/VolProbe</code>) — never the fader</td></tr>
+    <tr><td>Stream floor rises in the pauses</td><td>leveler make-up too high, or the idle hold isn't engaging</td></tr>
+    <tr><td>A mic drops out mid-speech</td><td>RF, not the capsule — check range and <code>rf=</code> in the log</td></tr>
+  </tbody>
+</table>
+
+<p>---</p>
+
+<h1>Watch-list</h1>
+
+<h3 id="1-device-identity-the-biggest-operational-risk-on-this-rig">1. Device identity — the biggest operational risk on this rig</h3>
+
+<p>The RX has <strong>no USB serial</strong>; its instance path is port-derived (<code>USB\VID_19F7&amp;PID_0058&amp;MI_01\7&amp;6941B14&amp;0&amp;0001</code>). The endpoint GUID, the Windows <strong>rename</strong>, and the Windows <strong>endpoint gain</strong> are all keyed to it. With three identical receivers that bites twice:</p>
+
+<ul>
+  <li><code>DeviceResolver.DeviceNameKey</code> strips the <code>(N- …)</code> enumerator, so all three collapse to the same</li>
+</ul>
+
+<p>  key <code>Desktop Microphone (Wireless PRO RX)</code>. The preset's name fallback cannot tell them apart; the   <code>used</code> set only prevents double-grabbing, so strips fill in <strong>arbitrary order</strong>.</p>
+
+<ul>
+  <li>Moving an RX to a different hub port mints a <strong>fresh endpoint</strong> — rename gone, gain back to 0 dB.</li>
+</ul>
+
+<p>  The operator currently port-hops on a USB hub; the Anker records show the residue (<code>2-</code>/<code>3-</code>/<code>4-</code>/   <code>5-</code>/<code>7-</code> prefixed endpoints, several with orphaned volume stores).</p>
+
+<p><strong>Required:</strong> a dedicated, physically <strong>labelled port per receiver</strong>, then rename each in Windows Sound (<code>ROOM RX #1/2/3</code>). Renaming alone is <em>not</em> sufficient — it only holds while each unit stays on its own port. Get this wrong and it fails silently, with strips bound to the wrong areas of the room. Code change 2 turns that silent failure into a health alert.</p>
+
+<h3 id="2-gain-has-to-live-in-the-transmitter">2. Gain has to live in the transmitter</h3>
+
+<ul>
+  <li>The app's channel fader is <strong>attenuation only</strong> (<code>percent / 100f</code>, clamped 0..100) — a quiet mic</li>
+</ul>
+
+<p>  can never be raised in-app.</p>
+
+<ul>
+  <li>The RX's own output is already at <strong>0 dB, its maximum</strong>.</li>
+  <li>The Windows endpoint ranges <strong>−96 .. +30 dB</strong> and defaults to 0, which leaves the pair ~30 dB</li>
+</ul>
+
+<p>  under an AGC'd room mic and structurally unselectable. Its taper is brutal: 53.7% = 0 dB, 87% =   +15 dB, 100% = +30 dB. <strong>100% clips</strong> (measured peaks <strong>+5.25 / +2.81 dBFS</strong>, ~300 samples over   −0.5 dBFS); +15 dB measured clean (peaks −17 / −12 dBFS, zero samples over full scale).</p>
+
+<ul>
+  <li>Endpoint gain <strong>does not survive a port change</strong>.</li>
+</ul>
+
+<p><strong>Therefore:</strong> per-TX <strong>manual gain</strong> is the calibration; the Windows endpoint is a documented fixed trim per labelled port, re-applied with <code>tools/VolProbe "Wireless PRO" &lt;dB&gt;</code> when it resets. Those two roles are not interchangeable — see the levelling stage table.</p>
+
+<h3 id="3-gainassist-off-on-every-transmitter">3. GainAssist OFF on every transmitter</h3>
+
+<p>It is AGC. It normalises level — the one cue that survives on this rig and the <em>only</em> one on a homogeneous rig — and re-creates the "far mic wins" failure. Long-press the Left Navigation button until AUTO/DYNAMIC is replaced by a dB value. Neither Auto nor Dynamic is safe for automixing.</p>
+
+<h3 id="4-rx-mode-confusion">4. RX mode confusion</h3>
+
+<p><strong>Split</strong> means TX1→L / TX2→R <em>only while the RX's 3.5 mm jack is an OUTPUT.</em> Plug a mic in as an RX Mic and both transmitters merge onto the <strong>left</strong>, with the RX Mic on the right. Do not confuse Split with <strong>Safety</strong>, which puts a −10 dB duplicate of the same mix on channel 2 — it looks like a split on a meter and carries no second mic. Re-verify with <code>tools/RxProbe</code> after any mode change or remap.</p>
+
+<h3 id="5-automixer-settings-for-this-rig">5. Automixer settings for this rig</h3>
+
+<table>
+  <thead><tr><th>Setting</th><th>Value</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Mode</td><td><strong>Gate</strong></td><td>several mics hear one voice; Share sums and combs</td></tr>
+    <tr><td>Stable hand-off</td><td><strong>on</strong></td><td>a talker's pauses still let a neighbour momentarily win</td></tr>
+    <tr><td>Prefer natural</td><td><strong>off</strong></td><td>flux-CV measures over-processing; with no DSP every mic reads ~0.29–0.33, so it has nothing to separate. Observed 2026-08-23 hard-gating the <em>only</em> room mic hearing the talker</td></tr>
+    <tr><td>Match lapel</td><td><strong>off</strong></td><td>engages only while a priority lapel is <em>speaking</em>, which is never true when the room is</td></tr>
+  </tbody>
+</table>
+
+<h3 id="6-hand-off-chatter-retune-before-the-units-arrive">6. Hand-off chatter — retune before the units arrive</h3>
+
+<p><code>HandoffHysteresis</code> is 1.413 (~3 dB) with <code>HandoffHoldTicks</code> 20 (~200 ms). Measured 2026-08-30 with just <strong>two</strong> near-equal mics: a median gap of <strong>3.1 dB</strong> — right at the threshold — produced <strong>72 leader switches in 179 s</strong>, one every 2.5 s, median dwell 0.55 s. In Gate that is a hard mute/unmute of the source each time.</p>
+
+<p><strong>Six mics hearing one questioner will sit inside that band far more often, so this gets worse, not better.</strong> Retune against the 2026-08-30 fixture <em>before</em> deployment — never from a live impression, and never by de-matching a transmitter (see "the tension to not fix the wrong way").</p>
+
+<h3 id="7-placement-keep-room-mics-away-from-the-lectern">7. Placement — keep room mics away from the lectern</h3>
+
+<p>Measured 2026-08-30 with an S500 on the presenter's own table: during his speech pauses it read <strong>−30.6 dBFS median, −19.0 max</strong>, while a real interjection 15 ft away lands near <strong>−43.2 dBFS</strong>. Its idle residual exceeded a genuine question's level in <strong>71%</strong> of pause samples — so <strong>no level threshold can separate them</strong>, and the break-in below cannot rescue that geometry.</p>
+
+<p>A room mic beside a lapel-wearing presenter has <strong>no useful operating regime</strong>: while he talks it must be ducked (it is the comb-filter source), and in his pauses it is the loudest thing in the room. Keep every room TX ~10–15 ft from the <strong>lectern</strong>, or on the audience side of it. The rule is about the <em>position</em>, not the person — in Prayer he sits at a table with everyone else and must be covered like everyone else.</p>
+
+<h3 id="8-priority-duck-and-the-scenes">8. Priority duck and the scenes</h3>
+
+<p>The priority hangover shipped 2026-08-30 (<code>PriorityHoldTicks</code> ~1.2 s, <code>PriorityBreakInRms</code> ~−50 dBFS) after the duck was found releasing in the presenter's sentence gaps — 13 hand-offs in 40 s. Three things remain open:</p>
+
+<ul>
+  <li><strong>The break-in is unvalidated against a real interjection.</strong> It has never been exercised live. The</li>
+</ul>
+
+<p>  2026-08-30 fixture contains real Q&amp;A; test against it. Q&amp;A is the scene that needs it most, and   Q&amp;A now runs with priority ON.</p>
+
+<ul>
+  <li><strong>Margin is thin.</strong> Residual on a 15 ft mic peaked at <strong>−53.8 dBFS</strong> against the −50 dB threshold</li>
+</ul>
+
+<p>  — about 4 dB. If it proves twitchy in a bigger room, raise toward −46.</p>
+
+<ul>
+  <li><strong>Prayer is the only scene without a lapel</strong>, and <code>Scene.Prayer</code> already mutes, unroutes <em>and</em></li>
+</ul>
+
+<p>  clears priority. Keep all three: at strength 100% the duck is a hard mute, so a merely-unrouted   lapel that still reads active would silence the room.</p>
+
+<h3 id="9-the-noise-floor-is-acoustic-proximity-is-the-only-lever">9. The noise floor is acoustic — proximity is the only lever</h3>
+
+<p>Finding 5b: <strong>83% of the floor's energy is below 1 kHz and only 5.3% above 4 kHz</strong> — that is the room (HVAC, structure-borne rumble), not converter hiss, and mains hum was ruled out (≤2 dB at 50/60/100/120 Hz). Run the low-cut at 80–100 Hz for rumble and headroom, <strong>never as an S/N fix</strong> — measured per cutoff it moves 100 Hz–8 kHz S/N by only +0.1–0.2 dB. The S500s were hiding this floor with the very suppression we removed. Every halving of mic-to-mouth distance is +6 dB of signal; that is the lever, and it is why the bus leveler's make-up gain is capped.</p>
+
+<h3 id="10-rf-unverified">10. RF — unverified</h3>
+
+<p>Three RX and six TX in 2.4 GHz is beyond what has been confirmed. <strong>Check the co-existence limit with RØDE before buying the second and third kits.</strong> In our favour: retiring the four Anker dongles frees spectrum, and the Wireless PRO's range removes the Anker range problem entirely (their furthest unit sat ~50 ft out, past its dongle's reliable range, with flux-CV tracking position — 0.58–0.68 with 7–12% transient spikes far, 0.37 with 0% up close).</p>
+
+<p>---</p>
+
+<h2 id="open-questions">Open questions</h2>
+
+<ul>
+  <li>How many Wireless PRO systems coexist cleanly in one room (blocks the purchase).</li>
+  <li><strong>Where the six TX actually go.</strong> Today's data cannot answer this: every Rode reading was taken</li>
+</ul>
+
+<p>  ~30 dB gain-suppressed, so the row-2-vs-row-3 pickup question is genuinely unmeasured. Compare the   two Rodes against <em>each other</em> (shared gain) in the fixture, never against an Anker.</p>
+
+<ul>
+  <li>Battery and charging logistics for 6 TX + 3 RX across a session.</li>
+  <li>Retuned hysteresis/hold values for N=6, and the re-derived <code>SilenceFloorRms</code>.</li>
+  <li>Leveler constants — threshold, ratio, make-up cap and idle-hold point — all wait on the first</li>
+</ul>
+
+<p>  labelled capture.</p>
+
+<ul>
+  <li>Whether the presenter stays on the Classic. Plan is yes; if the separate gain path or the Realtek</li>
+</ul>
+
+<p>  input proves troublesome, move him to a Wireless PRO TX with a wired lav and the homogeneity   argument closes completely.</p>
+
+</main>
+</div>
+<script>(function(){var modes=['auto','light','dark'],labels={auto:'\u25D1 Auto',light:'\u2600 Light',dark:'\u263D Dark'},btn=document.getElementById('theme-toggle');function cur(){return document.documentElement.dataset.theme||'auto';}function render(){btn.textContent=labels[cur()]||labels.auto;}render();btn.addEventListener('click',function(){var n=modes[(modes.indexOf(cur())+1)%modes.length];document.documentElement.dataset.theme=n;try{localStorage.setItem('theme',n);}catch(e){}render();});})();</script>
+<script>(function(){var links={};document.querySelectorAll('.toc a').forEach(function(a){links[a.getAttribute('href').slice(1)]=a;});var heads=document.querySelectorAll('main h2[id],main h3[id]');if(!heads.length)return;var obs=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){for(var k in links)links[k].classList.remove('active');var l=links[e.target.id];if(l)l.classList.add('active');}});},{rootMargin:'0px 0px -80% 0px'});heads.forEach(function(h){obs.observe(h);});})();</script>
+</body>
+</html>
