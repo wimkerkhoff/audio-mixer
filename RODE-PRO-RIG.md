@@ -197,6 +197,19 @@ fixable timing problem for an unfixable selection problem.
 
 # Changes to make in the code
 
+**Status 2026-08-30 — built and committed:** 1 (bus leveler + limiter), 6 (calibration readout) and
+7 (scenes verified, none added). Item 2 (ambiguous-device guard) is **deferred**: with one receiver
+next week the duplicate-name collision cannot occur, and it becomes blocking only when the second kit
+arrives. Items 3, 4 and 5 are retunes and are **blocked on the first capture** by design — they are
+what the session exists to produce. Also landed alongside: the Bluetooth-alert gate, and the
+output-side autosave invariant, which turned out not to exist (the existing test covered only
+`ChannelViewModel`).
+
+Two things learned while building it, both now in `CLAUDE.md`: the golden baselines are **not
+hermetic** — `--replay` does not suppress preset *loading*, so every fixture silently runs against
+whatever preset is current, and they cannot gate a regression until that is fixed. And the output
+column is 230 px, not the 150 px the docs claimed.
+
 1. **Bus leveler + limiter** — new `Audio/BusLeveler.cs` (an `ISampleProvider`), wired into
    `OutputBus.Start` between `mixer` and `tap`, per output, default off, with the idle hold above.
    Persist enable/threshold/ratio/max-gain: add them to `Models/MixerPreset`, `PresetMapper` **and
@@ -238,8 +251,10 @@ fixable timing problem for an unfixable selection problem.
 3. **Health-banner alert for duplicate device names** (code change 2) — "3 devices named Wireless PRO
    RX; bind manually." This is the single highest-consequence silent failure on the rig.
 4. **Calibration column** in `DiagnosticsWindow` (code change 6).
-5. Nothing needed in `MainWindow.xaml` layout: 7 inputs computes to `max(500, 7×96 + 160)` = 832 px,
-   well within the fixed-width scheme.
+5. Width needs nothing: 7 inputs computes to `max(560, 7×96 + 240)` = 912 px. **Height did** — the
+   leveler adds a row to the output template, and because the window is non-resizable with no
+   scrollbar, a new row simply fails to render unless `MainViewModel.BaseWindowHeight` is bumped in
+   the same change (344 → 404). No error, nothing in the log.
 
 ---
 
@@ -251,6 +266,9 @@ fixable timing problem for an unfixable selection problem.
    own port. Then rename each in Windows Sound (`ROOM RX #1/2/3`). Renaming alone is not enough: the
    rename, the endpoint GUID and the endpoint gain are all keyed to the port-derived instance path.
 2. **GainAssist OFF on all six TX**; set manual gain, matched, to hit the −24 dBFS speech target.
+   Use the **Diagnostics window's `speech` column** — talk at working distance and adjust the
+   transmitter until the number goes green (within 3 dB of −24). Press **Reset calibration** after
+   *every* gain change: the reading is cumulative, so pre-change buffers otherwise drag the median.
 3. Confirm each RX is in **Split**, with **nothing plugged into its 3.5 mm jack**.
 4. `tools/RxProbe` on each RX — confirm a genuine split, not Safety, not an RX-Mic merge.
 5. Bind two strips per RX (`Left` / `Right`); confirm all 7 inputs resolve and the preset re-saves.
@@ -258,8 +276,13 @@ fixable timing problem for an unfixable selection problem.
 7. Low-cut 80–100 Hz, matched across all six.
 8. Gate + stable hand-off on; prefer-natural and match-lapel **off**.
 9. Place no room TX within ~10–15 ft of the lectern.
-10. Leveler **off** for the first session — capture the room untouched.
-11. **Record all inputs for the first full session.** That capture is the retune fixture for
+10. **Read the room floor before anyone arrives** — leave it quiet for a minute and note the
+    Diagnostics `floor` column. That number does two jobs: it is what `SilenceFloorRms` gets
+    re-derived from, and the leveler's **idle hold** must be set ~6 dB *above* the bus floor. Set the
+    hold too low and it never engages, and the leveler will lift HVAC through every pause.
+11. Leveler: start **Medium on the CABLE bus**, and A/B it with the toggle while someone talks. The
+    per-input analysis recorder is upstream of it, so nothing you do here can spoil the fixture.
+12. **Record all inputs for the whole session.** That capture is the retune fixture for
     `SilenceFloorRms`, the hand-off constants and the leveler settings. Nothing gets tuned before it.
 
 ## Every session

@@ -410,6 +410,10 @@
 
 <h1>Changes to make in the code</h1>
 
+<p><strong>Status 2026-08-30 — built and committed:</strong> 1 (bus leveler + limiter), 6 (calibration readout) and 7 (scenes verified, none added). Item 2 (ambiguous-device guard) is <strong>deferred</strong>: with one receiver next week the duplicate-name collision cannot occur, and it becomes blocking only when the second kit arrives. Items 3, 4 and 5 are retunes and are <strong>blocked on the first capture</strong> by design — they are what the session exists to produce. Also landed alongside: the Bluetooth-alert gate, and the output-side autosave invariant, which turned out not to exist (the existing test covered only <code>ChannelViewModel</code>).</p>
+
+<p>Two things learned while building it, both now in <code>CLAUDE.md</code>: the golden baselines are <strong>not hermetic</strong> — <code>--replay</code> does not suppress preset <em>loading</em>, so every fixture silently runs against whatever preset is current, and they cannot gate a regression until that is fixed. And the output column is 230 px, not the 150 px the docs claimed.</p>
+
 <ol>
   <li><strong>Bus leveler + limiter</strong> — new <code>Audio/BusLeveler.cs</code> (an <code>ISampleProvider</code>), wired into</li>
 </ol>
@@ -480,10 +484,10 @@
 
 <ol>
   <li><strong>Calibration column</strong> in <code>DiagnosticsWindow</code> (code change 6).</li>
-  <li>Nothing needed in <code>MainWindow.xaml</code> layout: 7 inputs computes to <code>max(500, 7×96 + 160)</code> = 832 px,</li>
+  <li>Width needs nothing: 7 inputs computes to <code>max(560, 7×96 + 240)</code> = 912 px. <strong>Height did</strong> — the</li>
 </ol>
 
-<p>   well within the fixed-width scheme.</p>
+<p>   leveler adds a row to the output template, and because the window is non-resizable with no    scrollbar, a new row simply fails to render unless <code>MainViewModel.BaseWindowHeight</code> is bumped in    the same change (344 → 404). No error, nothing in the log.</p>
 
 <p>---</p>
 
@@ -499,6 +503,11 @@
 
 <ol>
   <li><strong>GainAssist OFF on all six TX</strong>; set manual gain, matched, to hit the −24 dBFS speech target.</li>
+</ol>
+
+<p>   Use the <strong>Diagnostics window's <code>speech</code> column</strong> — talk at working distance and adjust the    transmitter until the number goes green (within 3 dB of −24). Press <strong>Reset calibration</strong> after    <em>every</em> gain change: the reading is cumulative, so pre-change buffers otherwise drag the median.</p>
+
+<ol>
   <li>Confirm each RX is in <strong>Split</strong>, with <strong>nothing plugged into its 3.5 mm jack</strong>.</li>
   <li><code>tools/RxProbe</code> on each RX — confirm a genuine split, not Safety, not an RX-Mic merge.</li>
   <li>Bind two strips per RX (<code>Left</code> / <code>Right</code>); confirm all 7 inputs resolve and the preset re-saves.</li>
@@ -506,8 +515,19 @@
   <li>Low-cut 80–100 Hz, matched across all six.</li>
   <li>Gate + stable hand-off on; prefer-natural and match-lapel <strong>off</strong>.</li>
   <li>Place no room TX within ~10–15 ft of the lectern.</li>
-  <li>Leveler <strong>off</strong> for the first session — capture the room untouched.</li>
-  <li><strong>Record all inputs for the first full session.</strong> That capture is the retune fixture for</li>
+  <li><strong>Read the room floor before anyone arrives</strong> — leave it quiet for a minute and note the</li>
+</ol>
+
+<p>    Diagnostics <code>floor</code> column. That number does two jobs: it is what <code>SilenceFloorRms</code> gets     re-derived from, and the leveler's <strong>idle hold</strong> must be set ~6 dB <em>above</em> the bus floor. Set the     hold too low and it never engages, and the leveler will lift HVAC through every pause.</p>
+
+<ol>
+  <li>Leveler: start <strong>Medium on the CABLE bus</strong>, and A/B it with the toggle while someone talks. The</li>
+</ol>
+
+<p>    per-input analysis recorder is upstream of it, so nothing you do here can spoil the fixture.</p>
+
+<ol>
+  <li><strong>Record all inputs for the whole session.</strong> That capture is the retune fixture for</li>
 </ol>
 
 <p>    <code>SilenceFloorRms</code>, the hand-off constants and the leveler settings. Nothing gets tuned before it.</p>
