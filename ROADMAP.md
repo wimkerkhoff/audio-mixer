@@ -9,6 +9,80 @@ Status key: 🔲 planned · 🔬 needs live data / validation · 🛠 doable now
 
 ## Operator experience
 
+### 🔲 Build queue as of 2026-09-20 — decided, specified, not yet built
+
+Everything below was settled with the operator this session. Mockups:
+[operator panel](https://claude.ai/code/artifact/8bb734fe-35a1-4723-b88d-9f30592e555b) ·
+[advanced tools](https://claude.ai/code/artifact/bb821a90-91f3-473a-98a3-24c89e1c136a).
+
+**1 · Operator panel — channel rows.** Replaces the status dots in `SimpleWindow`. One row per mic:
+state stripe, name, meter **with the target band**, level, mute, and a **bus column pinned right** so
+A and B read as vertical tracks. Docked 360 px. A/B and mute are **clickable** — which is a reversal
+of the 2026-08 "no per-mic control in Simple" decision and hands a lone volunteer two ways to silence
+the stream, so it ships **with** the guard below, not before it.
+
+**2 · `RouteGuard` — the precondition for 1.** A pure rule, beside `SceneTransform` and
+`HealthMonitor`: given the channels and a proposed change, allow or refuse with a reason. The
+invariant is the one scenes already hold — **no operator action may leave a bus with nothing live on
+it** — extended to manual routing, which clickable A/B opens a path straight around. Mute routes
+through it too, or it is the same hole with a different button. A dead or muted mic does not count as
+covering a bus.
+
+**3 · Session aggregates.** The largest item, and the one the design review argues for. Accumulate
+continuously: hand-off rate, winner occupancy (including `winner = -1`), per-mic level median vs the
+−24 dBFS target, duck time, underruns, clipped samples. These are exactly the figures computed by
+hand on 2026-09-20; the app has no time dimension today except `CalibrationHistogram`. Persist one
+record per service, **always — not only when audio recording was armed**, since the failure case is
+nobody being in the room. Aggregates carry no speech content, so they do not have recorded audio's
+privacy weight, and they are ~20-50 KB against 2.4 GB. **Keep every run, prune at 90 days.**
+Always-on file logging with rotation folds in here (see "Log rotation / size cap").
+
+**4 · Preflight readiness check.** One verdict before the service: every routed mic bound and
+delivering, speech within ~10 dB of target, both outputs alive, a scene chosen, no armed idle
+priority lapel. Ranked **above** the session timeline despite the operator preferring the timeline,
+because volunteers run services alone: detection after the fact serves the reviewer, prevention
+before the service serves the person actually in the room. **Open:** what it does on failure — refuse
+to leave Standby, or warn-and-proceed. A warning a volunteer can click past is the same as no check.
+
+**5 · Health alert on level.** The 2026-09-20 fault ran a whole meeting 22 dB under target with
+nothing said. The data is already in `CalibrationHistogram`; the rule belongs in `HealthMonitor`.
+Must be phrased so a volunteer can act — "check the transmitter is on and its gain is set", not a
+number they cannot fix.
+
+**6 · Wire the banner's action buttons.** Still labels. For a lone volunteer an unactionable alert is
+noise, and noise teaches people to ignore the banner that will one day matter.
+
+**7 · Diagnostics window → four tabs.** Why this mic (ranked, deciding metric bolded, per-mic "why
+not") · Session · Calibration (target bars in the same visual language as the operator panel) ·
+Devices (endpoint, **bus type from the enumerator**, gain, bound strip, side).
+
+**8 · Device identity for multiple receivers.** Two Wireless PRO receivers share a friendly name, so
+`DeviceResolver` currently picks an arbitrary free one — the Anker never-greedy-fill failure, and the
+hole in the port-change fix shipped today. Three parts: **(a)** confirm on live hardware that the RX
+carries a serial (`tools/device-identity.ps1`; the evidence so far is from PnP history, the RX was in
+its case); **(b)** make `Resolve` **refuse on ambiguity** rather than guess, and raise an alert naming
+it; **(c)** an **identify flow** — tap a transmitter, the app shows which strip jumped. (c) is worth
+building regardless, as the recovery path whenever identity cannot be resolved.
+
+**9 · Endpoint gain that follows the device.** Windows keys gain to the endpoint, so a new port resets
+it to 0 dB — the trap that has now bitten twice. If the serial holds, remember gain per serial and
+restore it. **Opt-in and visible only:** on 2026-09-20 an endpoint raised to +24 dB clipped the
+capture while speech was still 14 dB low, so silently re-applying a remembered boost over a corrected
+transmitter gain would re-create that. The transmitter's own gain stays the real setting.
+
+**10 · Advanced window resizable + scrollable.** Fixed-size `CanMinimize` with no scrollbar has caused
+three silent-clipping incidents (the leveler row, the 10-input width, `UniformGrid` ignoring
+`MinWidth`). Removing the constraint removes the class and retires the width arithmetic and
+`WindowSizingTests` with it.
+
+**11 · Strip-count discoverability.** The 1-10 picker exists in the Advanced toolbar and was never
+found. Label it, and mirror it into Settings beside the other persisted options.
+
+**Risk to weigh against all of the above:** 15 commits shipped this session — device resolution,
+routing, output buffers, health rules — against 173 unit tests and **no working end-to-end gate**.
+The golden baselines would have caught the Advanced-window crash and were not run because they
+themselves were broken by it. Making them hermetic (and running them) may deserve to jump the queue.
+
 ### 🔲 Design review 2026-09-20 — the operating model, and what follows from it
 
 Reviewed after a live prayer meeting in which every finding that mattered came from parsing
