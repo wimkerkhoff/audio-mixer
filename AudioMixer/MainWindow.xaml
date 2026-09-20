@@ -10,7 +10,9 @@
         Icon="Assets/app.ico"
         Height="320"
         Width="500"
-        ResizeMode="CanMinimize"
+        MinWidth="560"
+        MinHeight="360"
+        ResizeMode="CanResize"
         SizeToContent="Manual"
         Background="#1E1E22" Foreground="#EEE"
         TextOptions.TextFormattingMode="Display"
@@ -279,7 +281,8 @@
                         ToolTip="Settings — mic roles and device-picker options"
                         Click="Settings_Click"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
-                <TextBlock Text="Inputs" Foreground="#B4B4BE" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock Text="Mic strips" Foreground="#B4B4BE" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"
+                           ToolTip="How many input strips to show (1-10)"/>
                 <ComboBox ItemsSource="{Binding InputCountOptions}"
                           SelectedItem="{Binding InputCount, Mode=TwoWay}"
                           Width="44" Height="20" FontSize="11"
@@ -313,6 +316,8 @@
         </Border>
 
         <!-- Main grid -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Padding="0,0,2,0">
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -754,5 +759,6 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </Grid>
+        </ScrollViewer>
     </DockPanel>
 </Window>

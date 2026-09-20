@@ -4,9 +4,12 @@ namespace AudioMixer.Tests;
 
 /// <summary>
 /// Input strips live in a UniformGrid Rows="1", which divides its column equally and IGNORES each
-/// child's MinWidth. The window is non-resizable, so the computed width is the only thing keeping the
-/// strips legible — too small and the right-most controls clip silently, A/B route toggles first,
+/// child's MinWidth — too narrow and the right-most controls clip silently, A/B route toggles first,
 /// with no error and nothing in the log.
+///
+/// The window became resizable and vertically scrollable on 2026-09-20, so this is now the STARTING
+/// width rather than a cage, and the vertical half of that failure class is gone entirely. The width
+/// still has to be right on first open, because an operator who has never resized it sees only this.
 ///
 /// Mirrors MainViewModel.WindowWidth. A view model cannot be constructed here (it builds an
 /// AudioEngine and enumerates devices), so the arithmetic is pinned directly; the constants must be

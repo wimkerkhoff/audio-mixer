@@ -19,12 +19,16 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Width = _viewModel.WindowWidth;
         Height = _viewModel.WindowHeight;
+
+        // The window is resizable now, so the computed size is a sensible STARTING size rather than a
+        // cage. It still follows the input count — ten strips need a wider window than three — but it
+        // never shrinks below what the operator has chosen, or changing the count would undo a manual
+        // resize. Vertical is left alone entirely: the ScrollViewer handles growth now, which is what
+        // retires the silent-clipping class (the leveler row, the 10-input width).
         _viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.WindowWidth))
-                Width = _viewModel.WindowWidth;
-            else if (e.PropertyName == nameof(MainViewModel.WindowHeight))
-                Height = _viewModel.WindowHeight;
+                Width = Math.Max(Width, _viewModel.WindowWidth);
         };
         Closed += (_, _) => _viewModel.Dispose();
     }

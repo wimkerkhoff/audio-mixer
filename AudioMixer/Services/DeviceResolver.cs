@@ -37,10 +37,16 @@ public static class DeviceResolver
         AudioDeviceInfo? match = null;
         if (!string.IsNullOrEmpty(id))
             match = all.FirstOrDefault(d => d.Id == id && Free(d));
+        // Name matching REFUSES when it cannot tell candidates apart. Two identical receivers share a
+        // friendly name, so picking the first free one binds an arbitrary unit — and with each receiver
+        // covering its own part of the room that is the wrong mic in the wrong place, silently, which
+        // is precisely the never-greedy-fill lesson the Ankers taught. Nothing bound is recoverable
+        // (the operator is told by the routed-but-unbound health rule, and maps them once); the wrong
+        // mic bound is not, because nothing about it looks wrong.
         if (match == null && !string.IsNullOrWhiteSpace(name))
         {
             var key = NameKey(name);
-            match = all.FirstOrDefault(d => Free(d) && NameKey(d.FriendlyName) == key);
+            match = Unambiguous(all.Where(d => Free(d) && NameKey(d.FriendlyName) == key));
         }
         // Last resort: the INTERFACE name inside the parens, and only when exactly one free endpoint
         // carries it. A different USB port mints a fresh endpoint that loses the user's rename and can
@@ -55,13 +61,20 @@ public static class DeviceResolver
             var iface = InterfaceKey(name);
             if (iface != null)
             {
-                var candidates = all.Where(d => Free(d) && InterfaceKey(d.FriendlyName) == iface)
-                    .Take(2).ToList();
-                if (candidates.Count == 1) match = candidates[0];
+                match = Unambiguous(all.Where(d => Free(d) && InterfaceKey(d.FriendlyName) == iface));
             }
         }
         if (match != null) used.Add(Claim(match.Id, side));
         return match;
+    }
+
+    /// <summary>The single candidate, or null when there is a choice to be made and no way to make it.</summary>
+    private static AudioDeviceInfo? Unambiguous(IEnumerable<AudioDeviceInfo> candidates)
+    {
+        // Two strips legitimately resolve to the SAME endpoint when they read opposite transmitters of
+        // a split receiver, so count distinct endpoints rather than rows.
+        var distinct = candidates.GroupBy(d => d.Id).Take(2).ToList();
+        return distinct.Count == 1 ? distinct[0].First() : null;
     }
 
     /// <summary>Can <paramref name="side"/> of <paramref name="id"/> still be claimed?</summary>

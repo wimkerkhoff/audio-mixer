@@ -80,4 +80,57 @@ public class ReplugIdentityTests
 
         Assert.Equal(NewId, match?.Id);
     }
+
+    // --- two identical receivers ----------------------------------------------------------------
+
+    /// <summary>
+    /// The case the name fallback cannot handle. Both receivers report the same friendly name, so
+    /// binding "the first free one" picks an arbitrary unit -- and each receiver covers its own part
+    /// of the room, so that is the wrong mic in the wrong place with nothing about it looking wrong.
+    /// Nothing bound is recoverable; the wrong thing bound is not.
+    /// </summary>
+    [Fact]
+    public void TwoIdenticalReceiversRefuseToResolveByName()
+    {
+        var live = new List<AudioDeviceInfo>
+        {
+            Dev("{rx-a}", Name),
+            Dev("{rx-b}", Name),
+        };
+
+        Assert.Null(DeviceResolver.Resolve(live, "{gone}", Name, new HashSet<string>()));
+    }
+
+    /// <summary>An exact id is never ambiguous, so the common same-port case still self-heals.</summary>
+    [Fact]
+    public void AnExactIdStillWinsAmongIdenticalTwins()
+    {
+        var live = new List<AudioDeviceInfo> { Dev("{rx-a}", Name), Dev("{rx-b}", Name) };
+
+        Assert.Equal("{rx-b}", DeviceResolver.Resolve(live, "{rx-b}", Name, new HashSet<string>())?.Id);
+    }
+
+    /// <summary>Once one twin is claimed the other is the only candidate, so it binds.</summary>
+    [Fact]
+    public void ClaimingOneTwinMakesTheOtherUnambiguous()
+    {
+        var live = new List<AudioDeviceInfo> { Dev("{rx-a}", Name), Dev("{rx-b}", Name) };
+        var used = new HashSet<string> { DeviceResolver.Claim("{rx-a}", ChannelSource.Stereo) };
+
+        Assert.Equal("{rx-b}", DeviceResolver.Resolve(live, "{gone}", Name, used)?.Id);
+    }
+
+    /// <summary>
+    /// A split receiver is TWO strips on ONE endpoint, which must not read as ambiguity -- that would
+    /// break the ordinary single-receiver rig.
+    /// </summary>
+    [Fact]
+    public void OneReceiverFeedingTwoStripsIsNotAmbiguous()
+    {
+        var live = new List<AudioDeviceInfo> { Dev(NewId, Name) };
+        var used = new HashSet<string>();
+
+        Assert.Equal(NewId, DeviceResolver.Resolve(live, "{gone}", Name, used, ChannelSource.Left)?.Id);
+        Assert.Equal(NewId, DeviceResolver.Resolve(live, "{gone}", Name, used, ChannelSource.Right)?.Id);
+    }
 }

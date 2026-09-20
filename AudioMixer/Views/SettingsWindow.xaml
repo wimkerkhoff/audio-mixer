@@ -59,6 +59,16 @@
 
             <Border Style="{StaticResource Card}">
                 <StackPanel>
+                    <TextBlock Text="Mixer" Style="{StaticResource Head}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock Text="Mic strips" Style="{StaticResource Cap}" VerticalAlignment="Center"
+                                   Margin="0,0,8,0"/>
+                        <ComboBox ItemsSource="{Binding InputCountOptions}"
+                                  SelectedItem="{Binding InputCount, Mode=TwoWay}" Width="56"/>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,12"
+                               Text="How many input strips the mixer shows, 1 to 10. Also in the Advanced toolbar — mirrored here because that is where it was looked for and not found."/>
+
                     <TextBlock Text="Device pickers" Style="{StaticResource Head}"/>
                     <CheckBox IsChecked="{Binding HideVirtualInputs}"
                               Content="Hide virtual devices (VB-CABLE, VoiceMeeter) from input lists"/>
