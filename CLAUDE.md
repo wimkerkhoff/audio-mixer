@@ -686,6 +686,23 @@ later judgment.
   all run before the per-output routing push). So VU meters and clap-test recordings show the
   *pre-automix* post-fader level — a channel can read hot while the automixer ducks its contribution.
   Intentional (the meter shows what the channel produces); don't "fix" it by moving the tap.
+- **An empty per-output feed buffer is a SILENT hole, and nothing upstream can see it.** The
+  `BufferedWaveProvider` in `InputChannel._outBuffers` runs `ReadFully=true`, so when the bus asks for
+  more than it holds it returns the shortfall as **zeros** — the read looks complete, no meter moves,
+  no peak changes. At the ~10 ms (480-frame) shared-mode read size each hole is a ≤10 ms splice with a
+  broadband click at each edge, heard as fine crackle or grit rather than as a dropout. Crucially the
+  analysis recorder taps *upstream* of this buffer, so a diag WAV is clean by construction and no
+  offline tool can ever find it — headset-clean-recording is the signature. `ClearOutputBuffer` now
+  primes 40 ms of silence so the standing backlog is chosen rather than left to the startup race, and
+  `TrackingSampleProvider` counts depth-vs-request **before** each read (after it, ReadFully has
+  already padded). The count rides the per-input log line as `under=[a,b]` beside `bufMs`.
+  **`bufMs` = 0 is NOT an underrun, and mistaking it for one cost a session.** It is a 1 Hz sample of a
+  value that legitimately drains to zero and refills between reads. Measured 2026-09-20: pre-prime the
+  Lync USB headset sat at 0 ms in **15.8%** of samples against **1.1%** for VB-CABLE (a virtual device
+  is slaved to the system clock; a USB headset has its own crystal, so only the real one drifts), which
+  looked damning — but post-prime the same bus still reads 0 ms in **3.1%** of samples with **zero**
+  underruns over 65 s. The depth ratio between two buses is a drift signal, nothing more. Only
+  `under=[]` distinguishes a hole from normal oscillation, which is the entire reason it exists.
 - **The route-to-output clap test does NOT measure device latency.** A channel's position in the mixed
   output is `transport_latency + standing backlog in its per-output BufferedWaveProvider`. That backlog
   is set nondeterministically at startup (a fast device accumulates a *larger* backlog before the bus
