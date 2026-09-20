@@ -797,9 +797,16 @@ later judgment.
 - **Input strips live in a `UniformGrid Rows="1"`, which divides the column equally and IGNORES each
   child's `MinWidth`.** A fixed-width window crams N strips into whatever space exists and clips the
   right-most controls (A/B route toggles vanish first). Fix: the window is non-resizable and its width
-  is computed from input count (`MainViewModel.WindowWidth = max(560, count*96 + 240)`), applied in
+  is computed from input count (`MainViewModel.WindowWidth = max(560, count*StripWidth +
+  NonStripWidth)`, 100/260), applied in
   `MainWindow` code-behind. Don't bind `Window.Width` in XAML — `DataContext` is set *after*
   `InitializeComponent`, so the binding isn't reliably applied at startup and it falls back to the
+  **That width is the only thing keeping the strips legible, so it needs headroom, not a bare fit:**
+  the earlier `count*96 + 240` never counted the window border, and at 10 inputs a 1200 px window has
+  a ~1184 px client — (1184-230)/10 = 95.4 px per strip, 85.4 px of content against the strip's
+  `MinWidth` of 86, clipping by a hair. Verified end to end at 10 inputs 2026-09-20: the preset loads,
+  all four windows open, no binding errors, 1260x404 fits 1920. `WindowSizingTests` pins every count
+  1-10 against that minimum and its constants must be changed with the view model's.
   literal. Set `Width` in code-behind after assigning `DataContext` and on `WindowWidth`
   PropertyChanged. `WindowHeight` follows the same pattern (`BaseWindowHeight` + the VB-CABLE banner
   when `ShowVbCablePrompt`). Also: outputs live in a fixed-width column (**230 px**), NOT `Auto` — an
