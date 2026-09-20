@@ -158,12 +158,32 @@ public sealed class ChannelViewModel : ViewModelBase
             {
                 _channel.HighPassHz = clamped;
                 RaisePropertyChanged(nameof(HighPassText));
+                RaisePropertyChanged(nameof(HighPassIndex));
                 RaisePropertyChanged(nameof(HasAdvancedSettings));
             }
         }
     }
 
     public string HighPassText => _highPassHz <= 0 ? "off" : $"{_highPassHz} Hz";
+
+    // A discrete list, not a slider. The cutoff used to be a 0-200 Hz slider with 10 Hz snap ticks:
+    // 21 positions in a ~115 px strip column is ~5 px per tick, so which values you could land on
+    // depended on pixel rounding as you dragged, and operators reported cutoffs they simply could not
+    // select. These are the cutoffs finding 5 actually measured, plus 90 because shipped presets use
+    // it. A value outside the list (hand-edited preset) reports index -1 and stays visible in
+    // HighPassText rather than being silently snapped to a neighbour.
+    public static readonly int[] HighPassOptions = { 0, 60, 80, 90, 100, 120, 150 };
+
+    public static int HighPassIndexOf(int hz) => Array.IndexOf(HighPassOptions, hz <= 0 ? 0 : hz);
+
+    public string[] HighPassChoices { get; } =
+        HighPassOptions.Select(hz => hz <= 0 ? "off" : $"{hz} Hz").ToArray();
+
+    public int HighPassIndex
+    {
+        get => HighPassIndexOf(_highPassHz);
+        set { if (value >= 0 && value < HighPassOptions.Length) HighPassHz = HighPassOptions[value]; }
+    }
 
     // What this channel IS, independent of how the current scene has configured it. Scenes need a
     // stable "which mic is the lapel" that survives Prayer clearing the priority flag, so this must

@@ -32,7 +32,7 @@
         </Style>
 
         <Style x:Key="PopupHelp" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#9FA0AD"/>
+            <Setter Property="Foreground" Value="#B6B7C4"/>
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Margin" Value="0,4,0,0"/>
@@ -412,9 +412,9 @@
                                                         <TextBlock Grid.Column="1" Foreground="#E8E8EF" FontSize="11" FontWeight="SemiBold"
                                                                    Text="{Binding HighPassText}" VerticalAlignment="Center"/>
                                                     </Grid>
-                                                    <Slider Minimum="0" Maximum="200" Value="{Binding HighPassHz}"
-                                                            TickFrequency="10" IsSnapToTickEnabled="True"
-                                                            SmallChange="10" LargeChange="20" Margin="0,2,0,0"/>
+                                                    <ListBox Style="{StaticResource PopupList}" Margin="0,2,0,0"
+                                                             ItemsSource="{Binding HighPassChoices}"
+                                                             SelectedIndex="{Binding HighPassIndex, Mode=TwoWay}"/>
                                                     <TextBlock Style="{StaticResource PopupHelp}"
                                                                Text="Removes rumble, HVAC and handling thumps below the cutoff. A fixed band, never a gate — it makes no level decision, so it cannot punch holes in sustained singing. 0 = off; 80 Hz is safe for voices."/>
                                                     <Border Height="1" Background="#3A3A42" Margin="0,10,0,6"/>
@@ -686,7 +686,7 @@
                                                         <TextBlock Text="Leveler on"/>
                                                     </CheckBox>
 
-                                                    <TextBlock Style="{StaticResource Lbl}" Text="Strength" Margin="0,8,0,2"/>
+                                                    <TextBlock Style="{StaticResource PopupLbl}" Text="Strength" Margin="0,8,0,2"/>
                                                     <ListBox Style="{StaticResource PopupList}"
                                                              ItemsSource="{Binding LevelerStrengthOptions}"
                                                              SelectedIndex="{Binding LevelerStrengthIndex, Mode=TwoWay}"
@@ -697,25 +697,25 @@
                                                     <Expander Header="Advanced" Foreground="#CCC" FontSize="11" Margin="0,8,0,0"
                                                               IsEnabled="{Binding LevelerEnabled}">
                                                         <StackPanel Margin="0,4,0,0">
-                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerThresholdDb, StringFormat=Threshold {0:F0} dBFS}"/>
+                                                            <TextBlock Style="{StaticResource PopupLbl}" Text="{Binding LevelerThresholdDb, StringFormat=Threshold {0:F0} dBFS}"/>
                                                             <Slider Minimum="-60" Maximum="0" Value="{Binding LevelerThresholdDb}"
                                                                     ToolTip="Above this level the leveler starts working."/>
-                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerRatio, StringFormat=Ratio {0:F1}:1}" Margin="0,4,0,0"/>
+                                                            <TextBlock Style="{StaticResource PopupLbl}" Text="{Binding LevelerRatio, StringFormat=Ratio {0:F1}:1}" Margin="0,4,0,0"/>
                                                             <Slider Minimum="1" Maximum="10" Value="{Binding LevelerRatio}"
                                                                     ToolTip="How hard it pulls the loud parts down."/>
-                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerAttackMs, StringFormat=Attack {0:F0} ms}" Margin="0,4,0,0"/>
+                                                            <TextBlock Style="{StaticResource PopupLbl}" Text="{Binding LevelerAttackMs, StringFormat=Attack {0:F0} ms}" Margin="0,4,0,0"/>
                                                             <Slider Minimum="5" Maximum="500" Value="{Binding LevelerAttackMs}"
                                                                     ToolTip="How quickly it reacts to someone getting louder."/>
-                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerReleaseMs, StringFormat=Release {0:F0} ms}" Margin="0,4,0,0"/>
+                                                            <TextBlock Style="{StaticResource PopupLbl}" Text="{Binding LevelerReleaseMs, StringFormat=Release {0:F0} ms}" Margin="0,4,0,0"/>
                                                             <Slider Minimum="200" Maximum="8000" Value="{Binding LevelerReleaseMs}"
                                                                     ToolTip="How quickly it recovers. Too fast and quiet passages breathe."/>
-                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerMaxGainDb, StringFormat=Max boost {0:F0} dB}" Margin="0,4,0,0"/>
+                                                            <TextBlock Style="{StaticResource PopupLbl}" Text="{Binding LevelerMaxGainDb, StringFormat=Max boost {0:F0} dB}" Margin="0,4,0,0"/>
                                                             <Slider Minimum="0" Maximum="12" Value="{Binding LevelerMaxGainDb}"
                                                                     ToolTip="The most it will ever lift a quiet talker. Room noise rises with it one-for-one, and this room's floor is HVAC that no filter removes - so this is a noise budget, capped at 12 dB."/>
-                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LevelerIdleFloorDb, StringFormat=Idle hold {0:F0} dBFS}" Margin="0,4,0,0"/>
+                                                            <TextBlock Style="{StaticResource PopupLbl}" Text="{Binding LevelerIdleFloorDb, StringFormat=Idle hold {0:F0} dBFS}" Margin="0,4,0,0"/>
                                                             <Slider Minimum="-70" Maximum="-20" Value="{Binding LevelerIdleFloorDb}"
                                                                     ToolTip="Below this the gain freezes instead of hunting in the silence. It never attenuates, so it cannot cut off a quiet talker. Calibrate it: watch the bus meter with the room empty and set this about 6 dB above what you see."/>
-                                                            <TextBlock Style="{StaticResource Lbl}" Text="{Binding LimiterCeilingDb, StringFormat=Limiter ceiling {0:F1} dBFS}" Margin="0,4,0,0"/>
+                                                            <TextBlock Style="{StaticResource PopupLbl}" Text="{Binding LimiterCeilingDb, StringFormat=Limiter ceiling {0:F1} dBFS}" Margin="0,4,0,0"/>
                                                             <Slider Minimum="-12" Maximum="-0.1" Value="{Binding LimiterCeilingDb}"
                                                                     ToolTip="Protective brick wall after the leveler. If it is working constantly, lower Max boost rather than raising this."/>
                                                         </StackPanel>

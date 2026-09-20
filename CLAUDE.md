@@ -104,7 +104,8 @@ tools/                        # Offline analysis + diagnostics — validate sele
 ├── RefCorr/                  # C#: lapel-reference envelope correlation ranking
 ├── RxProbe/                  # C#: captures 2 endpoints at once — verify a split receiver at
 │                             #     sample level (corr + scalar-fit) after any remap
-├── VolProbe/                 # C#: read/set a capture endpoint's Windows gain (see the gain gotcha)
+├── VolProbe/                 # C#: read/set a capture endpoint's Windows gain (see the gain gotcha).
+│                             #     Lists ALL active capture endpoints; name+level args set one
 ├── gate_rate.py              # per-mic digital-silence rate + simultaneity (see finding 4)
 ├── naturalness.py            # flux-CV artifact ranking (the "natural" metric, offline)
 ├── replay_natural.py         # Replays the shipped "Prefer natural" rule over a capture
@@ -327,7 +328,13 @@ The app used to be unexercisable without a live congregation, which blocked all 
   proves nothing about the UI. `--log` enables `BindingErrorListener`, which logs them.
   `--open-all` opens every window so one run covers all their markup.
 - **Unit tests** (`AudioMixer.Tests`) cover only pure logic — scene rules, health rules, the autosave
-  allowlist invariant. Anything needing a device or a window is verified by a replay run instead.
+  allowlist invariant, the low-cut option mapping. Anything needing a device or a window is verified
+  by a replay run instead. The one exception is `XamlResourceTests`, which reads the markup as *text*
+  (no WPF instantiation, no devices) to check every `{StaticResource}` key resolves in its own file —
+  see the UI gotcha for why a clean build does not.
+- **Nothing runs on push.** `.github/workflows/release.yml` only builds on a version tag; it never
+  runs `dotnet test`. So the suite is only as good as the last person who ran it locally — which is
+  how a window that crashed on open shipped and stayed broken for weeks.
 - `--scene=NAME` applies a scene at startup, so the whole scene path is assertable from `/state`.
 
 ## Conventions
@@ -346,6 +353,13 @@ The app used to be unexercisable without a live congregation, which blocked all 
   loop writes ~1 line/sec, so we don't grow a file on every run. First line is a banner with exe
   path, assembly version (`1.0.0+<git-sha>`, stamped by an MSBuild target) and build time — identify
   *which build* produced a log from the log alone; don't cross-reference DLL mtimes.
+  **Crashes are the exception and are always recorded.** `App.InstallCrashHandlers` writes dispatcher,
+  app-domain and unobserved-task exceptions to `%TEMP%\AudioMixer.crash.log` unconditionally, because
+  the run that matters is the one nobody passed `--log` to; before it existed a crash left only a WER
+  bucket with no managed stack. Note `Trace.WriteLine` alone is **not** a diagnostic — with no listener
+  attached it goes nowhere — so every failure path worth reading (preset load, capture stopped,
+  watchdog restart, state server) writes to `AudioLog` too. A silent preset-load failure is the worst
+  of them: it looks exactly like an unconfigured mixer.
 - **Gain calibration** rides on the same per-input log line as `cal=[speech=<p50 dB> floor=<p50 dB>
   n=<buffers>]`, and shows as `speech`/`floor` columns in the Diagnostics window (green within ±3 dB
   of the −24 dBFS target) plus `speechDb`/`floorDb` in `/state`. `CalibrationHistogram` tallies every
@@ -504,6 +518,24 @@ AGC-compressed source against an uncompressed one (the Ankers' p50 sits near the
 crest is ~20 dB, so matching RMS clips the peaks). Corollary: any level comparison **across** device
 types is meaningless — compare only within a matched set. This is the strongest argument for the
 homogeneous DSP-free rig of finding 6.
+
+**8. Absolute automix thresholds turn a gain-staging error into a chopped mix — check level before
+blaming a capsule.** Measured 2026-09-20 over a 15 min prayer meeting on three DSP-free mics (a Rode
+lapel on the Realtek aux + a split Wireless PRO pair). The capture itself was **clean**: zero samples
+at or over full scale, **0.00%** impulsive frames (frame crest > 24 dB), flux-CV 0.382/0.383, `drops=0`.
+But every mic ran ~22 dB under the -24 dBFS target — speech p50 **-45.3 / -46.1 / -45.7 dBFS**, floors
+-61/-65/-66, S/N 16-21 dB. `PriorityActiveRms` (-40 dBFS), `PriorityBreakInRms` (-50) and
+`SilenceFloorRms` (-55) are **absolute**, tuned for speech at -24, so the signal straddled them instead
+of clearing them. With the presenter's lapel at `speech=-39` — **1 dB of margin** — every soft syllable
+released the priority duck and a room mic was briefly selected (the operator reported exactly this,
+unprompted, before the log was read). Bus-wide: **12 winner changes/min** and **winner = -1 for 28-29%**
+of the session, which in Gate mode is a hard mute — both room mics silent **62%** of the time, the
+lapel 23%. That chopping is what gets heard, and it is easy to misattribute to a scratchy mic. So:
+**compare `cal=[speech=…]` against -24 dBFS before reaching for a quality metric.** No selector tuning
+fixes it — the rule is right, the signal is in the wrong place. Corollary: you cannot just add the
+missing 22 dB. Measured crest (whole-file peak vs speech p50) is **28-36 dB**, so speech at -24 would
+put peaks well over full scale; the gain belongs at the transmitter, converged with the calibration
+histogram, not dialled in downstream.
 
 **Validating a selector change.** Never tune the live selector from a live impression. Capture
 "record all inputs" during a real session *with operator labels* of which mic sounded better when,
@@ -669,6 +701,18 @@ later judgment.
   cross-correlation vs the loudest channel over ±1000 ms; the normalized peak is the confidence (warn
   below 0.5). Caveat: a speakerphone that *gates* transients may have no constant latency, so no single
   delay value fully syncs it.
+- **A digital-silence rate over a whole diag WAV counts the startup window and will libel a mic that
+  does not gate.** The recorder starts when the operator clicks it, which is *before* the transmitters
+  are powered, paired and bound — so the head of every capture is true zero. A 2026-09-20 Wireless PRO
+  capture measured 16.6% / 12.7% digital silence whole-file, which reads exactly like the Anker gating
+  of finding 4; per minute it was **99%/62% in minutes 1-2 and then 0.0% for the rest of the session**.
+  Always bucket the rate per minute (or skip the first 2-3 min) before concluding anything about
+  gating. Same caveat for speech/floor medians: the silent head drags the floor toward -inf.
+- **To prove a split receiver is really two transmitters, correlate at BOTH scales.** Sample-level
+  correlation near 1.0 means one signal fanned to both sides (not split); near 0 means two capsules.
+  Envelope correlation stays *high* either way, because both mics hear the same room — so envelope
+  alone cannot tell them apart. A verified-good split on 2026-09-20 read **sample 0.069, envelope
+  0.866**. `tools/RxProbe` does this at the endpoint level; numpy on two diag WAVs does it post-hoc.
 - **A WAV being actively recorded reads 0 bytes / a frozen mtime in directory listings.** NTFS doesn't
   flush the directory-entry size + last-write-time during a long buffered write, and `WaveFileWriter`
   only finalizes the RIFF header on Dispose. So Explorer/`Get-ChildItem` show a live capture as 0 bytes
@@ -679,6 +723,30 @@ later judgment.
   parse the chunks and read raw float32 from the `data` offset to true EOF (`tools/live_wav.py`).
 
 ### UI / WPF
+
+- **A `{StaticResource}` key is resolved when a template is APPLIED, not at compile time, so a missing
+  one is a runtime process kill that a clean build will not reveal.** `MainWindow.xaml` referenced
+  `{StaticResource Cap}`, a style that exists only in the three `Views/` windows; WPF threw
+  `XamlParseException` inside `UniformGrid.MeasureOverride` while showing the window and the process
+  died before painting. It shipped in `ed756fa` and every `--advanced` launch — including
+  `tools/replay-baseline.ps1`, which passes `--advanced` — crashed for weeks. `BindingErrorListener`
+  does **not** catch this: it sees binding failures, not a fatal parse error. Guarded now by
+  `AudioMixer.Tests/XamlResourceTests`, which checks **per file** that every referenced key is defined
+  in that file. Per-file is the whole point — globally the key sets match, because `Cap` *is* defined,
+  just out of scope. That scoping holds only because `App.xaml` carries no resources and every style
+  lives in a `Window.Resources`; `DefinitionsAreNotShared` pins the assumption so the test fails
+  honestly if merged dictionaries ever appear.
+- **A snap-to-tick `Slider` in a strip column is unusable, and it fails as skipped values rather than
+  as an obvious bug.** The low-cut was `Minimum=0 Maximum=200 TickFrequency=10` — 21 positions in a
+  ~115 px column, ~5 px per tick — so which cutoffs you could land on depended on pixel rounding
+  during the drag, and an operator reported reaching 70 and 90 Hz but not 80 on one strip and 60/80/100
+  on another. Anything with a small fixed set of meaningful values belongs in a `ListBox`
+  (`PopupList`) inside the popup, like the automix mode and leveler strength pickers.
+- **Popup text has its own styles for a reason — `Lbl` is the strip style and is too dim inside a
+  popup.** `Lbl` is 9 px `#B4B4BE`, sized to be glanced at in a narrow strip; `PopupLbl` (10 px
+  `#C7C7D2`) and `PopupHelp` exist because popup text sits on the darker `#1B1B22` surface and is
+  *read*. The leveler popup was built with `Lbl` throughout and the operator reported it as too dim.
+
 
 - **The meter tick and the autosave debounce share one `PropertyChanged` stream, so filtering it with
   a blocklist silently disables autosave.** `ChannelViewModel.RefreshMeters` raises ~13 display

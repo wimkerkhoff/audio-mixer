@@ -395,6 +395,30 @@ there is real operating experience — what the operator actually reached for, w
 for, and whether the leveler's Gentle/Medium/Strong split is the right first knob. Do not
 pre-emptively redesign; collect the session first.
 
+### 🔲 Make the automixer's level thresholds relative, not absolute
+
+`PriorityActiveRms` (−40 dBFS), `PriorityBreakInRms` (−50) and `SilenceFloorRms` (−55) are absolute
+constants tuned for speech at the −24 dBFS calibration target. Finding 8 is what happens when the rig
+is not there: on 2026-09-20 every mic ran ~22 dB low, the presenter's lapel sat 1 dB above
+`PriorityActiveRms`, and the duck released on every soft syllable — 12 winner changes/min and no
+winner at all 28–29% of the session, heard as a chopped, gritty mix. Correct gain staging fixes the
+symptom, but the rig's level has moved 20+ dB between sessions (Anker AGC → Rode at 0 dB → Rode at
++15 dB → aux lapel), so this will recur.
+
+Candidate: derive the speech/silence decision from each channel's own settled `CalibrationHistogram`
+median rather than a fixed dBFS, so "speaking" means "loud relative to this mic's own floor". Risks:
+the histogram is cumulative and needs a reset after any gain change, and a mic that has never heard
+speech has no median yet — needs a defined cold-start.
+
+**Do not tune this from a live impression** (see "Validating a selector change"). It needs a labeled
+capture where the operator marked who was talking, replayed offline, with the hand-off count and
+winner=−1 occupancy compared before/after. Today's `diag-input*-20260920-094253.wav` is a usable
+fixture for the failure case — it is the session the numbers above came from.
+
+**Related smaller fix:** a health-banner alert when a routed channel's settled `speechDb` is more than
+~10 dB from −24. The data is already in `CalibrationHistogram`; the rule belongs in `HealthMonitor`
+(pure, unit-testable). That would have surfaced this in minute one instead of at the end of a meeting.
+
 ### 🛠 Make the golden baselines hermetic — they currently gate nothing
 Found 2026-08-30. `--replay` is a sandbox for autosave and output devices but **not for preset
 loading**: `MainViewModel.TryLoadInitialPreset()` runs unconditionally before

@@ -17,10 +17,13 @@ if (args.Length == 2)
                     + $"(slider now {target.AudioEndpointVolume.MasterVolumeLevelScalar * 100:F0}%)");
 }
 
+// Every active capture endpoint, not a hardcoded shortlist: the gain that matters is whichever
+// device the mic is actually on, and this rig's mics have already moved from Anker to Rode to the
+// Realtek aux jack. An optional first arg filters by name.
+string? filter = args.Length == 1 ? args[0] : null;
 foreach (var d in devs)
 {
-    if (!d.FriendlyName.Contains("Wireless PRO", StringComparison.OrdinalIgnoreCase)
-        && !d.FriendlyName.Contains("ANKER", StringComparison.OrdinalIgnoreCase)) continue;
+    if (filter != null && !d.FriendlyName.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
     var v = d.AudioEndpointVolume;
     Console.WriteLine($"  {d.FriendlyName,-40} {v.MasterVolumeLevel,6:F1} dB  ({v.MasterVolumeLevelScalar * 100,5:F1}%)");
 }
