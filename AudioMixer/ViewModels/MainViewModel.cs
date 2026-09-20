@@ -72,7 +72,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _inputCount = clamped;
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(WindowWidth));
-            if (!_suppressAutosave) { _autosaveTimer.Stop(); _autosaveTimer.Start(); }
+            QueueAutosave();
         }
     }
 
