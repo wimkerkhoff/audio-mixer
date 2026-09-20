@@ -444,6 +444,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             Trace.WriteLine($"State server failed to start: {ex}");
+            AudioLog.Write($"State server failed to start on port {port}: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

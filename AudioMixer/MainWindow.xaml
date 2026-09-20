@@ -691,7 +691,7 @@
                                                              ItemsSource="{Binding LevelerStrengthOptions}"
                                                              SelectedIndex="{Binding LevelerStrengthIndex, Mode=TwoWay}"
                                                              IsEnabled="{Binding LevelerEnabled}"/>
-                                                    <TextBlock Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                    <TextBlock Style="{StaticResource PopupHelp}" TextWrapping="Wrap" Margin="0,4,0,0"
                                                                Text="Start on Medium. Too strong and the room noise swells in the gaps between sentences; too weak and a soft question from the back is still soft."/>
 
                                                     <Expander Header="Advanced" Foreground="#CCC" FontSize="11" Margin="0,8,0,0"
@@ -721,7 +721,7 @@
                                                         </StackPanel>
                                                     </Expander>
 
-                                                    <TextBlock Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                    <TextBlock Style="{StaticResource PopupHelp}" TextWrapping="Wrap" Margin="0,8,0,0"
                                                                Text="Set both buses the same unless you have a reason not to - levelling Zoom but not the headset means you stop hearing what the stream hears."/>
                                                 </StackPanel>
                                             </Border>

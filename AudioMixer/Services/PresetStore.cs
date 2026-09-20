@@ -32,7 +32,11 @@ public sealed class PresetStore
         }
         catch (Exception ex)
         {
+            // Returning null here is indistinguishable, to the operator, from never having saved a
+            // preset: every channel comes up with no device. Say so somewhere they can read.
             System.Diagnostics.Trace.WriteLine($"Preset load failed: {ex.Message}");
+            Audio.AudioLog.Write($"Preset load FAILED ({PresetPath}): {ex.GetType().Name}: {ex.Message} "
+                               + "- starting with an unconfigured mixer.");
             return null;
         }
     }

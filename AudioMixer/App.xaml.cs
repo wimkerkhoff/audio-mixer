@@ -28,6 +28,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         ApplyCliFlags(e.Args);
+        InstallCrashHandlers();
 
         string instanceName = ReplayOptions.Current == null ? InstanceName : ReplayInstanceName;
         _instanceMutex = new Mutex(initiallyOwned: true, instanceName, out bool isFirst);
@@ -55,6 +56,32 @@ public partial class App : Application
 
         base.OnStartup(e);
         CreateWindows();
+    }
+
+    // A crash used to leave nothing behind but a WER bucket: there was no handler anywhere, AudioLog
+    // is opt-in, and WPF swallows the managed stack. The crash file is written unconditionally (not
+    // through AudioLog) because the one run that matters is the one nobody remembered to pass --log to.
+    private void InstallCrashHandlers()
+    {
+        AppDomain.CurrentDomain.UnhandledException += (_, a) => RecordCrash("AppDomain", a.ExceptionObject as Exception);
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, a) =>
+        {
+            RecordCrash("UnobservedTask", a.Exception);
+            a.SetObserved();
+        };
+        DispatcherUnhandledException += (_, a) => RecordCrash("Dispatcher", a.Exception);
+    }
+
+    private static void RecordCrash(string source, Exception? ex)
+    {
+        string text = $"=== {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {source} unhandled ==={Environment.NewLine}{ex}{Environment.NewLine}";
+        AudioLog.Write(text);
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AudioMixer.crash.log"), text);
+        }
+        catch { /* a crash logger that throws is worse than no crash logger */ }
     }
 
     // Command-line equivalents of the AUDIOMIXER_LOG / AUDIOMIXER_STATE env vars, so a desktop

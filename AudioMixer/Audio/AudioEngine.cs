@@ -75,7 +75,24 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
         }
     }
 
+    private bool _watchdogErrorLogged;
+
     private void WatchdogTick(object? state)
+    {
+        // A System.Threading.Timer callback that throws takes the whole process down, and this one
+        // raises InputRestartGaveUp straight onto the threadpool thread. Guarded like AutoMixTick,
+        // and latched for the same reason: a repeating fault must not flood the log at 2 Hz.
+        try { WatchdogScan(); }
+        catch (Exception ex)
+        {
+            if (_watchdogErrorLogged) return;
+            _watchdogErrorLogged = true;
+            System.Diagnostics.Trace.WriteLine($"WatchdogTick failed: {ex}");
+            AudioLog.Write($"WatchdogTick failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private void WatchdogScan()
     {
         InputChannel[] inputs;
         AudioDeviceInfo?[] devices;
@@ -131,6 +148,7 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine($"Watchdog restart of input {index} failed: {ex}");
+            AudioLog.Write($"Watchdog restart of input {index} failed: {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {
@@ -149,7 +167,11 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
                 if (dev == null) continue;
                 Inputs[i].Stop();
                 try { Inputs[i].Start(dev); }
-                catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"Resync input {i} failed: {ex}"); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.WriteLine($"Resync input {i} failed: {ex}");
+                    AudioLog.Write($"Resync input {i} failed: {ex.GetType().Name}: {ex.Message}");
+                }
                 if (i < MaxInputCount) { _restartAttempts[i] = 0; _lastRestartTicks[i] = 0; _restartGaveUp[i] = false; }
             }
         }

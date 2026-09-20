@@ -358,7 +358,11 @@ public sealed class InputChannel : IDisposable
         capture.RecordingStopped += (_, e) =>
         {
             if (e.Exception != null)
+            {
                 System.Diagnostics.Trace.WriteLine($"Capture stopped with error: {e.Exception}");
+                AudioLog.Write($"Capture stopped with error on '{_label}': "
+                             + $"{e.Exception.GetType().Name}: {e.Exception.Message}");
+            }
         };
         _capture = capture;
         Volatile.Write(ref _lastDataTicks, Environment.TickCount64);
