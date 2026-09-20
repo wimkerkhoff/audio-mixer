@@ -587,7 +587,17 @@ later judgment.
   structurally unselectable. The Windows slider taper is severely non-linear on the Rode: **53.7% =
   0 dB, 87% = +15 dB, 100% = +30 dB** — the top eighth of the slider is 15 dB, so "turn it up to 100"
   overshoots badly. At +30 dB the pair clipped (peaks **+5.25 / +2.81 dBFS**, ~300 samples over
-  −0.5 dBFS); +15 dB gives peak −17 / −12 dBFS with zero samples over full scale. **Endpoint gain does not survive a port change**, so on a
+  −0.5 dBFS); +15 dB gives peak −17 / −12 dBFS with zero samples over full scale. **+24 dB clips too**
+  (2026-09-20): raising the RX mid-session to chase a 22 dB speech deficit produced peaks of
+  **+6.71 / +6.33 dBFS** and 180–898 over-FS samples per channel, in flat-top runs up to 91 samples
+  (1.9 ms) — audible crackle on transients. The clipping is dated precisely to the change: the 29 min
+  capture has **zero** over-FS samples in minutes 0-26 and all of them in minute 27, the minute the
+  gain was raised. The trap is that **speech was still 14 dB under target at the moment the peaks went
+  over**, because this rig's measured crest (whole-file peak vs speech p50) is **~45 dB** — bumps and
+  handling sit enormously above speech, so there is no endpoint gain that both lands speech at −24 dBFS
+  and keeps transients under full scale. Adding gain cannot fix a crest that wide; proximity and
+  transmitter gain can (finding 5b). **+15 dB is the verified ceiling for this receiver** — do not
+  exceed it to chase a level deficit. **Endpoint gain does not survive a port change**, so on a
   rig whose devices move between hub ports it is the wrong place for this setting: the value is
   stored against the endpoint GUID, which is keyed to the port-derived USB instance path
   (`...MI_01&6941B14&0&0001` — no serial). Same port and it persists (an unplugged RX still
