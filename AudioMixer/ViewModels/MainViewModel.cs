@@ -310,7 +310,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.InputPeakDb,
                 (now - input.LastDataTicks) / 1000.0,
                 (now - input.LastSoundTicks) / 1000.0,
-                vm.SelectedDevice?.Bus));
+                vm.SelectedDevice?.Bus,
+                vm.SelectedDevice?.Id,
+                (int)vm.Source,
+                input.SnapshotCalibration().SpeechDb));
         }
 
         var outputs = new List<OutputHealth>(Outputs.Length);
@@ -324,7 +327,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.SelectedDevice != null,
                 vm.Muted,
                 vm.OutputPeakDb,
-                (now - _lastOutputSound[o]) / 1000.0));
+                (now - _lastOutputSound[o]) / 1000.0,
+                vm.VolumePercent));
         }
 
         return new HealthSnapshot(Scenes.Current, channels, outputs, IsReplaying);

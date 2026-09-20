@@ -19,7 +19,10 @@ public sealed record ChannelHealth(
     double LevelDb,
     double SecondsSinceData,
     double SecondsSinceSound,
-    string? DeviceBus = null);
+    string? DeviceBus = null,
+    string? DeviceId = null,
+    int Side = 0,                 // 0 Stereo, 1 Left, 2 Right — see ChannelSource
+    float SpeechDb = float.NaN);  // settled calibration median; NaN until enough voiced buffers
 
 public sealed record OutputHealth(
     int Index,
@@ -27,7 +30,8 @@ public sealed record OutputHealth(
     bool HasDevice,
     bool Muted,
     double PeakDb,
-    double SecondsSinceSound);
+    double SecondsSinceSound,
+    float VolumePercent = 100f);
 
 public sealed record HealthSnapshot(
     Scene? Scene,
@@ -59,6 +63,19 @@ public static class HealthMonitor
 
     private const double SpeechDb = -40.0;
     private const double SilenceDb = -80.0;
+
+    /// <summary>Where speech should sit. Every absolute threshold in AutoMixer is fitted against it.</summary>
+    public const double TargetSpeechDb = -24.0;
+
+    /// <summary>
+    /// How far a mic may drift from target before it is worth saying so. Wide on purpose: a few dB is
+    /// normal variation between talkers, and a rule that cries at 4 dB gets ignored by the time it
+    /// matters. The 2026-09-20 session ran 22 dB under, so this catches that with room to spare.
+    /// </summary>
+    public const double LevelToleranceDb = 10.0;
+
+    /// <summary>Below this a bus is inaudible however hot the mix feeding it.</summary>
+    public const float OutputVolumeFloorPercent = 5f;
 
     public static IReadOnlyList<HealthAlert> Evaluate(HealthSnapshot s)
     {
@@ -95,6 +112,55 @@ public static class HealthMonitor
         {
             alerts.Add(new HealthAlert("inputs.none", AlertSeverity.Critical,
                 "No microphone is routed and unmuted — the stream has no source.", "Open Advanced"));
+        }
+
+        // An output at zero volume is not muted and has a device, so every rule above passes while the
+        // operator hears nothing. The headset bus sat at 0% through a live meeting on 2026-09-20.
+        foreach (var o in s.Outputs.Where(o => o.HasDevice && !o.Muted
+                                            && o.VolumePercent < OutputVolumeFloorPercent))
+        {
+            alerts.Add(new HealthAlert($"out{o.Index}.novolume", AlertSeverity.Warning,
+                $"{o.Label} volume is turned down to {o.VolumePercent:F0}% — you will not hear it.",
+                "Turn it up"));
+        }
+
+        // A strip routed to a bus with nothing bound to it is one someone meant to use. Unrouted empty
+        // strips are just spare and must stay silent, or every rig with headroom nags forever.
+        foreach (var c in s.Channels.Where(c => c.Routed && c.DeviceName == null))
+        {
+            alerts.Add(new HealthAlert($"in{c.Index}.nodevice", AlertSeverity.Warning,
+                $"{c.Label} has no microphone assigned.",
+                "Pick one, or switch its buses off"));
+        }
+
+        // Level, the fault that ran a whole meeting unnoticed. Phrased as something a volunteer can
+        // do — they cannot act on a number, and the fix is never in this app.
+        foreach (var c in live.Where(c => !float.IsNaN(c.SpeechDb)))
+        {
+            double off = c.SpeechDb - TargetSpeechDb;
+            if (Math.Abs(off) < LevelToleranceDb) continue;
+            bool quiet = off < 0;
+            alerts.Add(new HealthAlert($"in{c.Index}.level", AlertSeverity.Warning,
+                quiet
+                    ? $"{c.Label} is quiet — speech is {-off:F0} dB below target."
+                    : $"{c.Label} is hot — speech is {off:F0} dB above target and may distort.",
+                quiet ? "Check the transmitter is on and its gain is set" : "Turn the transmitter gain down"));
+        }
+
+        // Two strips sharing one endpoint must take opposite sides of a split receiver. Left on Stereo
+        // they both carry the same blend, the automixer sees one channel it cannot arbitrate, and the
+        // bus gets the same audio twice.
+        foreach (var g in s.Channels
+                     .Where(c => c.DeviceName != null && c.DeviceId != null)
+                     .GroupBy(c => c.DeviceId!)
+                     .Where(g => g.Count() > 1))
+        {
+            var stereo = g.Where(c => c.Side == 0).ToList();
+            if (stereo.Count == 0) continue;
+            var names = string.Join(" and ", g.Select(c => c.Label));
+            alerts.Add(new HealthAlert($"in{stereo[0].Index}.split", AlertSeverity.Warning,
+                $"{names} share one receiver but are not split — both carry the same blended audio.",
+                "Set one to Left and the other to Right"));
         }
 
         // --- the priority-duck hazard ----------------------------------------------------------

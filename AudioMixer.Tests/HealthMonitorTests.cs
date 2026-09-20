@@ -13,12 +13,13 @@ public class HealthMonitorTests
     private static ChannelHealth Mic(int i, string label = "Anker", ChannelRole role = ChannelRole.Room,
         string? device = "ANKER #1 (Anker Soundsync)", bool routed = true, bool muted = false,
         bool priority = false, double levelDb = -25, double sinceData = 0, double sinceSound = 0,
-        string? bus = null)
-        => new(i, label, role, device, routed, muted, priority, levelDb, sinceData, sinceSound, bus);
+        string? bus = null, string? deviceId = null, int side = 0, float speechDb = float.NaN)
+        => new(i, label, role, device, routed, muted, priority, levelDb, sinceData, sinceSound,
+               bus, deviceId, side, speechDb);
 
     private static OutputHealth Bus(int i, string label = "OBS/Zoom", bool hasDevice = true,
-        bool muted = false, double peakDb = -20, double sinceSound = 0)
-        => new(i, label, hasDevice, muted, peakDb, sinceSound);
+        bool muted = false, double peakDb = -20, double sinceSound = 0, float volume = 100f)
+        => new(i, label, hasDevice, muted, peakDb, sinceSound, volume);
 
     private static HealthSnapshot Snap(IEnumerable<ChannelHealth>? ch = null,
         IEnumerable<OutputHealth>? outs = null, Scene? scene = null, bool replay = false)
@@ -195,5 +196,92 @@ public class HealthMonitorTests
             outs: new[] { Bus(0, hasDevice: false) }));
         Assert.True(a.Count >= 2);
         for (int i = 1; i < a.Count; i++) Assert.True(a[i - 1].Severity >= a[i].Severity);
+    }
+
+    // --- rules added 2026-09-20, each one a failure that actually happened -----------------------
+
+    /// <summary>A whole meeting ran 22 dB under target with nothing said about it.</summary>
+    [Theory]
+    [InlineData(-46, true, "quiet")]
+    [InlineData(-45, true, "quiet")]
+    [InlineData(-8, true, "hot")]
+    [InlineData(-24, false, null)]
+    [InlineData(-30, false, null)]   // 6 dB off: inside tolerance, stays silent
+    [InlineData(-18, false, null)]
+    public void LevelFarFromTarget_Warns(double speech, bool expected, string? word)
+    {
+        var a = HealthMonitor.Evaluate(Snap(ch: new[] { Mic(0, speechDb: (float)speech) }));
+
+        Assert.Equal(expected, Has(a, ".level"));
+        if (word != null) Assert.Contains(word, a.First(x => x.Id.EndsWith(".level")).Message);
+    }
+
+    /// <summary>Until enough voiced buffers land the median is NaN, and a guess is worse than silence.</summary>
+    [Fact]
+    public void LevelIsNotJudgedBeforeItIsMeasured() =>
+        Assert.False(Has(HealthMonitor.Evaluate(Snap(ch: new[] { Mic(0) })), ".level"));
+
+    [Fact]
+    public void LevelIsNotJudgedOnAMicThatIsNotLive() =>
+        Assert.False(Has(HealthMonitor.Evaluate(
+            Snap(ch: new[] { Mic(0, routed: false, speechDb: -46f) })), ".level"));
+
+    /// <summary>Has a device and is not muted, so every other output rule passes while nothing is heard.</summary>
+    [Theory]
+    [InlineData(0f, true)]
+    [InlineData(3f, true)]
+    [InlineData(40f, false)]
+    [InlineData(100f, false)]
+    public void OutputTurnedDownToNothing_Warns(float volume, bool expected) =>
+        Assert.Equal(expected, Has(HealthMonitor.Evaluate(
+            Snap(outs: new[] { Bus(0, volume: volume) })), ".novolume"));
+
+    /// <summary>Routed but unbound is a strip someone meant to use — today's actual failure.</summary>
+    [Fact]
+    public void ARoutedStripWithNoDevice_Warns() =>
+        Assert.True(Has(HealthMonitor.Evaluate(
+            Snap(ch: new[] { Mic(0), Mic(1, device: null, routed: true) })), ".nodevice"));
+
+    /// <summary>A spare strip is not a fault, or every rig with headroom nags forever.</summary>
+    [Fact]
+    public void AnUnroutedStripWithNoDevice_IsSilent() =>
+        Assert.False(Has(HealthMonitor.Evaluate(
+            Snap(ch: new[] { Mic(0), Mic(1, device: null, routed: false) })), ".nodevice"));
+
+    /// <summary>Both halves on Stereo carry the same blend, and the automixer cannot arbitrate it.</summary>
+    [Fact]
+    public void TwoStripsOnOneReceiverBothStereo_Warns()
+    {
+        var a = HealthMonitor.Evaluate(Snap(ch: new[]
+        {
+            Mic(0, label: "Rode L", device: "Wireless PRO RX", deviceId: "{rx}", side: 0),
+            Mic(1, label: "Rode R", device: "Wireless PRO RX", deviceId: "{rx}", side: 0),
+        }));
+
+        Assert.True(Has(a, ".split"));
+    }
+
+    [Fact]
+    public void AProperlySplitReceiver_IsSilent()
+    {
+        var a = HealthMonitor.Evaluate(Snap(ch: new[]
+        {
+            Mic(0, label: "Rode L", device: "Wireless PRO RX", deviceId: "{rx}", side: 1),
+            Mic(1, label: "Rode R", device: "Wireless PRO RX", deviceId: "{rx}", side: 2),
+        }));
+
+        Assert.False(Has(a, ".split"));
+    }
+
+    [Fact]
+    public void TwoDifferentReceivers_AreNotASplitProblem()
+    {
+        var a = HealthMonitor.Evaluate(Snap(ch: new[]
+        {
+            Mic(0, device: "RX one", deviceId: "{a}", side: 0),
+            Mic(1, device: "RX two", deviceId: "{b}", side: 0),
+        }));
+
+        Assert.False(Has(a, ".split"));
     }
 }
