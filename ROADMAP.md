@@ -9,6 +9,57 @@ Status key: 🔲 planned · 🔬 needs live data / validation · 🛠 doable now
 
 ## Operator experience
 
+### 🔲 Design review 2026-09-20 — the operating model, and what follows from it
+
+Reviewed after a live prayer meeting in which every finding that mattered came from parsing
+`%TEMP%\AudioMixer.log` offline, and none from the app. Operator answers that set the constraints:
+**volunteers run services alone** (Wim may not be in the room), the strip-count picker was simply
+undiscovered rather than missing, the Advanced window should become resizable + scrollable, and an
+in-app session timeline is wanted.
+
+**The diagnosis.** Every readout in the UI is *instantaneous*; every insight that session was an
+*aggregate*. "The lapel is at −39 dBFS" is a number; "the lapel sat 1 dB above the duck threshold, so
+the duck released 12 times a minute for 15 minutes" is the finding. The app has no time dimension
+except `CalibrationHistogram` — which is, not coincidentally, the one feature that answered a question
+live. The only surface that *does* accumulate is the log, and it is opt-in and off by default, so the
+richest diagnostic in the product is a file most runs never write.
+
+**The constraint that reorders everything: volunteers alone.** That session shipped a whole meeting
+~22 dB under the calibration target and nobody noticed. A volunteer would not have either — and could
+not have fixed it, since the remedy is transmitter gain. So for this population an alert that only
+*describes* a fault is close to worthless. The honest options are to correct automatically, or to
+block before the service while someone can still act. **Preflight therefore outranks monitoring**,
+even though monitoring was the stated preference.
+
+**Corollary for the timeline:** if the operator is a volunteer and the reviewer is elsewhere, the
+timeline is not a live dashboard — it is a **session record read afterwards**. That merges it with
+"make the log always-on" rather than competing: accumulate aggregates continuously, render them in
+Diagnostics when someone is looking, and persist them so a missed service can still be reviewed.
+
+Ranked, with the reasoning rather than just the order:
+
+1. **Preflight readiness check** — one verdict before the service: every routed mic bound and
+   delivering, speech level within ~10 dB of −24 dBFS, both outputs alive, a scene chosen, no armed
+   idle priority lapel. The failures it must catch are all ones that have actually happened. It is the
+   only item on this list that helps someone who cannot diagnose.
+2. **Wire the health banner's actions.** They are still labels. For a volunteer an unactionable alert
+   is noise, and noise trains people to ignore the banner that will one day matter.
+3. **Persisted session aggregates**, surfaced in Diagnostics and written to disk: hand-off rate,
+   winner occupancy (including `winner = -1`), per-mic level median vs target, duck time, underruns.
+   Exactly the figures computed by hand on 2026-09-20. Make the log always-on with rotation as part
+   of this — it is the same data.
+4. **Advanced resizable + scrollable.** Fixed-size `CanMinimize` with no scrollbar has now caused
+   three silent-clipping incidents (the leveler row, the 10-input width, and the strip `MinWidth`
+   being ignored by `UniformGrid`). Removing the constraint removes the whole class, and retires the
+   width arithmetic and its tests with it.
+5. **Discoverability of the strip-count picker** — it exists in the Advanced toolbar and was never
+   found. Label it, and mirror it into Settings beside the other persisted options.
+6. Mic dots click through to their strip; always-on-top persists. Both were in the 2026-08 plan.
+
+**Open question that changes the design:** whether the timeline is genuinely read live or only after
+the fact. Live means it must be glanceable while operating; after-the-fact means it should optimise
+for a durable, diffable record instead.
+
 ### 🛠 Live automix diagnostics panel ("why this mic?")
 An optional, toggleable telemetry view that surfaces the automixer's live reasoning **in-app**, so
 diagnosing a bad selection no longer means reading the `/state` JSON endpoint from an external tool
