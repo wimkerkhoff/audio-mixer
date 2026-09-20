@@ -21,6 +21,22 @@ public sealed class ChannelViewModel : ViewModelBase
 
     public ObservableCollection<AudioDeviceInfo> AvailableDevices { get; }
 
+    // What this strip WANTS to be bound to, which outlives the endpoint going away. A hot-plug USB
+    // audio device gets a fresh WASAPI GUID on every replug, so the preset self-heals by friendly
+    // name — but only if a name is still there to match. Without these, unplugging nulled
+    // SelectedDevice, the next autosave (500 ms later) wrote DeviceId=null DeviceName=null, and the
+    // strip forgot what it was for: replugging brought back a device with a new GUID and nothing to
+    // match it against, so the operator remapped by hand every single time.
+    public string? DesiredDeviceId { get; private set; }
+    public string? DesiredDeviceName { get; private set; }
+
+    /// <summary>Forget the desired device — an explicit "None" from the operator, not a disappearance.</summary>
+    public void ClearDesiredDevice()
+    {
+        DesiredDeviceId = null;
+        DesiredDeviceName = null;
+    }
+
     private AudioDeviceInfo? _selectedDevice;
     public AudioDeviceInfo? SelectedDevice
     {
@@ -28,6 +44,11 @@ public sealed class ChannelViewModel : ViewModelBase
         set
         {
             bool wasNull = _selectedDevice == null;
+            if (value != null)
+            {
+                DesiredDeviceId = value.Id;
+                DesiredDeviceName = value.FriendlyName;
+            }
             if (SetField(ref _selectedDevice, value))
             {
                 _onDeviceChanged(Index, value);
@@ -255,7 +276,9 @@ public sealed class ChannelViewModel : ViewModelBase
             Routes[o] = new RouteToggleViewModel(o, channel);
         }
         _channel.GainLinear = PercentToLinear(_volumePercent);
-        ClearDeviceCommand = new RelayCommand(() => SelectedDevice = null);
+        // An explicit clear is the operator saying "this strip has no mic", so it forgets the desired
+        // device too — otherwise the reattach pass would helpfully undo them.
+        ClearDeviceCommand = new RelayCommand(() => { ClearDesiredDevice(); SelectedDevice = null; });
     }
 
     public void RefreshMeters()
@@ -276,6 +299,8 @@ public sealed class ChannelViewModel : ViewModelBase
 
     public void RefreshDevices(IEnumerable<AudioDeviceInfo> devices)
     {
+        // Deliberately does NOT clear DesiredDevice*: this path fires when an endpoint vanishes, and
+        // that is exactly when the strip most needs to remember what it was bound to.
         if (!DeviceList.Sync(AvailableDevices, devices, SelectedDevice?.Id)) SelectedDevice = null;
     }
 

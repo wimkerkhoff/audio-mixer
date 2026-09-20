@@ -566,7 +566,14 @@ later judgment.
   (Lync USB Headset)` vs `Speakers (Realtek(R) Audio)` share the prefix `Speakers`), so truncating
   mis-binds the headset to onboard speakers; (2) resolve against the **master** `_allInputDevices` /
   `_allOutputDevices`, not a channel's `AvailableDevices`, which is dedup-filtered and can be missing a
-  device mid-apply. A `used` set prevents two channels grabbing the same device. On resolve, autosave
+  device mid-apply. A `used` set prevents two channels grabbing the same device. **That self-healing was defeated by the app erasing its own memory** (fixed 2026-09-20): when an
+  endpoint vanished, `ChannelViewModel.RefreshDevices` nulled `SelectedDevice`, and the 500 ms autosave
+  then wrote `DeviceId=null DeviceName=null` — deleting the only thing the name match could work from,
+  so every replug cost a manual remap. The strip now keeps `DesiredDeviceId`/`DesiredDeviceName` which
+  survive the device going away (cleared only by an explicit *Clear device*), `PresetMapper` falls back
+  to them, and `ReattachDesiredDevices` re-binds a strip the moment its device reappears — no restart.
+  Lesson for any future state that mirrors hardware: **what the operator asked for and what is
+  currently resolvable are different facts, and only the first should be persisted.**  On resolve, autosave
   rewrites the current GUID — the preset **self-heals** after one launch. NOTE: the Ankers are **not**
   interchangeable — each unit covers a room area next to its own dongle, so the operator renamed them
   `ANKER #1..4` in Windows Sound settings to match physical labels. Match by that name; never

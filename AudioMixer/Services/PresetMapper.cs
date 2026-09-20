@@ -27,8 +27,10 @@ public static class PresetMapper
             Channels = channels.Select(c => new ChannelPreset
             {
                 CustomLabel = c.CustomLabel,
-                DeviceId = c.SelectedDevice?.Id,
-                DeviceName = c.SelectedDevice?.FriendlyName,
+                // Fall back to the desired device so unplugging a receiver mid-session cannot erase
+                // the identity the next launch resolves against.
+                DeviceId = c.SelectedDevice?.Id ?? c.DesiredDeviceId,
+                DeviceName = c.SelectedDevice?.FriendlyName ?? c.DesiredDeviceName,
                 VolumePercent = c.VolumePercent,
                 Muted = c.Muted,
                 DelayMs = c.DelayMs,

@@ -665,8 +665,34 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Re-binds any strip whose desired device has reappeared. Hot-plug USB audio comes back with a
+    /// NEW endpoint GUID, so this matches on id first and then friendly name, exactly as a preset
+    /// load does — which is what turns "unplug the receiver, plug it back in, remap both strips by
+    /// hand" into the strips simply lighting up again.
+    /// </summary>
+    private void ReattachDesiredDevices()
+    {
+        for (int i = 0; i < Channels.Count; i++)
+        {
+            var ch = Channels[i];
+            if (ch.SelectedDevice != null) continue;
+            if (ch.DesiredDeviceId == null && ch.DesiredDeviceName == null) continue;
+
+            var claimed = ClaimsExcept(i);
+            var match = DeviceResolver.Resolve(
+                _allInputDevices, ch.DesiredDeviceId, ch.DesiredDeviceName, claimed, ch.Source);
+            if (match == null) continue;
+
+            ch.SelectedDevice = match;
+            AudioLog.Write($"Input {i} reattached to '{match.FriendlyName}' (desired "
+                         + $"'{ch.DesiredDeviceName}') after it reappeared.");
+        }
+    }
+
     private void DedupeAndRebuild()
     {
+        if (!_suppressRebuild) ReattachDesiredDevices();
         DropConflictingChannelSelections();
         DropDuplicateSelections(Outputs, o => o.SelectedDevice?.Id, o => o.SelectedDevice = null);
         RebuildAvailableDevices();
