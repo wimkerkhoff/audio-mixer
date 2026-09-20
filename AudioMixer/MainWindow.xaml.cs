@@ -29,6 +29,26 @@ public partial class MainWindow : Window
         Closed += (_, _) => _viewModel.Dispose();
     }
 
+    // Diagnostics used to be reachable only from Simple mode, so an operator running --advanced had no
+    // way to open it — and therefore no way to reach "Reset calibration", which has to be pressed after
+    // every transmitter gain change or the pre-change buffers keep dragging the median.
+    private Views.DiagnosticsWindow? _diagnostics;
+    private Views.SettingsWindow? _settings;
+
+    private void Diagnostics_Click(object sender, RoutedEventArgs e) =>
+        ShowSingle(ref _diagnostics, () => new Views.DiagnosticsWindow(_viewModel) { Owner = this });
+
+    private void Settings_Click(object sender, RoutedEventArgs e) =>
+        ShowSingle(ref _settings, () => new Views.SettingsWindow(_viewModel) { Owner = this });
+
+    private static void ShowSingle<T>(ref T? window, Func<T> create) where T : Window
+    {
+        if (window == null || !window.IsLoaded) window = create();
+        window.Show();
+        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        window.Activate();
+    }
+
     private void PopupList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is ListBox lb && lb.Tag is ToggleButton tb && lb.SelectedItem != null)

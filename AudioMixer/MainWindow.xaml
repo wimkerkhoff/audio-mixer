@@ -272,6 +272,13 @@
                         Content="{Binding InputDiagRecordIcon}" ToolTip="{Binding InputDiagRecordTooltip}"
                         Command="{Binding RecordInputsCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
+                <Button Style="{StaticResource IconBtn}" Content="&#xE9D9;"
+                        ToolTip="Diagnostics — ranked &quot;why this mic?&quot; table, gain calibration, Reset calibration"
+                        Click="Diagnostics_Click"/>
+                <Button Style="{StaticResource IconBtn}" Content="&#xE713;"
+                        ToolTip="Settings — mic roles and device-picker options"
+                        Click="Settings_Click"/>
+                <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
                 <TextBlock Text="Inputs" Foreground="#B4B4BE" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"/>
                 <ComboBox ItemsSource="{Binding InputCountOptions}"
                           SelectedItem="{Binding InputCount, Mode=TwoWay}"
