@@ -7,13 +7,23 @@ namespace AudioMixer.Services;
 // which has to drive input-count changes and device resolution in order.
 public static class PresetMapper
 {
+    /// <summary>App-level state that is not per-channel or per-output.</summary>
+    public readonly record struct AppOptions(
+        bool VbCablePromptDismissed,
+        bool HideVirtualInputs,
+        bool HideVoicemeeterOutputs,
+        bool WarnOnBluetoothMics);
+
     public static MixerPreset FromViewModels(
         IEnumerable<ChannelViewModel> channels, IEnumerable<OutputViewModel> outputs,
-        bool vbCablePromptDismissed) =>
+        AppOptions options) =>
         new()
         {
             Name = "Default",
-            VbCablePromptDismissed = vbCablePromptDismissed,
+            VbCablePromptDismissed = options.VbCablePromptDismissed,
+            HideVirtualInputs = options.HideVirtualInputs,
+            HideVoicemeeterOutputs = options.HideVoicemeeterOutputs,
+            WarnOnBluetoothMics = options.WarnOnBluetoothMics,
             Channels = channels.Select(c => new ChannelPreset
             {
                 CustomLabel = c.CustomLabel,

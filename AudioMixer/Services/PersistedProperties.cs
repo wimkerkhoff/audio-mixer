@@ -48,6 +48,9 @@ public static class PersistedProperties
         nameof(OutputViewModel.LimiterCeilingDb),
     };
 
+    // Deliberately only channel / route / output properties: this list gates OnSettingChanged, which
+    // is subscribed to the STRIPS. MainViewModel's own settings (the picker filters, the VB-CABLE
+    // prompt) never pass through it and queue the autosave debounce directly instead.
     public static bool Contains(string? propertyName) =>
         propertyName != null && Names.Contains(propertyName);
 }

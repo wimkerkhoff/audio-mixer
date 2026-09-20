@@ -64,6 +64,10 @@
                               Content="Hide virtual devices (VB-CABLE, VoiceMeeter) from input lists"/>
                     <TextBlock Style="{StaticResource Cap}"
                                Text="Virtual capture devices are never the right microphone. VB-CABLE stays available for outputs — that is the Zoom path."/>
+                    <CheckBox IsChecked="{Binding HideVoicemeeterOutputs}" Margin="0,8,0,0"
+                              Content="Hide VoiceMeeter from output lists"/>
+                    <TextBlock Style="{StaticResource Cap}"
+                               Text="VoiceMeeter is itself a mixer — this rig never chains the two — and it installs about ten render endpoints that bury the two that matter. VB-CABLE is NOT hidden: routing a bus into it is the path into Zoom."/>
                     <CheckBox IsChecked="{Binding WarnOnBluetoothMics}" Margin="0,8,0,0"
                               Content="Warn when a microphone is on Bluetooth"/>
                     <TextBlock Style="{StaticResource Cap}"

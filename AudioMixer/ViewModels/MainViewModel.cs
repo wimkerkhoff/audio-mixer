@@ -204,21 +204,37 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     // --- Settings-window options ----------------------------------------------------------------
-    // Deliberately runtime-only for now: they change what the pickers *show*, not what the mixer does,
-    // and adding them to the preset means adding them to PersistedProperties too (see that file).
+    // Persisted: a picker filter the operator has to re-tick on every launch is not a setting. They
+    // are in PersistedProperties, so changing one triggers the autosave debounce like any other.
 
     private bool _hideVirtualInputs;
     public bool HideVirtualInputs
     {
         get => _hideVirtualInputs;
-        set { if (SetField(ref _hideVirtualInputs, value)) RefreshDevices(); }
+        set { if (SetField(ref _hideVirtualInputs, value)) { RebuildAvailableDevices(); QueueAutosave(); } }
+    }
+
+    private bool _hideVoicemeeterOutputs;
+    public bool HideVoicemeeterOutputs
+    {
+        get => _hideVoicemeeterOutputs;
+        set { if (SetField(ref _hideVoicemeeterOutputs, value)) { RebuildAvailableDevices(); QueueAutosave(); } }
     }
 
     private bool _warnOnBluetoothMics = true;
     public bool WarnOnBluetoothMics
     {
         get => _warnOnBluetoothMics;
-        set { if (SetField(ref _warnOnBluetoothMics, value)) RefreshHealth(force: true); }
+        set { if (SetField(ref _warnOnBluetoothMics, value)) { RefreshHealth(force: true); QueueAutosave(); } }
+    }
+
+    // MainViewModel's own settings do not pass through OnSettingChanged (that is subscribed to the
+    // strips and gated by PersistedProperties), so they restart the debounce themselves.
+    private void QueueAutosave()
+    {
+        if (_suppressAutosave) return;
+        _autosaveTimer.Stop();
+        _autosaveTimer.Start();
     }
 
     public string DiagnosticsSummary =>
@@ -581,7 +597,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             var claimed = ClaimsExcept(i);
             var self = Channels[i];
-            self.RefreshDevices(_allInputDevices.Where(
+            self.RefreshDevices(VisibleInputs().Where(
                 d => d.Id == self.SelectedDevice?.Id || FreeSideFor(claimed, d.Id) != null));
         }
     }
@@ -639,7 +655,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         try
         {
             RefreshExclusiveChannels();
-            RefreshExclusive(Outputs, _allOutputDevices,
+            RefreshExclusive(Outputs, VisibleOutputs().ToList(),
                 o => o.SelectedDevice?.Id, (o, devices) => o.RefreshDevices(devices));
         }
         finally
@@ -669,20 +685,30 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         else dispatcher.BeginInvoke(action);
     }
 
-    // A device already bound is never hidden, or the picker would show an empty selection for a
-    // working channel. The tag list itself lives in VirtualInputFilter so it can be unit-tested.
-    private List<AudioDeviceInfo> FilterInputs(List<AudioDeviceInfo> devices)
+    // Picker visibility is applied HERE, when the per-strip lists are built — never to the master
+    // _allInputDevices / _allOutputDevices. ApplyPreset resolves a preset's saved devices against the
+    // master lists (see the device-identity gotcha), so filtering those would make a preset naming a
+    // hidden device silently fail to bind, which looks exactly like a lost device. A device that is
+    // currently bound stays visible regardless, or a working strip shows an empty selection.
+    private IEnumerable<AudioDeviceInfo> VisibleInputs()
     {
-        if (!_hideVirtualInputs) return devices;
+        if (!_hideVirtualInputs) return _allInputDevices;
         var bound = Channels.Select(c => c.SelectedDevice?.Id).Where(id => id != null).ToHashSet();
-        return devices
-            .Where(d => bound.Contains(d.Id) || !VirtualInputFilter.IsVirtual(d.FriendlyName))
-            .ToList();
+        return _allInputDevices.Where(
+            d => bound.Contains(d.Id) || !VirtualDeviceFilter.IsVirtualInput(d.FriendlyName));
+    }
+
+    private IEnumerable<AudioDeviceInfo> VisibleOutputs()
+    {
+        if (!_hideVoicemeeterOutputs) return _allOutputDevices;
+        var bound = Outputs.Select(o => o.SelectedDevice?.Id).Where(id => id != null).ToHashSet();
+        return _allOutputDevices.Where(
+            d => bound.Contains(d.Id) || !VirtualDeviceFilter.IsVirtualOutput(d.FriendlyName));
     }
 
     private void RefreshDevices()
     {
-        _allInputDevices = FilterInputs(AudioDeviceInfo.Enumerate(DataFlow.Capture));
+        _allInputDevices = AudioDeviceInfo.Enumerate(DataFlow.Capture);
         _allOutputDevices = AudioDeviceInfo.Enumerate(DataFlow.Render);
         DedupeAndRebuild();
         UpdateVbCableStatus();
@@ -723,7 +749,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _vbCablePromptDismissed = true;
         RaisePropertyChanged(nameof(ShowVbCablePrompt));
         RaisePropertyChanged(nameof(WindowHeight));
-        if (!_suppressAutosave) { _autosaveTimer.Stop(); _autosaveTimer.Start(); }
+        QueueAutosave();
     }
 
     private void ToggleRecord(int index)
@@ -776,7 +802,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // operator's preset with replay placeholders, possibly while they are mid-service.
         if (Audio.Replay.ReplayOptions.Current?.SuppressAutosave == true) return;
 
-        var preset = PresetMapper.FromViewModels(Channels, Outputs, _vbCablePromptDismissed);
+        var preset = PresetMapper.FromViewModels(Channels, Outputs, new PresetMapper.AppOptions(
+            _vbCablePromptDismissed, _hideVirtualInputs, _hideVoicemeeterOutputs, _warnOnBluetoothMics));
         RunGuarded("Save", () =>
         {
             _presetStore.Save(preset);
@@ -798,6 +825,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             _vbCablePromptDismissed = preset.VbCablePromptDismissed;
             UpdateVbCableStatus();
+
+            // Straight to the backing fields: the public setters call RefreshDevices(), which rebuilds
+            // the pickers mid-apply, before the channels have been given their devices. RefreshDevices
+            // runs once at the end of ApplyPreset anyway.
+            _hideVirtualInputs = preset.HideVirtualInputs;
+            _hideVoicemeeterOutputs = preset.HideVoicemeeterOutputs;
+            _warnOnBluetoothMics = preset.WarnOnBluetoothMics;
+            RaisePropertyChanged(nameof(HideVirtualInputs));
+            RaisePropertyChanged(nameof(HideVoicemeeterOutputs));
+            RaisePropertyChanged(nameof(WarnOnBluetoothMics));
 
             int desired = Math.Clamp(preset.Channels.Length, AudioEngine.MinInputCount, AudioEngine.MaxInputCount);
             if (preset.Channels.Length > 0 && desired != Channels.Count)
