@@ -85,6 +85,12 @@ public sealed class DiagnosticsLog
             var readSamples = PerOutput(o => input.ReadSamplesForOutput(o).ToString());
             var readCalls = PerOutput(o => input.ReadCallsForOutput(o).ToString());
             var gains = PerOutput(o => input.GetAutoMixGain(o).ToString("F2"));
+            // Cumulative count of reads where the bus wanted more than the feed buffer held. The
+            // buffer pads the shortfall with zeros, so an underrun is a silent hole that no meter and
+            // no peak value shows — a rising count here is the only way to see the monitor feed
+            // glitching, and the two outputs can differ wildly from the same input (the render clocks
+            // are independent).
+            var underruns = PerOutput(o => input.UnderrunsForOutput(o).ToString());
             // RF-link health (offline dongle-link diagnosis): high drops/silent while voiced is high =
             // wireless dropouts; elevated fluxCv corroborates. Only meaningful while the mic is voiced.
             var rf = input.SnapshotRfStats();
@@ -95,7 +101,7 @@ public sealed class DiagnosticsLog
             string calSpeech = float.IsNaN(cal.SpeechDb) ? "-" : cal.SpeechDb.ToString("F0");
             string calFloor = float.IsNaN(cal.FloorDb) ? "-" : cal.FloorDb.ToString("F0");
             AudioLog.Write(
-                $"Input {i} ('{dev.FriendlyName}'): inputDb={ch.InputPeakDb:F1} postDb={ch.PostPeakDb:F1} routes=[{string.Join(",", ch.Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={ch.Muted} gains=[{gains}] fluxCv={input.CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] cal=[speech={calSpeech} floor={calFloor} n={cal.TotalBuffers}] bufMs=[{bufMs}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
+                $"Input {i} ('{dev.FriendlyName}'): inputDb={ch.InputPeakDb:F1} postDb={ch.PostPeakDb:F1} routes=[{string.Join(",", ch.Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={ch.Muted} gains=[{gains}] fluxCv={input.CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] cal=[speech={calSpeech} floor={calFloor} n={cal.TotalBuffers}] bufMs=[{bufMs}] under=[{underruns}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
         }
     }
 }

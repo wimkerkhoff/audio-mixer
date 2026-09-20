@@ -260,7 +260,8 @@ public sealed class InputChannel : IDisposable
 
     public ISampleProvider GetProviderForOutput(int outputIndex)
     {
-        var tracker = new TrackingSampleProvider(_outBuffers[outputIndex].ToSampleProvider());
+        var buffer = _outBuffers[outputIndex];
+        var tracker = new TrackingSampleProvider(buffer.ToSampleProvider(), buffer);
         _outTrackers[outputIndex] = tracker;
         return tracker;
     }
@@ -514,11 +515,30 @@ public sealed class InputChannel : IDisposable
         };
     }
 
+    // Silence written into a freshly cleared buffer so the standing backlog is a chosen number rather
+    // than whatever the startup race happens to leave. Without it the two buses get different depths
+    // from the same input: measured 2026-09-20, the headset bus sat at 0 ms in 15.8% of samples while
+    // CABLE (same channel, same push) sat at 0 ms in 1.1%. An empty BufferedWaveProvider with
+    // ReadFully=true pads with ZEROS, so every one of those is a hole in the monitor feed. 40 ms is
+    // inaudible as latency on a monitor path and well inside the 200 ms end-to-end budget.
+    public const int OutputPrimeMs = 40;
+
     public void ClearOutputBuffer(int outputIndex)
     {
         if (outputIndex < 0 || outputIndex >= _outBuffers.Length) return;
-        _outBuffers[outputIndex].ClearBuffer();
+        var buf = _outBuffers[outputIndex];
+        buf.ClearBuffer();
+        int bytes = buf.WaveFormat.AverageBytesPerSecond * OutputPrimeMs / 1000;
+        bytes -= bytes % buf.WaveFormat.BlockAlign;
+        buf.AddSamples(new byte[bytes], 0, bytes);
     }
+
+    /// <summary>
+    /// Times the bus asked for audio that was not there yet, so the zero-fill above is measurable
+    /// rather than inferred from a 1 Hz buffer-depth sample.
+    /// </summary>
+    public long UnderrunsForOutput(int outputIndex) =>
+        outputIndex < 0 || outputIndex >= _outputCount ? 0 : _outTrackers[outputIndex]?.Underruns ?? 0;
 
     public int BufferedMs(int outputIndex)
     {
