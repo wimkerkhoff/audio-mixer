@@ -76,7 +76,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public double WindowWidth => Math.Max(560, _inputCount * 96 + 240);
+    // Per-strip allowance + the 230 px output column + window chrome. A UniformGrid divides its
+    // column equally and IGNORES each child's MinWidth, so this number is the ONLY thing keeping the
+    // strips legible — too small and the right-most controls clip silently, A/B route toggles first.
+    // Measured at 10 inputs 2026-09-20: the old `count * 96 + 240` produced a 1200 px window whose
+    // client area is ~1184, leaving (1184 - 230) / 10 = 95.4 px per strip and 85.4 px of content
+    // against the strip's MinWidth of 86 — clipping by a hair because the border was never counted.
+    // 100 px per strip plus 260 gives real headroom (91 px of content at 10 inputs) and still fits a
+    // 1920-wide screen at 1260 px. Low counts are unchanged: 3 inputs still clamps to the 560 floor.
+    private const double StripWidth = 100;
+    private const double NonStripWidth = 260;   // 230 output column + window chrome
+
+    public double WindowWidth => Math.Max(560, _inputCount * StripWidth + NonStripWidth);
 
     private const double BaseWindowHeight = 404;   // grows with the output column's rows (leveler = +60)
     private const double VbCableBannerHeight = 36;

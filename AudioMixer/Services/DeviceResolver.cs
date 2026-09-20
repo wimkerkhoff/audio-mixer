@@ -42,6 +42,24 @@ public static class DeviceResolver
             var key = NameKey(name);
             match = all.FirstOrDefault(d => Free(d) && NameKey(d.FriendlyName) == key);
         }
+        // Last resort: the INTERFACE name inside the parens, and only when exactly one free endpoint
+        // carries it. A different USB port mints a fresh endpoint that loses the user's rename and can
+        // carry a different role prefix ("Desktop Microphone (Wireless PRO RX)" vs "Microphone
+        // (Wireless PRO RX)"), which defeats the full-name match above. This is the opposite of the
+        // documented mis-bind hazard: that was truncating TO the role prefix, where "Speakers (Lync USB
+        // Headset)" and "Speakers (Realtek(R) Audio)" collide. Interface names are far more specific —
+        // but a multi-jack device exposes several endpoints under ONE interface name, so ambiguity here
+        // must refuse rather than guess, or a mic binds to a line input that happens to sort first.
+        if (match == null && !string.IsNullOrWhiteSpace(name))
+        {
+            var iface = InterfaceKey(name);
+            if (iface != null)
+            {
+                var candidates = all.Where(d => Free(d) && InterfaceKey(d.FriendlyName) == iface)
+                    .Take(2).ToList();
+                if (candidates.Count == 1) match = candidates[0];
+            }
+        }
         if (match != null) used.Add(Claim(match.Id, side));
         return match;
     }
@@ -62,4 +80,19 @@ public static class DeviceResolver
 
     public static string NameKey(string friendlyName) =>
         EnumeratorPrefix.Replace(friendlyName, "(").Trim();
+
+    /// <summary>
+    /// The interface name inside the trailing parens — "Speakers (Realtek(R) Audio)" gives
+    /// "Realtek(R) Audio". Spans the FIRST " (" to the LAST ")", because interface names contain
+    /// parens of their own. Null when the name has no parenthesised part to read.
+    /// </summary>
+    public static string? InterfaceKey(string friendlyName)
+    {
+        var s = NameKey(friendlyName);
+        int open = s.IndexOf(" (", StringComparison.Ordinal);
+        int close = s.LastIndexOf(')');
+        if (open < 0 || close <= open + 2) return null;
+        var inner = s.Substring(open + 2, close - open - 2).Trim();
+        return inner.Length == 0 ? null : inner;
+    }
 }

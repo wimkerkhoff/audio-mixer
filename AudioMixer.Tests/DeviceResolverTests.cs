@@ -108,4 +108,77 @@ public class DeviceResolverTests
         Assert.True(DeviceResolver.IsFree(used, "{rode}", ChannelSource.Right));
         Assert.True(DeviceResolver.IsFree(used, "{anker3}", ChannelSource.Stereo));
     }
+
+    // --- interface-name tier (a device that came back on a different USB port) --------------------
+
+    /// <summary>
+    /// A new port mints a fresh endpoint that loses the rename and can carry a different role prefix,
+    /// which defeats the full-name match. The interface inside the parens still identifies the box.
+    /// </summary>
+    [Fact]
+    public void ADifferentRolePrefixStillResolvesByInterfaceName()
+    {
+        var live = new List<AudioDeviceInfo> { Dev("{new}", "Microphone (Wireless PRO RX)") };
+
+        var match = DeviceResolver.Resolve(
+            live, "{old}", "Desktop Microphone (Wireless PRO RX)", new HashSet<string>());
+
+        Assert.Equal("{new}", match?.Id);
+    }
+
+    /// <summary>
+    /// The documented mis-bind hazard, from the other direction: these share the role prefix
+    /// "Speakers" but not the interface, so the interface tier must never confuse them.
+    /// </summary>
+    [Fact]
+    public void ASharedRolePrefixDoesNotCrossMatch()
+    {
+        var live = new List<AudioDeviceInfo> { Dev("{realtek}", "Speakers (Realtek(R) Audio)") };
+
+        var match = DeviceResolver.Resolve(
+            live, "{gone}", "Speakers (Lync USB Headset)", new HashSet<string>());
+
+        Assert.Null(match);
+    }
+
+    /// <summary>One multi-jack box exposes several endpoints under one interface name: refuse, never guess.</summary>
+    [Fact]
+    public void AnAmbiguousInterfaceNameRefusesToBind()
+    {
+        var live = new List<AudioDeviceInfo>
+        {
+            Dev("{mic}", "Microphone (Scarlett 2i2 USB)"),
+            Dev("{line}", "Line In (Scarlett 2i2 USB)"),
+        };
+
+        var match = DeviceResolver.Resolve(
+            live, "{gone}", "Analogue 1 (Scarlett 2i2 USB)", new HashSet<string>());
+
+        Assert.Null(match);
+    }
+
+    /// <summary>Once one of the pair is claimed the remaining candidate is unambiguous, so it binds.</summary>
+    [Fact]
+    public void ClaimingOneOfAnAmbiguousPairResolvesTheOther()
+    {
+        var live = new List<AudioDeviceInfo>
+        {
+            Dev("{mic}", "Microphone (Scarlett 2i2 USB)"),
+            Dev("{line}", "Line In (Scarlett 2i2 USB)"),
+        };
+        var used = new HashSet<string> { DeviceResolver.Claim("{mic}", ChannelSource.Stereo) };
+
+        var match = DeviceResolver.Resolve(live, "{gone}", "Analogue 2 (Scarlett 2i2 USB)", used);
+
+        Assert.Equal("{line}", match?.Id);
+    }
+
+    [Theory]
+    [InlineData("Speakers (Realtek(R) Audio)", "Realtek(R) Audio")]
+    [InlineData("Microphone (5- Wireless PRO RX)", "Wireless PRO RX")]
+    [InlineData("Desktop Microphone (Wireless PRO RX)", "Wireless PRO RX")]
+    [InlineData("ANKER #3", null)]
+    [InlineData("", null)]
+    public void InterfaceKey_ReadsTheParenthesisedPart(string name, string? expected) =>
+        Assert.Equal(expected, DeviceResolver.InterfaceKey(name));
 }
