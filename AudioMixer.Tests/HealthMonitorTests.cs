@@ -12,8 +12,9 @@ public class HealthMonitorTests
 {
     private static ChannelHealth Mic(int i, string label = "Anker", ChannelRole role = ChannelRole.Room,
         string? device = "ANKER #1 (Anker Soundsync)", bool routed = true, bool muted = false,
-        bool priority = false, double levelDb = -25, double sinceData = 0, double sinceSound = 0)
-        => new(i, label, role, device, routed, muted, priority, levelDb, sinceData, sinceSound);
+        bool priority = false, double levelDb = -25, double sinceData = 0, double sinceSound = 0,
+        string? bus = null)
+        => new(i, label, role, device, routed, muted, priority, levelDb, sinceData, sinceSound, bus);
 
     private static OutputHealth Bus(int i, string label = "OBS/Zoom", bool hasDevice = true,
         bool muted = false, double peakDb = -20, double sinceSound = 0)
@@ -126,14 +127,47 @@ public class HealthMonitorTests
         Assert.False(Has(a, ".stalled"));
     }
 
+    /// <summary>The bus is authoritative; the friendly name is not consulted at all when it is known.</summary>
+    [Theory]
+    [InlineData("BTHENUM", "Headset (Anker PowerConf S500 Hands-Free AG Audio)", true)]
+    [InlineData("BTHENUM", "anything at all", true)]
+    [InlineData("USB", "Headset Microphone (Lync USB Headset)", false)]
+    [InlineData("USB", "Headset (Anker PowerConf S500 Hands-Free AG Audio)", false)]
+    [InlineData("HDAUDIO", "R0de wireless (Realtek(R) Audio)", false)]
+    [InlineData("ROOT", "CABLE Output (VB-Audio Virtual Cable)", false)]
+    public void TheBusDecides(string bus, string device, bool expected) =>
+        Assert.Equal(expected, HealthMonitor.IsBluetooth(bus, device));
+
+    /// <summary>
+    /// The regression this replaced: a wired USB headset tripped the warning because the old test
+    /// matched a bare "Headset", and a stale channel label made it read as an Anker that had been
+    /// returned weeks earlier.
+    /// </summary>
+    [Fact]
+    public void AWiredUsbHeadsetIsNotBluetooth()
+    {
+        Assert.False(HealthMonitor.IsBluetooth("USB", "Headset Microphone (Lync USB Headset)"));
+        Assert.False(HealthMonitor.IsBluetooth(null, "Headset Microphone (Lync USB Headset)"));
+    }
+
+    /// <summary>Only used when the bus cannot be read, and only on strings that cannot mean anything else.</summary>
     [Theory]
     [InlineData("ANKER #2 (Anker Soundsync)", false)]
     [InlineData("Microphone (7- Anker Soundsync)", false)]
     [InlineData("Headset (Anker PowerConf S500 Hands-Free AG Audio)", true)]
     [InlineData("Anker PowerConf S500", true)]
-    public void BluetoothEndpoints_AreRecognised(string device, bool expected)
+    public void TheNameFallbackAppliesOnlyWhenTheBusIsUnknown(string device, bool expected) =>
+        Assert.Equal(expected, HealthMonitor.IsBluetooth(null, device));
+
+    /// <summary>End to end through Evaluate, not just the predicate: the banner is what the operator sees.</summary>
+    [Fact]
+    public void AUsbHeadsetMicRaisesNoBluetoothAlert()
     {
-        Assert.Equal(expected, HealthMonitor.IsBluetooth(device));
+        var a = HealthMonitor.Evaluate(Snap(ch: new[]
+        {
+            Mic(0, label: "Anker 3", device: "Headset Microphone (Lync USB Headset)", bus: "USB"),
+        }));
+        Assert.False(Has(a, ".bluetooth"));
     }
 
     [Fact]

@@ -298,7 +298,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.IsPriority,
                 vm.InputPeakDb,
                 (now - input.LastDataTicks) / 1000.0,
-                (now - input.LastSoundTicks) / 1000.0));
+                (now - input.LastSoundTicks) / 1000.0,
+                vm.SelectedDevice?.Bus));
         }
 
         var outputs = new List<OutputHealth>(Outputs.Length);

@@ -18,7 +18,8 @@ public sealed record ChannelHealth(
     bool IsPriority,
     double LevelDb,
     double SecondsSinceData,
-    double SecondsSinceSound);
+    double SecondsSinceSound,
+    string? DeviceBus = null);
 
 public sealed record OutputHealth(
     int Index,
@@ -140,7 +141,7 @@ public static class HealthMonitor
                 continue;
             }
 
-            if (IsBluetooth(c.DeviceName!))
+            if (IsBluetooth(c.DeviceBus, c.DeviceName!))
             {
                 alerts.Add(new HealthAlert($"in{c.Index}.bluetooth", AlertSeverity.Warning,
                     $"{c.Label} is connected over Bluetooth, not its Soundsync dongle — quality drops and it " +
@@ -159,14 +160,28 @@ public static class HealthMonitor
     }
 
     /// <summary>
-    /// The Ankers expose both a Soundsync (dongle) endpoint and Bluetooth ones. Binding a BT endpoint
-    /// means HSP/HFP quality plus a second 2.4 GHz radio fighting the dongles.
+    /// Binding a Bluetooth endpoint means HSP/HFP quality plus a second 2.4 GHz radio contending with
+    /// the dongles.
+    ///
+    /// Decided from the Windows device-enumerator name, NOT the friendly name. The name test this
+    /// replaced matched a bare "Headset" and so fired on "Headset Microphone (Lync USB Headset)", a
+    /// wired USB device — and because the channel was still labelled from a retired mic, the banner
+    /// read "Anker 3 is connected over Bluetooth" with no Anker in the building.
+    ///
+    /// The name fallback survives only for when the bus cannot be read, and only on strings that
+    /// cannot mean anything else: "Hands-Free" is the Bluetooth HFP profile, and "PowerConf" is an
+    /// Anker unit's BT endpoint (its dongle endpoint says Soundsync instead).
     /// </summary>
-    public static bool IsBluetooth(string deviceName)
+    public static bool IsBluetooth(string? deviceBus, string deviceName)
     {
+        if (deviceBus != null)
+        {
+            return string.Equals(deviceBus, Audio.AudioDeviceInfo.BluetoothBus,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
         if (deviceName.Contains("Soundsync", StringComparison.OrdinalIgnoreCase)) return false;
         return deviceName.Contains("Hands-Free", StringComparison.OrdinalIgnoreCase)
-            || deviceName.Contains("Headset", StringComparison.OrdinalIgnoreCase)
             || deviceName.Contains("PowerConf", StringComparison.OrdinalIgnoreCase);
     }
 }
