@@ -669,20 +669,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         else dispatcher.BeginInvoke(action);
     }
 
-    // Virtual capture endpoints (CABLE Output, VoiceMeeter) are never the right microphone, but they
-    // clutter every input picker. Filtered from INPUTS only — VB-CABLE must stay selectable as an
-    // output, since that is the path into Zoom. A device already bound is never hidden, or the picker
-    // would show an empty selection for a working channel.
-    private static readonly string[] VirtualDeviceTags =
-        { "VB-Audio", "CABLE Output", "CABLE Input", "VoiceMeeter", "Virtual" };
-
+    // A device already bound is never hidden, or the picker would show an empty selection for a
+    // working channel. The tag list itself lives in VirtualInputFilter so it can be unit-tested.
     private List<AudioDeviceInfo> FilterInputs(List<AudioDeviceInfo> devices)
     {
         if (!_hideVirtualInputs) return devices;
         var bound = Channels.Select(c => c.SelectedDevice?.Id).Where(id => id != null).ToHashSet();
         return devices
-            .Where(d => bound.Contains(d.Id) ||
-                        !VirtualDeviceTags.Any(t => d.FriendlyName.Contains(t, StringComparison.OrdinalIgnoreCase)))
+            .Where(d => bound.Contains(d.Id) || !VirtualInputFilter.IsVirtual(d.FriendlyName))
             .ToList();
     }
 

@@ -252,10 +252,13 @@ present.
 *Why:* CLAUDE.md finding 4 shows no mixer-side fix for singing exists. This is the last cheap software
 lever before the answer becomes "buy a real mic."
 
-### 🔲 Hide VoiceMeeter / virtual devices from input pickers
-Option to filter virtual capture devices (VoiceMeeter, VB-CABLE, etc.) out of the **input** device
-lists so operators only see real microphones. Keep VB-CABLE selectable for **outputs** (that's the
-Zoom path). *Why:* virtual devices clutter the picker and are never the right input.
+### ✅ Hide VoiceMeeter / virtual devices from input pickers — shipped
+Settings → "Hide virtual inputs" filters virtual capture devices out of the **input** lists only;
+VB-CABLE stays selectable for **outputs** (the Zoom path), and a device already bound is never
+hidden, or a working channel would show an empty picker. Tags live in `Services/VirtualInputFilter`
+so they are unit-tested: NDI's four webcam audio sources were added 2026-09-20. The tests pin both
+directions, because a tag that accidentally matches a real endpoint silently removes a working
+microphone from every picker.
 
 ### 🔲 In-app audio device diagnostics
 Fold `tools/audio-device-diag.ps1` into the app as a diagnostics panel: list audio endpoints as
