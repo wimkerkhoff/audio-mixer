@@ -20,6 +20,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly MixRecorder[] _recorders = new MixRecorder[AudioEngine.OutputCount];
     private StateServer? _stateServer;
     private readonly DiagnosticsLog _diagnostics;
+    private readonly SessionRecorder? _session;
     private bool _suppressAutosave;
     private bool _suppressRebuild;
     private bool _rebuildInProgress;
@@ -154,11 +155,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             Interval = TimeSpan.FromMilliseconds(33),
         };
         _diagnostics = new DiagnosticsLog(_engine, Channels, Outputs);
+        // Not gated on AudioLog.Enabled, unlike the diagnostics log: the session that matters is the
+        // one nobody thought to prepare for. Replay is excluded — it is a sandbox, not a service.
+        if (!_isReplaying) _session = new SessionRecorder(_engine, Channels, Outputs);
         _meterTimer.Tick += (_, _) =>
         {
             foreach (var ch in Channels) ch.RefreshMeters();
             foreach (var op in Outputs) op.RefreshMeters();
             _diagnostics.Tick();
+            _session?.Tick();
             RefreshHealth();
             if (_isReplaying) RaisePropertyChanged(nameof(ReplayPositionText));
         };
@@ -287,6 +292,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         Alerts.Clear();
         foreach (var a in fresh) Alerts.Add(a);
+        if (_session != null)
+        {
+            _session.Scene = Scenes.Current?.ToString();
+            _session.Note(fresh);
+        }
         RaisePropertyChanged(nameof(TopAlert));
         RaisePropertyChanged(nameof(HasAlert));
         RaisePropertyChanged(nameof(AlertSummary));
@@ -1110,6 +1120,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (_inputDiagRecording)
             foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
         SavePreset();
+        _session?.Dispose();
         foreach (var r in _recorders) r?.Dispose();
         _engine.Dispose();
     }

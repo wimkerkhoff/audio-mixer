@@ -63,6 +63,21 @@ public sealed class InputChannel : IDisposable
 
     public readonly record struct RfStats(int Buffers, float MeanDb, float VoicedPct, float SilentPct, int DropEdges, float FluxCv);
 
+    // Samples at or over full scale, counted at the INPUT tap — before the fader, where endpoint or
+    // transmitter gain that is set too high actually shows up. A peak reading cannot stand in for this:
+    // the capture is float32, so over-full-scale samples pass through unharmed and only clip at render,
+    // which is how a session on 2026-09-20 read a healthy peak while 1078 samples were already over.
+    private long _clippedSamples;
+
+    public long ClippedSamples => Interlocked.Read(ref _clippedSamples);
+
+    private void CountClipping(float[] buffer, int count)
+    {
+        long over = 0;
+        for (int i = 0; i < count; i++) if (buffer[i] >= 1f || buffer[i] <= -1f) over++;
+        if (over > 0) Interlocked.Add(ref _clippedSamples, over);
+    }
+
     // Snapshot RF counters since the previous call. Call once per log interval, from ONE thread only.
     public RfStats SnapshotRfStats()
     {
@@ -394,6 +409,7 @@ public sealed class InputChannel : IDisposable
             Volatile.Write(ref _currentPeakLinear, 0f);
             ResetAnalysisState();
             ResetCalibration();
+            Interlocked.Exchange(ref _clippedSamples, 0);
             _hpLeft = null; _hpRight = null;
             _rfPrevVoiced = false;   // don't count a drop edge across a stop/restart
             Volatile.Write(ref _clarity, float.NaN);
@@ -689,6 +705,7 @@ public sealed class InputChannel : IDisposable
             if (read <= 0) return;
 
             InputPeak.Observe(rented, read);
+            CountClipping(rented, read);
 
             _analysisRecorder?.WriteSamples(rented, 0, read);
 
