@@ -612,6 +612,22 @@ later judgment.
   and only clip at render, which is why a peak reading alone looks fine. Judge clipping by counting
   samples ≥ full scale plus flat-top runs, never by peak dBFS.
 
+- **Whether a USB audio device keeps its identity across a port change is answerable, and Rode and
+  Anker differ.** The WASAPI endpoint GUID always regenerates, so matching falls back to the friendly
+  name — which breaks the moment you own TWO IDENTICAL receivers, because they share that name and
+  `Resolve` then picks an arbitrary free one. With each receiver covering its own part of the room
+  that is the wrong mic in the wrong place: the Anker "never greedy-fill" lesson, restated for Rode.
+  The answer is in the PnP tree, not the audio API: walk endpoint → parent interface → USB composite
+  device and read the LAST segment of its instance id. No `&` means a real hardware **serial**
+  (`...77408030`), stable across ports and unique between two units of a model; an `&` means
+  **port-derived** (`...&1ff22f3e&0&4`), reminted per port along with the endpoint GUID and the
+  rename. `tools/device-identity.ps1` classifies every endpoint this way. Measured 2026-09-20: Jabra
+  PanaCast **SERIAL**, Lync USB Headset **PORT-DERIVED**, and the Rode `VID_19F7&PID_0058` composite
+  showed `\801D150D` with two sibling units at `\801D1107` and `\801D110E` — so **Rode receivers
+  appear to be permanently distinguishable, unlike the Soundsync dongles**. Confirm on live hardware
+  before relying on it; the RX was in its case when this was measured. Note the *audio* side cannot
+  answer this — `PKEY_Device_InstanceId` is not exposed on an endpoint's property store and reads
+  empty for every device, USB included.
 - **A Wireless PRO in its charging case enumerates as USB *storage*, not audio.** Observed 2026-08-31:
   two `RODE Wireless PRO USB Device` DiskDrives live (`VEN_RODE&PROD_WIRELESS_PRO&REV_V332`) while the
   `Wireless PRO RX` audio interface (`VID_19F7&PID_0058&MI_01`) and its endpoint were both absent, so
