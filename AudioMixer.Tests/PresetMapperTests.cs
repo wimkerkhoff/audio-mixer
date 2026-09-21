@@ -79,6 +79,38 @@ public class PresetMapperTests
         Assert.Null(ch.DeviceName);
     }
 
+    /// <summary>
+    /// The same failure on a BUS, where it was worse: unplugging the USB headset nulled the device,
+    /// the autosave wrote nulls over its identity, and there was no output reattach at all — so bus B
+    /// stayed unbound until someone picked it again by hand.
+    /// </summary>
+    [Fact]
+    public void ABusWhoseDeviceHasVanishedStillWritesTheDeviceItWants()
+    {
+        using var f = new VmFixture();
+        f.Outputs[0].SelectedDevice = VmFixture.Cable;
+        f.Outputs[0].SelectedDevice = null;
+
+        var op = PresetMapper.FromViewModels(f.Channels, f.Outputs, Options).Outputs[0];
+
+        Assert.Equal("dev-cable", op.DeviceId);
+        Assert.Equal(VmFixture.Cable.FriendlyName, op.DeviceName);
+    }
+
+    [Fact]
+    public void ClearingABusDeviceOnPurposeDoesForgetIt()
+    {
+        using var f = new VmFixture();
+        f.Outputs[0].SelectedDevice = VmFixture.Cable;
+        f.Outputs[0].SelectedDevice = null;
+        f.Outputs[0].ClearDesiredDevice();
+
+        var op = PresetMapper.FromViewModels(f.Channels, f.Outputs, Options).Outputs[0];
+
+        Assert.Null(op.DeviceId);
+        Assert.Null(op.DeviceName);
+    }
+
     // --- everything else that has to survive a restart ------------------------------------------------
 
     [Fact]

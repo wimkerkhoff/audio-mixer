@@ -43,11 +43,40 @@ public sealed class OutputViewModel : ViewModelBase
     public ObservableCollection<AudioDeviceInfo> AvailableDevices { get; }
 
     private AudioDeviceInfo? _selectedDevice;
+    /// <summary>
+    /// What this bus wants, kept even while the device is gone. Same reason the input strips have it:
+    /// unplugging nulls SelectedDevice, the 500 ms autosave then writes DeviceId=null DeviceName=null,
+    /// and the identity the next launch would have resolved against is destroyed. On a bus that was
+    /// worse than on a strip — pulling the USB headset out permanently unbound bus B, with no reattach
+    /// path at all, so it had to be re-picked by hand.
+    /// </summary>
+    public string? DesiredDeviceId { get; private set; }
+    public string? DesiredDeviceName { get; private set; }
+
+    /// <summary>Seeds from a saved preset, before any device is bound.</summary>
+    public void RestoreDesiredDevice(string? id, string? name)
+    {
+        DesiredDeviceId = id;
+        DesiredDeviceName = name;
+    }
+
+    /// <summary>Forget it — an explicit "None" from the operator, not a disappearance.</summary>
+    public void ClearDesiredDevice()
+    {
+        DesiredDeviceId = null;
+        DesiredDeviceName = null;
+    }
+
     public AudioDeviceInfo? SelectedDevice
     {
         get => _selectedDevice;
         set
         {
+            if (value != null)
+            {
+                DesiredDeviceId = value.Id;
+                DesiredDeviceName = value.FriendlyName;
+            }
             if (SetField(ref _selectedDevice, value))
             {
                 RaisePropertyChanged(nameof(DeviceTooltip));

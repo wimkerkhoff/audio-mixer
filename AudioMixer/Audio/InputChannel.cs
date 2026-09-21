@@ -434,6 +434,11 @@ public sealed class InputChannel : IDisposable
 
     public void Stop()
     {
+        // Outside the lock: WaveFileWriter finalises the RIFF header on Dispose, and a strip removed by
+        // a count change was previously left with a 0-frame header — a file that offline tools cannot
+        // read at all. Nothing else calls this on the way out; StopRecording only walks the SURVIVING
+        // channels, so the removed ones were simply abandoned.
+        StopAnalysisRecording();
         lock (_stateLock)
         {
             _captureActive = false;

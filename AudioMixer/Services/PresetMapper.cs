@@ -47,8 +47,8 @@ public static class PresetMapper
             Outputs = outputs.Select(o => new OutputPreset
             {
                 CustomLabel = o.CustomLabel,
-                DeviceId = o.SelectedDevice?.Id,
-                DeviceName = o.SelectedDevice?.FriendlyName,
+                DeviceId = o.SelectedDevice?.Id ?? o.DesiredDeviceId,
+                DeviceName = o.SelectedDevice?.FriendlyName ?? o.DesiredDeviceName,
                 AutoMixMode = o.AutoMixModeIndex,
                 LevelerEnabled = o.LevelerEnabled,
                 LevelerStrength = (int)o.LevelerStrength,

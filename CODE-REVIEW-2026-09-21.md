@@ -12,59 +12,6 @@ Line numbers are against `b8c8aae` and will drift as you edit — search for the
 
 Each of these was traced through the code end to end. Ordered by how badly it hurts a live service.
 
-### 1.4 Scene apply can be vetoed by the route guard
-
-- **Where:** `AudioMixer/ViewModels/SceneController.cs:131-149` (`Write`: mute → priority → routes,
-  per channel in index order), guards wired unconditionally at `MainViewModel.cs:778-784`,
-  `ChannelViewModel.Muted` setter `:95-99` and route setter `:459-463` refuse via the guard.
-- **Scenario:** rig in Singing with the lapel as source (lapel routed, room mics unrouted). Operator
-  taps Prayer. If the lapel has a lower index than the room mics it is written first: `Muted = true`
-  → `RouteGuard.CheckMute` sees it as the only cover on A and B → refused; `Routes[r].IsOn = false`
-  → `CheckUnroute` → refused. Room mics are then routed. Result: Prayer leaves the lapel routed and
-  unmuted (priority *is* cleared), and the status line flashes "Bus A would have no microphone".
-- **Why tests miss it:** `SceneTransformTests` tests the pure function; the guard lives above it.
-- **Fix:** skip the guards while `Scenes.IsApplying` (the scene invariant already guarantees the
-  end state), or write the plan in two passes: unmute/route-on for every channel first, then
-  route-off/mute.
-- **Test:** a VM-level test that wires the guards and applies Singing(Lapel) → Prayer, asserting
-  the lapel ends muted and unrouted.
-
-### 1.5 Reducing strips while recording crashes the process
-
-- **Where:** meter tick `MainViewModel.cs:231-236` calls `_decisions?.Sample(..., i =>
-  Channels[i].PostPeakDb, (i, o) => _engine.Inputs[i].GetAutoMixGain(o), ...)`;
-  `DecisionTrack._inputs` is fixed at record start (`DecisionTrack.cs:37`) and `Sample` loops to it
-  (`:90`); `ApplyInputCount` (`:830-838`) removes `Channels[i]` and shrinks `_engine.Inputs`.
-- **Effect:** recording auto-starts 12 s after launch, so this is the normal state. Setting "Mic
-  strips" from 5 to 3 → next 33 ms tick → `ArgumentOutOfRangeException` on the dispatcher →
-  `App.DispatcherUnhandledException` (`App.xaml.cs:75`) records the crash but does not set
-  `Handled` → process exits.
-- **Second half:** `StopRecording` (`:1357`) only walks surviving `Channels`, and
-  `InputChannel.Stop()`/`Dispose()` never call `StopAnalysisRecording`, so the removed strips'
-  `diag-input*.wav` are left open with a 0-frame RIFF header.
-- **Fix:** stop the recording before a count change (and say so in the status line), or make
-  `Sample` clamp to `Math.Min(_inputs, Channels.Count)`; and call `StopAnalysisRecording()` from
-  `InputChannel.Stop()`.
-
-### 1.6 A device absent at launch is forgotten by the next autosave
-
-- **Where:** `ChannelViewModel.SelectedDevice` setter (`:44-51`) seeds `DesiredDeviceId/Name` only
-  when assigned a non-null device; `ApplyPreset` (`MainViewModel.cs:1228-1230`) assigns
-  `DeviceResolver.Resolve(...)` directly, which is null when the endpoint is not enumerated;
-  `PresetMapper.cs:34-35` falls back to `Desired*`, still null. Nothing else writes `Desired*`.
-- **Scenario:** preset holds "Wireless PRO RX" on strip 2; the RX is in its charging case at launch
-  (it enumerates as storage — CLAUDE.md gotcha). Resolve → null. Any later setting change, or
-  `Dispose` → `SavePreset`, writes `DeviceId=null DeviceName=null`. Plugging the RX in later:
-  `ReattachDesiredDevices` has nothing to match. This is the 2026-09-20 "app erases its own memory"
-  bug, surviving for the launch case.
-- **Fix:** in `ApplyPreset`, set `Channels[i].DesiredDeviceId = cp.DeviceId` and `DesiredDeviceName
-  = cp.DeviceName` *before* resolving, regardless of the result. Then add the same `Desired*` memory
-  to `OutputViewModel` (unplugging the USB headset today permanently unbinds bus A —
-  `OutputViewModel.cs:322-325` nulls the device, `PresetMapper.cs:47-48` has no fallback, no output
-  reattach exists).
-- **Test:** `PresetMapperTests` — a channel whose `SelectedDevice` is null but whose preset had a
-  device round-trips the id and name.
-
 ### 1.7 Retention deletes the replay fixtures
 
 - **Where:** `RecordingRetention` is built over `analysis/` and `recordings/`

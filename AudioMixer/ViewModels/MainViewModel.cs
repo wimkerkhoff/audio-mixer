@@ -231,8 +231,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             CheckRecordingLimits();
             _decisions?.Sample(
                 o => _engine.AutoMixActiveInput(o),
-                i => Channels[i].PostPeakDb,
-                (i, o) => _engine.Inputs[i].GetAutoMixGain(o),
+                // Clamped as well as stopped above: the tick runs on a timer and must never be able to
+                // index past a list that shrank under it, whatever else changes.
+                i => i < Channels.Count ? Channels[i].PostPeakDb : -120.0,
+                (i, o) => i < _engine.Inputs.Length ? _engine.Inputs[i].GetAutoMixGain(o) : 1f,
                 o => Outputs[o].LevelerGainDb,
                 Scenes.Current?.ToString() ?? "Custom");
             RefreshHealth();
@@ -903,6 +905,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private bool Allow(RouteVerdict verdict)
     {
+        // A scene rewrites every channel at once, and Write walks them in index order, so the guard
+        // sees torn intermediate states: applying Prayer from Singing(Lapel) muted the lapel FIRST,
+        // while it was still the only cover on both buses, and the guard refused — leaving the lapel
+        // routed and unmuted with "Bus A would have no microphone" on the status line. The scene's own
+        // end state is guaranteed correct by SceneTransform (which is tested); the guard exists for
+        // the operator panel's direct mute/route toggles, which have no such plan.
+        if (Scenes.IsApplying) return true;
         if (verdict.Allowed) return true;
         StatusText = verdict.Reason!;
         return false;
@@ -925,6 +934,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void ApplyInputCount(int count)
     {
+        // Recording is always on, so this is the NORMAL state, and the decisions CSV fixes its column
+        // count when it opens: shrinking the strip count left the meter tick indexing Channels past
+        // the end 33 ms later, throwing on the dispatcher. App's handler records the crash but does
+        // not mark it handled, so the process exited mid-service. Stopping first also gives every
+        // removed strip's diag WAV a finalised header instead of abandoning it.
+        if (IsRecording && count != Channels.Count)
+        {
+            StopRecording();
+            StatusText = $"Recording stopped — changing to {count} mic strips starts a new one.";
+        }
+
         bool prevAutosave = _suppressAutosave;
         bool prevRebuild = _suppressRebuild;
         _suppressAutosave = true;
@@ -1102,6 +1122,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void ReattachDesiredDevices()
     {
+        // Buses first: a headset coming back should start playing again without the operator noticing
+        // it ever went. Claims are per-list, so outputs cannot collide with input strips.
+        var usedOutputs = new HashSet<string>(
+            Outputs.Where(o => o.SelectedDevice != null).Select(o => o.SelectedDevice!.Id));
+        foreach (var op in Outputs)
+        {
+            if (op.SelectedDevice != null) continue;
+            if (op.DesiredDeviceId == null && op.DesiredDeviceName == null) continue;
+
+            var found = DeviceResolver.Resolve(
+                _allOutputDevices, op.DesiredDeviceId, op.DesiredDeviceName, usedOutputs);
+            if (found == null) continue;
+
+            op.SelectedDevice = found;
+            AudioLog.Write($"Bus {OutputViewModel.Tag(op.Index)} reattached to '{found.FriendlyName}' "
+                         + $"(desired '{op.DesiredDeviceName}') after it reappeared.");
+        }
+
         for (int i = 0; i < Channels.Count; i++)
         {
             var ch = Channels[i];
@@ -1367,6 +1405,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 var op = preset.Outputs[o];
                 if (!string.IsNullOrEmpty(op.CustomLabel)) Outputs[o].CustomLabel = op.CustomLabel;
+                Outputs[o].RestoreDesiredDevice(op.DeviceId, op.DeviceName);
                 var match = DeviceResolver.Resolve(_allOutputDevices, op.DeviceId, op.DeviceName, usedOutputIds);
                 Outputs[o].SelectedDevice = match;
                 // Migrate presets written before Share was removed: the enum was Off=0, Share=1,
