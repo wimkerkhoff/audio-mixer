@@ -81,18 +81,44 @@ public class PersistedPropertiesTests
         Assert.Contains(raised, PersistedProperties.Contains);
     }
 
+    /// <summary>
+    /// IsOn is persisted, so the per-route refresh on the meter tick must not raise it. Raising a
+    /// persisted name at 30 Hz restarts the 500 ms autosave debounce every 33 ms, so it can never
+    /// elapse and the whole session's settings are lost to a kill instead of a clean exit.
+    /// </summary>
     [Fact]
-    public void RouteLedRefresh_DoesNotRaiseTheRouteToggleItself()
+    public void RouteSelectionRefresh_DoesNotRaiseTheRouteToggleItself()
     {
-        // IsOn is persisted, so the per-bus LED refresh must raise only IsDucking. Raising IsOn here
-        // is the exact mistake that would kill autosave via the route toggles.
         using var input = new InputChannel(AudioEngine.OutputCount);
         var route = new RouteToggleViewModel(0, input);
 
-        var raised = CaptureRaised(route, route.RefreshLed);
+        var raised = CaptureRaised(route, route.RefreshSelection);
 
-        Assert.Contains(nameof(RouteToggleViewModel.IsDucking), raised);
+        Assert.Contains(nameof(RouteToggleViewModel.IsSelected), raised);
         Assert.DoesNotContain(nameof(RouteToggleViewModel.IsOn), raised);
+    }
+
+    /// <summary>
+    /// The whole-tick version of the same invariant, which is the one that actually matters: whatever
+    /// RefreshMeters comes to raise in future, none of it may be persisted. This is stronger than
+    /// checking one method, and it is the test that would have caught the original bug directly.
+    /// </summary>
+    [Fact]
+    public void TheMeterTickRaisesNothingThatIsPersisted()
+    {
+        using var f = new VmFixture(inputs: 1);
+        var ch = f.Channels[0];
+
+        var raised = new List<string>();
+        ch.PropertyChanged += (_, e) => raised.Add(e.PropertyName!);
+        foreach (var r in ch.Routes) r.PropertyChanged += (_, e) => raised.Add(e.PropertyName!);
+
+        ch.RefreshMeters();
+
+        Assert.NotEmpty(raised);
+        foreach (var name in raised)
+            Assert.False(PersistedProperties.Contains(name),
+                         $"RefreshMeters raises '{name}', which is persisted — autosave would never elapse");
     }
 
     [Fact]

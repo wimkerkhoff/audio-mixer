@@ -66,13 +66,30 @@ public sealed class VuMeter : Control
         DefaultStyleKeyProperty.OverrideMetadata(typeof(VuMeter), new FrameworkPropertyMetadata(typeof(VuMeter)));
     }
 
+    // Frozen and shared: OnRender runs 30 times a second per meter, and every strip has one — so a
+    // brush or pen allocated here is allocated hundreds of times a second and then collected. Freezing
+    // also lets WPF skip the change-tracking it does on a mutable Freezable and use them across
+    // threads. None of these depend on instance state, so they are static.
+    private static readonly Brush Background = Frozen(new SolidColorBrush(Color.FromRgb(20, 20, 24)));
+    private static readonly Brush BandFill = Frozen(new SolidColorBrush(Color.FromArgb(56, 79, 163, 236)));
+    private static readonly Pen BandEdge =
+        Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(150, 79, 163, 236))), 1));
+    private static readonly Pen HoldPen = Frozen(new Pen(Brushes.White, 1.5));
+    private static readonly Pen TickPen =
+        Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255))), 0.5));
+
+    private static T Frozen<T>(T f) where T : Freezable
+    {
+        f.Freeze();
+        return f;
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         var size = RenderSize;
         if (size.Width <= 0 || size.Height <= 0) return;
 
-        var bgBrush = new SolidColorBrush(Color.FromRgb(20, 20, 24));
-        dc.DrawRectangle(bgBrush, null, new Rect(0, 0, size.Width, size.Height));
+        dc.DrawRectangle(Background, null, new Rect(0, 0, size.Width, size.Height));
 
         double peak = Math.Clamp(PeakDb, MinDb, MaxDb);
         double hold = Math.Clamp(HoldDb, MinDb, MaxDb);
@@ -99,22 +116,19 @@ public sealed class VuMeter : Control
         double lo = Frac(TargetDb - TargetHalfWidthDb);
         double hi = Frac(TargetDb + TargetHalfWidthDb);
 
-        var fill = new SolidColorBrush(Color.FromArgb(56, 79, 163, 236));
-        var edge = new Pen(new SolidColorBrush(Color.FromArgb(150, 79, 163, 236)), 1);
-
         if (Orientation == Orientation.Horizontal)
         {
             double x = size.Width * lo, w = size.Width * (hi - lo);
-            dc.DrawRectangle(fill, null, new Rect(x, 0, w, size.Height));
-            dc.DrawLine(edge, new Point(x, 0), new Point(x, size.Height));
-            dc.DrawLine(edge, new Point(x + w, 0), new Point(x + w, size.Height));
+            dc.DrawRectangle(BandFill, null, new Rect(x, 0, w, size.Height));
+            dc.DrawLine(BandEdge, new Point(x, 0), new Point(x, size.Height));
+            dc.DrawLine(BandEdge, new Point(x + w, 0), new Point(x + w, size.Height));
         }
         else
         {
             double y = size.Height * (1 - hi), h = size.Height * (hi - lo);
-            dc.DrawRectangle(fill, null, new Rect(0, y, size.Width, h));
-            dc.DrawLine(edge, new Point(0, y), new Point(size.Width, y));
-            dc.DrawLine(edge, new Point(0, y + h), new Point(size.Width, y + h));
+            dc.DrawRectangle(BandFill, null, new Rect(0, y, size.Width, h));
+            dc.DrawLine(BandEdge, new Point(0, y), new Point(size.Width, y));
+            dc.DrawLine(BandEdge, new Point(0, y + h), new Point(size.Width, y + h));
         }
     }
 
@@ -157,16 +171,14 @@ public sealed class VuMeter : Control
         if (holdFrac > 0)
         {
             double y = h - h * holdFrac;
-            var pen = new Pen(Brushes.White, 1.5);
-            dc.DrawLine(pen, new Point(0, y), new Point(w, y));
+            dc.DrawLine(HoldPen, new Point(0, y), new Point(w, y));
         }
 
-        var tickPen = new Pen(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)), 0.5);
         for (int db = -60; db <= 0; db += 6)
         {
             double frac = (db - MinDb) / (MaxDb - MinDb);
             double y = h - h * frac;
-            dc.DrawLine(tickPen, new Point(0, y), new Point(w * 0.25, y));
+            dc.DrawLine(TickPen, new Point(0, y), new Point(w * 0.25, y));
         }
     }
 
@@ -199,8 +211,7 @@ public sealed class VuMeter : Control
         if (holdFrac > 0)
         {
             double x = w * holdFrac;
-            var pen = new Pen(Brushes.White, 1.5);
-            dc.DrawLine(pen, new Point(x, 0), new Point(x, h));
+            dc.DrawLine(HoldPen, new Point(x, 0), new Point(x, h));
         }
     }
 }

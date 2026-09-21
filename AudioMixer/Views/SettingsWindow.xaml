@@ -61,6 +61,7 @@
                                         <ColumnDefinition Width="74"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBox Grid.Column="0" Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"
                                              MaxLength="20" FontSize="11" VerticalAlignment="Center"
@@ -77,6 +78,16 @@
                                         <ComboBoxItem Content="Left"/>
                                         <ComboBoxItem Content="Right"/>
                                     </ComboBox>
+                                    <!-- The only way to unbind a strip. Without it a picker can be
+                                         re-pointed but never emptied, and since the strip now REMEMBERS
+                                         what it wants across a replug, "forget it" had no control at
+                                         all: an unplugged receiver would be re-grabbed the moment it
+                                         came back, even when the operator had moved on. -->
+                                    <Button Grid.Column="3" Content="✕" Width="22" Margin="4,0,0,0"
+                                            FontSize="11" Padding="0"
+                                            Background="#242A35" Foreground="#C7C7D2" BorderBrush="#3A3A44"
+                                            Command="{Binding ClearDeviceCommand}"
+                                            ToolTip="Unbind this strip and forget the device it wants"/>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

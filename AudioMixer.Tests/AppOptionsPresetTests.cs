@@ -64,12 +64,31 @@ public class AppOptionsPresetTests
     }
 
     [Fact]
-    public void TheLowCutIsGlobalAndDefaultsTo80()
+    public void TheLowCutRoundTripsAndDistinguishesAbsentFromZero()
     {
-        Assert.Equal(80, new MixerPreset().LowCutHz);
+        // Null, not 80. A non-null default made "the preset predates this field" indistinguishable
+        // from "the operator chose 80", so the per-channel migration behind it could never run —
+        // `LowCutHz > 0` was true for every preset ever written.
+        Assert.Null(new MixerPreset().LowCutHz);
 
         var back = JsonSerializer.Deserialize<MixerPreset>(
             JsonSerializer.Serialize(new MixerPreset { LowCutHz = 100 }))!;
         Assert.Equal(100, back.LowCutHz);
+
+        // A saved 0 is a real choice (filter off) and must survive as itself.
+        var off = JsonSerializer.Deserialize<MixerPreset>(
+            JsonSerializer.Serialize(new MixerPreset { LowCutHz = 0 }))!;
+        Assert.Equal(0, off.LowCutHz);
+    }
+
+    /// <summary>A preset written before the global low-cut existed has no field at all — that is the
+    /// case the migration is for, and it has to read as null rather than as a value.</summary>
+    [Fact]
+    public void APresetWithoutTheFieldReadsAsAbsent()
+    {
+        var back = JsonSerializer.Deserialize<MixerPreset>(
+            """{ "Name": "Default", "Channels": [] }""")!;
+
+        Assert.Null(back.LowCutHz);
     }
 }

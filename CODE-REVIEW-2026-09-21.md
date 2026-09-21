@@ -14,33 +14,11 @@ Each of these was traced through the code end to end. Ordered by how badly it hu
 
 ### 1.10 Medium — reported by the review, not independently re-traced
 
-- [ ] Old-preset low-cut migration is unreachable: `MixerPreset.LowCutHz` defaults to 80 when
-      absent (`MixerPreset.cs:255`), so `preset.LowCutHz > 0` (`MainViewModel.cs:1200`) is always
-      true and `Channels[0].HighPassHz` is never consulted; a saved `0` plus a channel value of 80
-      comes up at 80. Use `int?`.
 - [ ] Renaming a mic clears the scene keystroke by keystroke: `SettingsWindow.xaml:65`
       `UpdateSourceTrigger=PropertyChanged` + `CustomLabel` in `PersistedProperties` →
       `MarkCustomised`. `LapelOptions` is also not re-raised on rename.
-- [ ] A refused mute/unroute is logged as the opposite action: the setters raise `PropertyChanged`
-      on refusal (`ChannelViewModel.cs:95-99, 459-463`) and `DescribeChange` (`MainViewModel.cs:
-      1123-1151`) reads the unchanged value → "X unmuted" in the action log, and the scene is cleared.
-- [ ] Event-handler leak: `RouteToggleViewModel.AttachOutput` (`ChannelViewModel.cs:437`) subscribes
-      to `OutputViewModel.PropertyChanged`; `DetachChannel` never unsubscribes.
 - [ ] `preset.json` has no schema version; `AutoMixMode` `1` now means Gate and used to mean Share,
       `Role == 0` is ambiguous. Add `Version`.
-- [ ] `ClearDeviceCommand` is bound nowhere; the Settings picker has no "(none)" item, so a strip
-      cannot be unbound or made to forget its desired device.
-- [ ] `VuMeter.OnRender` allocates unfrozen brushes/pens per render at 30 Hz per meter
-      (`VuMeter.cs:393, 421-422, 479, 483, 521`).
-- [ ] `ChannelViewModel.RefreshMeters` raises 16 names + 2 per route at 30 Hz per strip; the panel
-      binds only `PostPeakDb`, `PostPeakHoldDb`, `RowState`, `IsSelected` (Diagnostics adds
-      `CalibrationText`). Prune to what is bound. `RefreshHealth` also rebuilds `Alerts` every second
-      while any alert message embeds a live seconds count.
-- [ ] Plausible, needs a WPF run: `LapelIndex` setter (`MainViewModel.cs:405-406`) re-raises
-      `LapelOptions`, replacing the ComboBox `ItemsSource` while `SelectedIndex` is bound TwoWay,
-      which can push `-1` back and un-pick the lapel. The re-raise is unnecessary; remove it and check
-      with `--open-all --log`.
-
 ---
 
 ## 2. Anker-era leftovers

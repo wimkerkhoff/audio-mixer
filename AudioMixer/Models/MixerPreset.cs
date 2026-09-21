@@ -22,7 +22,13 @@ public sealed class MixerPreset
     /// again is a mic on an instrument, where an organ pedal or piano low octave lives in the band
     /// this removes.
     /// </summary>
-    public int LowCutHz { get; set; } = 80;
+    /// <summary>
+    /// Nullable so an ABSENT value is distinguishable from a saved 0. With a non-null default of 80
+    /// the migration below it could never run: `LowCutHz > 0` was true for every preset ever written,
+    /// including ones from before the field existed, so the per-channel value it was meant to read
+    /// was never consulted.
+    /// </summary>
+    public int? LowCutHz { get; set; }
 }
 
 public sealed class ChannelPreset

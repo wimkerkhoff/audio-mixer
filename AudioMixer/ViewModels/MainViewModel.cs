@@ -420,7 +420,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Channels[i].IsPriority = isLapel;
             }
             RaisePropertyChanged();
-            RaisePropertyChanged(nameof(LapelOptions));
+            // LapelOptions is NOT re-raised here. It lists the strips' names and does not depend on
+            // which one is the lapel, so replacing the ComboBox's ItemsSource mid-set achieves
+            // nothing — and it can push SelectedIndex back as -1 through the TwoWay binding, which
+            // un-picks the lapel the operator just chose. Renames raise it instead, from
+            // OnSettingChanged, which is the case that actually changes the list.
         }
     }
 
@@ -479,7 +483,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public int[] LowCutOptions { get; } = ChannelViewModel.HighPassOptions;
 
-    private int _lowCutHz = 80;
+    /// <summary>80 Hz: rumble, handling and headroom. Never an S/N fix — finding 5 measured a
+    /// high-pass moving speech-band S/N by 0.1-0.2 dB.</summary>
+    public const int DefaultLowCutHz = 80;
+
+    private int _lowCutHz = DefaultLowCutHz;
     public int LowCutHz
     {
         get => _lowCutHz;
@@ -915,6 +923,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         ch.PropertyChanged -= OnSettingChanged;
         foreach (var r in ch.Routes) r.PropertyChanged -= OnSettingChanged;
+        // The outputs outlive every strip, so a route left subscribed to one keeps this discarded
+        // strip alive and reacting for the rest of the session.
+        ch.DetachOutputs();
     }
 
     private void ApplyInputCount(int count)
@@ -1239,6 +1250,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (_suppressAutosave) return;
         if (!PersistedProperties.Contains(e.PropertyName)) return;
 
+        // Renaming a strip changes what the lapel picker shows, and nothing else raises it.
+        if (e.PropertyName == nameof(ChannelViewModel.CustomLabel))
+            RaisePropertyChanged(nameof(LapelOptions));
+
+        // A veto raises the same notification a real change does, so that the control snaps back —
+        // but the value behind it is unchanged, and everything below reads the value. Logging it
+        // recorded the OPPOSITE action ("LAPEL unmuted" when a mute was refused), cleared the scene
+        // the operator had not left, and restarted the autosave for a write that never happened.
+        if (sender is ChannelViewModel { ChangeRefused: true }
+            or RouteToggleViewModel { ChangeRefused: true }) return;
+
         // A hand-edit invalidates the active scene, so Simple mode stops claiming one. Guarded,
         // because applying a scene writes these same properties.
         if (Scenes is { IsApplying: false })
@@ -1335,9 +1357,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _warnOnBluetoothMics = preset.WarnOnBluetoothMics;
             // Older presets have no global value; take the first channel's, which is what the operator
             // was actually hearing, rather than silently imposing the default on a working rig.
-            _lowCutHz = preset.LowCutHz > 0 || preset.Channels.Length == 0
-                ? preset.LowCutHz
-                : preset.Channels[0].HighPassHz;
+            // Null means the preset predates the global low-cut, so take the first strip's own
+            // value — that is what the operator had. A saved 0 is a real choice (filter off) and must
+            // survive, which is exactly what the old non-null default could not express.
+            _lowCutHz = preset.LowCutHz
+                ?? (preset.Channels.Length > 0 ? preset.Channels[0].HighPassHz : DefaultLowCutHz);
             RaisePropertyChanged(nameof(HideVirtualInputs));
             RaisePropertyChanged(nameof(HideVoicemeeterOutputs));
             RaisePropertyChanged(nameof(WarnOnBluetoothMics));

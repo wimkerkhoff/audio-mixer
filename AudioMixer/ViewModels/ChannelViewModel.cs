@@ -104,6 +104,16 @@ public sealed class ChannelViewModel : ViewModelBase
     public Func<int, bool>? MuteGuard { get; set; }
     public Func<int, int, bool>? RouteGuard { get; set; }
 
+    /// <summary>
+    /// True when the LAST PropertyChanged this strip raised was a veto snapping the control back, not
+    /// a change. The two are indistinguishable to a listener otherwise — a refused mute raises
+    /// `Muted` with `Muted` still false — and MainViewModel's listener took that at face value: it
+    /// wrote "LAPEL unmuted" into the session action log for an action that was refused, cleared the
+    /// active scene, and restarted the autosave. A record that reports the opposite of what happened
+    /// is worse than one that reports nothing, because step 8 of the session review reads it.
+    /// </summary>
+    internal bool ChangeRefused { get; private set; }
+
     private bool _muted;
     public bool Muted
     {
@@ -114,7 +124,9 @@ public sealed class ChannelViewModel : ViewModelBase
             // could trap the channel in the muted state it was refused out of.
             if (value && !_muted && MuteGuard != null && !MuteGuard(Index))
             {
+                ChangeRefused = true;
                 RaisePropertyChanged();
+                ChangeRefused = false;
                 return;
             }
             if (SetField(ref _muted, value)) _channel.Muted = value;
@@ -147,8 +159,6 @@ public sealed class ChannelViewModel : ViewModelBase
     public static double FractionFor(double db) =>
         Math.Clamp((db - MeterFloorDb) / -MeterFloorDb, 0, 1);
 
-    /// <summary>0..1 across the meter, from the post-fader peak the operator is actually sending.</summary>
-    public double MeterFraction => FractionFor(PostPeakDb);
 
     /// <summary>Left edge and width of the target band, as fractions of the meter.</summary>
     public static double TargetBandStart => FractionFor(TargetDb - TargetHalfWidthDb);
@@ -335,6 +345,17 @@ public sealed class ChannelViewModel : ViewModelBase
         for (int o = 0; o < Routes.Length && o < outputs.Length; o++) Routes[o].AttachOutput(outputs[o]);
     }
 
+    /// <summary>
+    /// Unhooks every route from its output. Needed when a strip is REMOVED by a count change: the
+    /// OutputViewModels outlive the app, so a route left subscribed keeps the discarded strip alive
+    /// and responding to bus changes forever. Re-attaching was always safe (AttachOutput unsubscribes
+    /// first); only removal leaked.
+    /// </summary>
+    public void DetachOutputs()
+    {
+        foreach (var r in Routes) r.DetachOutput();
+    }
+
     public ChannelViewModel(
         int index,
         InputChannel channel,
@@ -359,21 +380,25 @@ public sealed class ChannelViewModel : ViewModelBase
         ClearDeviceCommand = new RelayCommand(() => { ClearDesiredDevice(); SelectedDevice = null; });
     }
 
+    /// <summary>
+    /// Raised 30 times a second per strip, so this list is a running cost and every entry has to earn
+    /// its place. It used to raise thirteen names plus two per route; the UI binds four of them.
+    ///
+    /// The unbound ones were not merely wasted — the meter tick and the autosave debounce share one
+    /// PropertyChanged stream, so every name raised here is a name that must stay out of
+    /// PersistedProperties or autosave silently stops working (see the gotcha in CLAUDE.md). Fewer
+    /// raises is less surface for that.
+    ///
+    /// IsDucking / IsAutoMixActive / IsRoutedAnywhere are deliberately absent: RowState's getter reads
+    /// them itself, so raising RowState already refreshes anything that depends on them.
+    /// </summary>
     public void RefreshMeters()
     {
-        RaisePropertyChanged(nameof(InputPeakDb));
         RaisePropertyChanged(nameof(PostPeakDb));
-        RaisePropertyChanged(nameof(InputPeakHoldDb));
         RaisePropertyChanged(nameof(PostPeakHoldDb));
-        RaisePropertyChanged(nameof(IsDucking));
-        RaisePropertyChanged(nameof(IsAutoMixActive));
         RaisePropertyChanged(nameof(RowState));
-        foreach (var r in Routes) r.RefreshSelection();
-        RaisePropertyChanged(nameof(MeterFraction));
         RaisePropertyChanged(nameof(CalibrationText));
-        foreach (var r in Routes) r.RefreshLed();
-        RaisePropertyChanged(nameof(HasDevice));
-        RaisePropertyChanged(nameof(IsRoutedAnywhere));
+        foreach (var r in Routes) r.RefreshSelection();
     }
 
     public void RefreshDevices(IEnumerable<AudioDeviceInfo> devices)
@@ -424,8 +449,6 @@ public sealed class RouteToggleViewModel : ViewModelBase
     // Only IsDucking is polled. IsOn must NOT be raised here: it is a persisted property, so a
     // 30 Hz notification would reset the autosave debounce forever (see PersistedProperties). It
     // changes only via the toggle or ApplyPreset, both of which already raise it.
-    public void RefreshLed() => RaisePropertyChanged(nameof(IsDucking));
-
     // Lets the toggle's tooltip follow the (renameable) output label.
     public void AttachOutput(OutputViewModel output)
     {
@@ -433,6 +456,12 @@ public sealed class RouteToggleViewModel : ViewModelBase
         _output = output;
         _output.PropertyChanged += OnOutputChanged;
         RaiseLabels();
+    }
+
+    public void DetachOutput()
+    {
+        if (_output != null) _output.PropertyChanged -= OnOutputChanged;
+        _output = null;
     }
 
     private void OnOutputChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -455,13 +484,19 @@ public sealed class RouteToggleViewModel : ViewModelBase
             // refuse a change that was about to make things better.
             if (!value && IsOn && Guard != null && !Guard(_outputIndex))
             {
+                ChangeRefused = true;
                 RaisePropertyChanged();
+                ChangeRefused = false;
                 return;
             }
             _channel.SetRoute(_outputIndex, value);
             RaisePropertyChanged();
         }
     }
+
+    /// <summary>As <see cref="ChannelViewModel.ChangeRefused"/>: this raise is the toggle snapping
+    /// back from a veto, not a routing change.</summary>
+    internal bool ChangeRefused { get; private set; }
 
     public RouteToggleViewModel(int outputIndex, InputChannel channel)
     {
