@@ -916,6 +916,14 @@ later judgment.
   rewrite every channel and output at once and a wrong rule drops the congregation off the stream
   silently; alert rules fire in situations nobody can stage on demand. Keep new rules in the pure
   layer so they stay unit-testable — do NOT put judgement in the view models.
+  **An alert names its remedy as a value, not a delegate** (`HealthAlert.Fix`, a `FixKind`, plus a
+  `Target` strip/bus index); `MainViewModel.ApplyFix` carries it out and `SimpleWindow` handles the two
+  kinds that need a window. That split keeps the rules layer free of view models while still making
+  "does this alert offer the right fix, aimed at the right strip" a pure test — `Target` is the half
+  that fails silently, since a fix pointed at the wrong index clears priority on somebody else's mic.
+  Alerts whose remedy is physical (a flat transmitter, a mic out of RF range) or ambiguous (a silent
+  bus: routing, device, or the far end?) deliberately carry `FixKind.None` and stay plain text. A
+  button that cannot help is worse than a sentence.
 
 - **Input strips live in a `UniformGrid Rows="1"`, which divides the column equally and IGNORES each
   child's `MinWidth`.** A fixed-width window crams N strips into whatever space exists and clips the

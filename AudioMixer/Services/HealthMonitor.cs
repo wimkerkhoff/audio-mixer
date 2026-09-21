@@ -4,9 +4,46 @@ namespace AudioMixer.Services;
 
 public enum AlertSeverity { Info, Warning, Critical }
 
+/// <summary>
+/// What the app can do about an alert, as a value rather than a delegate.
+///
+/// The rules layer must stay free of view models (a wrong rule drops the congregation off the stream,
+/// so it is kept pure and unit-tested), but an alert a volunteer cannot act on is noise — and noise
+/// teaches people to ignore the window that will one day matter. So the rule names the REMEDY and the
+/// view model owns the doing. That also keeps "does the level alert offer the right fix" a pure test.
+/// </summary>
+public enum FixKind
+{
+    /// <summary>Nothing to click: the fix is physical, or needs a judgement the app cannot make.</summary>
+    None,
+    Unmute,
+    RaiseVolume,
+    ClearPriority,
+    RouteToBuses,
+    SplitSides,
+    ResetCalibration,
+    Resync,
+    ReapplyScene,
+    OpenSettings,
+    OpenDiagnostics,
+}
+
 /// <param name="Id">Stable key, so an alert can be dismissed and not immediately re-raised.</param>
-/// <param name="Action">Short "how to fix", shown on the banner's button. Null when there is no action.</param>
-public sealed record HealthAlert(string Id, AlertSeverity Severity, string Message, string? Action = null);
+/// <param name="Action">Short "how to fix", shown on the button. Null when there is no action.</param>
+/// <param name="Fix">What the button does. <see cref="FixKind.None"/> leaves it as plain text.</param>
+/// <param name="Target">Which strip or bus the fix applies to; -1 when it applies to neither.</param>
+public sealed record HealthAlert(
+    string Id, AlertSeverity Severity, string Message, string? Action = null,
+    FixKind Fix = FixKind.None, int Target = -1)
+{
+    /// <summary>
+    /// "fix" or "none", for the Checks window's triggers. A string on purpose: a WPF trigger's Value is
+    /// parsed as text, so comparing it against a non-string binding fails SILENTLY — the trigger never
+    /// runs and there is no error anywhere. The repo already carries that scar (see the …State
+    /// properties on SceneController, which exist for exactly this reason).
+    /// </summary>
+    public string FixState => Fix == FixKind.None ? "none" : "fix";
+}
 
 public sealed record ChannelHealth(
     int Index,
@@ -91,13 +128,13 @@ public static class HealthMonitor
             {
                 alerts.Add(new HealthAlert($"out{o.Index}.nodevice", AlertSeverity.Critical,
                     $"{o.Label}: no output device selected — nothing is reaching it.",
-                    "Pick a device in Settings"));
+                    "Open Settings", FixKind.OpenSettings, o.Index));
                 continue;
             }
             if (o.Muted)
             {
                 alerts.Add(new HealthAlert($"out{o.Index}.muted", AlertSeverity.Warning,
-                    $"{o.Label} is muted.", "Unmute"));
+                    $"{o.Label} is muted.", "Unmute", FixKind.Unmute, o.Index));
                 continue;
             }
             // Only meaningful if the mics are actually producing something — an empty room is not a fault.
@@ -105,14 +142,15 @@ public static class HealthMonitor
             {
                 alerts.Add(new HealthAlert($"out{o.Index}.silent", AlertSeverity.Critical,
                     $"{o.Label} has been silent for {o.SecondsSinceSound:F0}s while mics are live.",
-                    "Check routing"));
+                    "Check its routing and device"));
             }
         }
 
         if (live.Count == 0)
         {
             alerts.Add(new HealthAlert("inputs.none", AlertSeverity.Critical,
-                "No microphone is routed and unmuted — the stream has no source.", "Open Advanced"));
+                "No microphone is routed and unmuted — the stream has no source.",
+                "Switch a mic's buses back on"));
         }
 
         // An output at zero volume is not muted and has a device, so every rule above passes while the
@@ -122,7 +160,7 @@ public static class HealthMonitor
         {
             alerts.Add(new HealthAlert($"out{o.Index}.novolume", AlertSeverity.Warning,
                 $"{o.Label} volume is turned down to {o.VolumePercent:F0}% — you will not hear it.",
-                "Turn it up"));
+                "Turn it up", FixKind.RaiseVolume, o.Index));
         }
 
         // A strip routed to a bus with nothing bound to it is one someone meant to use. Unrouted empty
@@ -131,7 +169,7 @@ public static class HealthMonitor
         {
             alerts.Add(new HealthAlert($"in{c.Index}.nodevice", AlertSeverity.Warning,
                 $"{c.Label} has no microphone assigned.",
-                "Pick one, or switch its buses off"));
+                "Open Settings", FixKind.OpenSettings, c.Index));
         }
 
         // A cumulative median that no longer matches what the mic is doing now. The operator cannot be
@@ -143,7 +181,7 @@ public static class HealthMonitor
         {
             alerts.Add(new HealthAlert($"in{c.Index}.stalecal", AlertSeverity.Warning,
                 $"{c.Label}'s level has changed since it was last measured — the reading below is out of date.",
-                "Reset calibration in Diagnostics"));
+                "Reset calibration", FixKind.ResetCalibration, c.Index));
         }
 
         // Level, the fault that ran a whole meeting unnoticed. Phrased as something a volunteer can
@@ -173,7 +211,7 @@ public static class HealthMonitor
             var names = string.Join(" and ", g.Select(c => c.Label));
             alerts.Add(new HealthAlert($"in{stereo[0].Index}.split", AlertSeverity.Warning,
                 $"{names} share one receiver but are not split — both carry the same blended audio.",
-                "Set one to Left and the other to Right"));
+                "Split them L / R", FixKind.SplitSides, stereo[0].Index));
         }
 
         // --- the priority-duck hazard ----------------------------------------------------------
@@ -186,7 +224,7 @@ public static class HealthMonitor
                 alerts.Add(new HealthAlert($"in{c.Index}.idlepriority", AlertSeverity.Warning,
                     $"{c.Label} is armed as priority but has been silent {c.SecondsSinceSound / 60:F0} min — " +
                     "if it is bumped it will duck every room mic off the stream.",
-                    "Clear priority"));
+                    "Clear priority", FixKind.ClearPriority, c.Index));
             }
         }
 
@@ -197,7 +235,7 @@ public static class HealthMonitor
             {
                 alerts.Add(new HealthAlert($"in{c.Index}.singingpriority", AlertSeverity.Critical,
                     $"{c.Label} is still a priority mic during Singing — the congregation is being ducked off the stream.",
-                    "Re-apply Singing"));
+                    "Re-apply Singing", FixKind.ReapplyScene, c.Index));
             }
         }
 
@@ -205,7 +243,8 @@ public static class HealthMonitor
         foreach (var c in s.Channels.Where(c => c.IsPriority && !c.Routed && c.LevelDb > SpeechDb))
         {
             alerts.Add(new HealthAlert($"in{c.Index}.offair", AlertSeverity.Critical,
-                $"{c.Label} is live but not routed to any output — the presenter is off-air.", "Route it"));
+                $"{c.Label} is live but not routed to any output — the presenter is off-air.",
+                "Put it back on air", FixKind.RouteToBuses, c.Index));
         }
 
         // --- per-mic health ---------------------------------------------------------------------
@@ -216,7 +255,7 @@ public static class HealthMonitor
             {
                 alerts.Add(new HealthAlert($"in{c.Index}.stalled", AlertSeverity.Critical,
                     $"{c.Label} has stopped delivering audio ({c.SecondsSinceData:F0}s) — the device may have dropped.",
-                    "Resync"));
+                    "Resync", FixKind.Resync, c.Index));
                 continue;
             }
 

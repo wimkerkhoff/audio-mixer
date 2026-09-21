@@ -34,6 +34,13 @@ public partial class SimpleWindow : Window
             if (_vm.AlertCount > 0 && IsLoaded) Checks_Click(this, new RoutedEventArgs());
         };
         settle.Start();
+
+        // Two alert fixes need a window, and opening one is not the view model's job. It raises, we open.
+        _vm.FixNeedsWindow += kind =>
+        {
+            if (kind == Services.FixKind.OpenSettings) Settings_Click(this, new RoutedEventArgs());
+            else if (kind == Services.FixKind.OpenDiagnostics) Diagnostics_Click(this, new RoutedEventArgs());
+        };
     }
 
     private void Pin_Changed(object sender, RoutedEventArgs e) => Topmost = PinButton.IsChecked == true;

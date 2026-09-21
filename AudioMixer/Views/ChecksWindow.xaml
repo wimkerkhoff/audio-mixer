@@ -34,6 +34,48 @@
             <Setter Property="FontSize" Value="11"/>
         </Style>
 
+        <!-- The suggested fix, as a button that does it. These were labels until 2026-09-21, which for
+             a volunteer running the service alone is the same as no advice: they can read "Clear
+             priority" without knowing where that control lives. An alert nobody can act on is noise,
+             and noise teaches people to skim the window that will one day matter.
+
+             Alerts whose fix is physical (a flat transmitter, a mic out of RF range) keep a plain
+             label — inventing a button that cannot help would be worse than the text. -->
+        <Style x:Key="FixBtn" TargetType="Button">
+            <Setter Property="Background" Value="#2C3446"/>
+            <Setter Property="Foreground" Value="#CBD5EA"/>
+            <Setter Property="BorderBrush" Value="#44506B"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="Margin" Value="0,5,0,0"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#38425A"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+                <!-- No actionable fix: the row falls back to the plain caption below. -->
+                <DataTrigger Binding="{Binding FixState}" Value="none">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="FixText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8A92A5"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding FixState}" Value="none">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- Severity as a stripe, so what needs attention reads before any of it is read. -->
         <Style x:Key="Check" TargetType="Border">
             <Setter Property="Background" Value="#20242E"/>
@@ -77,8 +119,11 @@
                             <Border Style="{StaticResource Check}" Tag="{Binding Severity}">
                                 <StackPanel>
                                     <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="11.5"/>
-                                    <TextBlock Text="{Binding Action}" Style="{StaticResource Cap}"
-                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding Action}" Style="{StaticResource FixText}"/>
+                                    <Button Content="{Binding Action}" Style="{StaticResource FixBtn}"
+                                            Command="{Binding DataContext.ApplyFixCommand,
+                                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>

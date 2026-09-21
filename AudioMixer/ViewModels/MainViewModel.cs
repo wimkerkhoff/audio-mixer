@@ -182,6 +182,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         DismissVbCablePromptCommand = new RelayCommand(DismissVbCablePrompt);
         OpenDocumentationCommand = new RelayCommand(() => OpenUrl(DocsUrl));
         ResetCalibrationCommand = new RelayCommand(ResetCalibration);
+        ApplyFixCommand = new RelayCommand<HealthAlert>(ApplyFix, a => a.Fix != FixKind.None);
 
         _statusFade.Tick += (_, _) =>
         {
@@ -275,6 +276,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand UseLapelCommand { get; private set; } = null!;
     public RelayCommand UseRoomMicsCommand { get; private set; } = null!;
     public RelayCommand DismissAlertCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// Does the thing an alert suggests. Until 2026-09-21 every suggested fix was a label, which for a
+    /// volunteer running the service alone is the same as no advice at all — and an alert nobody can
+    /// act on teaches people to skim the window that will one day matter.
+    /// </summary>
+    public RelayCommand<HealthAlert> ApplyFixCommand { get; }
+
+    /// <summary>
+    /// Two fixes need a window, and windows are not the view model's to open. SimpleWindow subscribes
+    /// and owns the Show/Activate, which keeps the fix dispatcher testable.
+    /// </summary>
+    public event Action<FixKind>? FixNeedsWindow;
 
     public ObservableCollection<HealthAlert> Alerts { get; } = new();
 
@@ -626,6 +640,101 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         foreach (var input in _engine.Inputs) input.ResetCalibration();
         StatusText = "Calibration histograms cleared.";
         _session?.Action("calibration reset");
+    }
+
+    /// <summary>
+    /// Carries out an alert's suggested fix. Every branch is a change the operator could have made by
+    /// hand; nothing here decides anything the rules did not already decide, which is what keeps the
+    /// judgement in the pure layer.
+    ///
+    /// Recorded as an operator action, because from the session record's point of view clicking the
+    /// suggestion IS an intervention — and step 8 of the review asks whether each one helped.
+    /// </summary>
+    private void ApplyFix(HealthAlert alert)
+    {
+        var ch = alert.Target >= 0 && alert.Target < Channels.Count ? Channels[alert.Target] : null;
+        var op = alert.Target >= 0 && alert.Target < Outputs.Length ? Outputs[alert.Target] : null;
+
+        RunGuarded("Fix", () =>
+        {
+            switch (alert.Fix)
+            {
+                case FixKind.Unmute:
+                    if (op == null) return;
+                    op.Muted = false;
+                    StatusText = $"{op.TaggedLabel} unmuted.";
+                    break;
+
+                case FixKind.RaiseVolume:
+                    if (op == null) return;
+                    op.VolumePercent = 100f;
+                    StatusText = $"{op.TaggedLabel} turned up to 100%.";
+                    break;
+
+                case FixKind.ClearPriority:
+                    if (ch == null) return;
+                    ch.IsPriority = false;
+                    StatusText = $"{Label(ch)} is no longer the priority mic.";
+                    break;
+
+                case FixKind.RouteToBuses:
+                    // Putting a mic back ON air only ever adds, so RouteGuard has nothing to refuse.
+                    if (ch == null) return;
+                    foreach (var r in ch.Routes) r.IsOn = true;
+                    StatusText = $"{Label(ch)} routed to every bus.";
+                    break;
+
+                case FixKind.SplitSides:
+                    ApplySplit(ch);
+                    break;
+
+                case FixKind.ResetCalibration:
+                    if (ch == null) { ResetCalibration(); return; }
+                    _engine.Inputs[ch.Index].ResetCalibration();
+                    StatusText = $"{Label(ch)}'s calibration cleared — it will settle again as it is used.";
+                    break;
+
+                case FixKind.Resync:
+                    ResyncAudioCommand.Execute(null);
+                    return;   // Resync writes its own status and action
+
+                case FixKind.ReapplyScene:
+                    if (Scenes.Current is not Models.Scene scene) return;
+                    Scenes.Apply(scene);
+                    StatusText = $"{scene} re-applied.";
+                    break;
+
+                case FixKind.OpenSettings:
+                case FixKind.OpenDiagnostics:
+                    FixNeedsWindow?.Invoke(alert.Fix);
+                    return;   // opening a window is not an intervention worth recording
+
+                default:
+                    return;
+            }
+            _session?.Action($"fix: {alert.Id}");
+        });
+    }
+
+    /// <summary>
+    /// Two strips on one receiver, both Stereo, each carrying the same blend. Set the first to Left and
+    /// the second to Right — which is the ONLY correct answer, since a Wireless PRO in Split mode puts
+    /// TX1 on the left and TX2 on the right of the single endpoint.
+    /// </summary>
+    private void ApplySplit(ChannelViewModel? first)
+    {
+        if (first?.SelectedDevice == null) return;
+        var pair = Channels
+            .Where(c => c.SelectedDevice?.Id == first.SelectedDevice.Id
+                     && c.Source == Audio.ChannelSource.Stereo)
+            .OrderBy(c => c.Index)
+            .Take(2)
+            .ToList();
+        if (pair.Count < 2) return;
+
+        pair[0].Source = Audio.ChannelSource.Left;
+        pair[1].Source = Audio.ChannelSource.Right;
+        StatusText = $"{Label(pair[0])} set to Left, {Label(pair[1])} to Right.";
     }
 
     public void RefreshDiagnostics()
