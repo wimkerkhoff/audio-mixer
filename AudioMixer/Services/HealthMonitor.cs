@@ -22,7 +22,8 @@ public sealed record ChannelHealth(
     string? DeviceBus = null,
     string? DeviceId = null,
     int Side = 0,                 // 0 Stereo, 1 Left, 2 Right — see ChannelSource
-    float SpeechDb = float.NaN);  // settled calibration median; NaN until enough voiced buffers
+    float SpeechDb = float.NaN,   // settled calibration median; NaN until enough voiced buffers
+    bool CalibrationStale = false);
 
 public sealed record OutputHealth(
     int Index,
@@ -133,9 +134,21 @@ public static class HealthMonitor
                 "Pick one, or switch its buses off"));
         }
 
+        // A cumulative median that no longer matches what the mic is doing now. The operator cannot be
+        // expected to remember to reset by hand after every gain change, and the failure is nastier
+        // than forgetting: they raise a transmitter's gain, still see "quiet" because half a million
+        // old buffers are dragging the median, and conclude the change did not work. Raised BEFORE the
+        // level rule so the stale reading is explained rather than acted on.
+        foreach (var c in live.Where(c => c.CalibrationStale))
+        {
+            alerts.Add(new HealthAlert($"in{c.Index}.stalecal", AlertSeverity.Warning,
+                $"{c.Label}'s level has changed since it was last measured — the reading below is out of date.",
+                "Reset calibration in Diagnostics"));
+        }
+
         // Level, the fault that ran a whole meeting unnoticed. Phrased as something a volunteer can
         // do — they cannot act on a number, and the fix is never in this app.
-        foreach (var c in live.Where(c => !float.IsNaN(c.SpeechDb)))
+        foreach (var c in live.Where(c => !float.IsNaN(c.SpeechDb) && !c.CalibrationStale))
         {
             double off = c.SpeechDb - TargetSpeechDb;
             if (Math.Abs(off) < LevelToleranceDb) continue;

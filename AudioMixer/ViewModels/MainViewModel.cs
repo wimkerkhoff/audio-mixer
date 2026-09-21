@@ -21,6 +21,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private StateServer? _stateServer;
     private readonly DiagnosticsLog _diagnostics;
     private readonly SessionRecorder? _session;
+    private readonly DeviceWatcher _deviceWatcher;
     private bool _suppressAutosave;
     private bool _suppressRebuild;
     private bool _rebuildInProgress;
@@ -104,6 +105,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         _allInputDevices = AudioDeviceInfo.Enumerate(DataFlow.Capture);
         _allOutputDevices = AudioDeviceInfo.Enumerate(DataFlow.Render);
+
+        // Without this nothing ever notices a receiver being unplugged or plugged back in, so the
+        // reattach-on-replug logic could never run and the operator remapped by hand every time.
+        _deviceWatcher = new DeviceWatcher();
+        _deviceWatcher.DevicesChanged += () => RunOnUi(() =>
+        {
+            RefreshDevices();
+            StatusText = "Audio devices changed — rechecked.";
+        });
 
         for (int i = 0; i < _engine.InputCount; i++)
         {
@@ -201,11 +211,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public string AlertBadgeText => Alerts.Count == 0 ? "checks" : $"◎ {Alerts.Count}";
 
-    /// <summary>
-    /// The checks that are FINE, stated plainly. An operator who cannot diagnose gets no reassurance
-    /// from an empty list, and these also teach what the app is watching — "no idle priority mic
-    /// armed" is a hazard nobody would think to look for.
-    /// </summary>
     // --- Diagnostics: Session and Devices tabs ---------------------------------------------------
 
     /// <summary>
@@ -290,37 +295,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(LapelOptions));
         }
-    }
-
-    public IReadOnlyList<string> PassingChecks()
-    {
-        var ids = Alerts.Select(a => a.Id).ToHashSet();
-        var ok = new List<string>();
-
-        bool BusCovered(int o) => Channels.Any(c =>
-            c.SelectedDevice != null && !c.Muted && o < c.Routes.Length && c.Routes[o].IsOn);
-
-        if (!ids.Contains("inputs.none") && Outputs.Length > 0
-            && Enumerable.Range(0, Outputs.Length).All(BusCovered))
-        {
-            var counts = Enumerable.Range(0, Outputs.Length)
-                .Select(o => $"{OutputViewModel.Tag(o)}: {Channels.Count(c => c.SelectedDevice != null && !c.Muted && o < c.Routes.Length && c.Routes[o].IsOn)} mics");
-            ok.Add($"Both buses have a microphone.  {string.Join("  ·  ", counts)}");
-        }
-
-        if (!Outputs.Any(o => ids.Contains($"out{o.Index}.nodevice") || ids.Contains($"out{o.Index}.silent")))
-            ok.Add("Every output is playing.");
-
-        if (!Channels.Any(c => ids.Contains($"in{c.Index}.idlepriority")))
-            ok.Add("No idle priority mic armed. An open lapel nobody is using would duck the room off the stream.");
-
-        if (!Channels.Any(c => ids.Contains($"in{c.Index}.level")) && Channels.Any(c => c.SelectedDevice != null))
-            ok.Add("Microphone levels are in range.");
-
-        if (!Channels.Any(c => ids.Contains($"in{c.Index}.bluetooth")))
-            ok.Add("No microphone is on Bluetooth.");
-
-        return ok;
     }
 
     public string ChecksHeadline
@@ -459,6 +433,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             var vm = Channels[i];
             var input = _engine.Inputs[i];
+            var cal = input.SnapshotCalibration();
             channels.Add(new ChannelHealth(
                 i,
                 string.IsNullOrWhiteSpace(vm.CustomLabel) ? $"Input {i + 1}" : vm.CustomLabel,
@@ -473,7 +448,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.SelectedDevice?.Bus,
                 vm.SelectedDevice?.Id,
                 (int)vm.Source,
-                input.SnapshotCalibration().SpeechDb));
+                cal.SpeechDb,
+                cal.IsStale));
         }
 
         var outputs = new List<OutputHealth>(Outputs.Length);
@@ -1037,7 +1013,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         RunGuarded("Save", () =>
         {
             _presetStore.Save(preset);
-            StatusText = $"Saved {DateTime.Now:HH:mm:ss}";
         });
     }
 
@@ -1293,6 +1268,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         _stateServer?.Dispose();
+        _deviceWatcher.Dispose();
         _meterTimer.Stop();
         _autosaveTimer.Stop();
         if (_inputDiagRecording)

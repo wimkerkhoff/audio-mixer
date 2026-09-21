@@ -238,9 +238,14 @@ public partial class App : Application
             try
             {
                 System.IO.Directory.CreateDirectory(directory);
-                foreach (Window w in Windows)
+                foreach (Window w in Windows.Cast<Window>().ToList())
                 {
-                    if (!w.IsLoaded || w.ActualWidth < 1 || w.ActualHeight < 1) continue;
+                    if (!w.IsLoaded || w.ActualWidth < 1 || w.ActualHeight < 1)
+                    {
+                        AudioLog.Write($"Skipped '{w.Title}': loaded={w.IsLoaded} " +
+                                       $"size={w.ActualWidth:F0}x{w.ActualHeight:F0}");
+                        continue;
+                    }
                     var name = Sanitise(string.IsNullOrWhiteSpace(w.Title) ? w.GetType().Name : w.Title);
                     var path = System.IO.Path.Combine(directory, $"{++n:00}-{name}.png");
                     Capture(w, path);

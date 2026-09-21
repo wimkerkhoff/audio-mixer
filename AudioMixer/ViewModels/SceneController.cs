@@ -69,6 +69,16 @@ public sealed class SceneController : ViewModelBase
     public string LapelState => SourceIsLapel ? "on" : "off";
     public string RoomState => SourceIsRoom ? "on" : "off";
 
+    /// <summary>
+    /// What each scene WOULD do, for its button's tooltip. The pills already show which one is live,
+    /// so a heading repeating it was redundant and the description only matters while you are deciding
+    /// — which is exactly when the pointer is over a button.
+    /// </summary>
+    public string StandbyTip => SceneTransform.Describe(Scene.Standby, _voiceSource);
+    public string TeachingTip => SceneTransform.Describe(Scene.Teaching, _voiceSource);
+    public string PrayerTip => SceneTransform.Describe(Scene.Prayer, _voiceSource);
+    public string SingingTip => SceneTransform.Describe(Scene.Singing, _voiceSource);
+
     public string CurrentDescription =>
         _current is { } s ? SceneTransform.Describe(s, _voiceSource) : "No scene applied — mixer is hand-configured.";
 
@@ -159,6 +169,10 @@ public sealed class SceneController : ViewModelBase
         RaisePropertyChanged(nameof(SourceIsLapel));
         RaisePropertyChanged(nameof(SourceIsRoom));
         RaisePropertyChanged(nameof(CurrentDescription));
+        RaisePropertyChanged(nameof(StandbyTip));
+        RaisePropertyChanged(nameof(TeachingTip));
+        RaisePropertyChanged(nameof(PrayerTip));
+        RaisePropertyChanged(nameof(SingingTip));
         RaisePropertyChanged(nameof(CurrentName));
         RaisePropertyChanged(nameof(HasLapel));
         RaisePropertyChanged(nameof(StandbyState));

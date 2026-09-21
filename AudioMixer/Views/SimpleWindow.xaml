@@ -142,6 +142,14 @@
             <Setter Property="Padding" Value="6,3"/>
         </Style>
 
+        <Style x:Key="ToolBtn" TargetType="Button" BasedOn="{StaticResource SmallBtn}">
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
+        </Style>
+
         <!-- The only thing in the panel that says something is wrong, so it changes colour with the
              worst severity rather than sitting quiet. -->
         <Style x:Key="ChecksBtn" TargetType="Button" BasedOn="{StaticResource SmallBtn}">
@@ -161,17 +169,28 @@
 
     <StackPanel Margin="8">
 
-        <!-- Header: what scene is live, and the doors to everything else -->
-        <Grid Margin="0,0,0,6">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0">
-                <TextBlock Text="{Binding Scenes.CurrentName}" Foreground="#E8E8EE" FontSize="14" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding Scenes.CurrentDescription}" Style="{StaticResource Cap}" TextWrapping="Wrap"/>
+        <!-- One toolbar, at the top. No scene heading: the pills below already show which is live,
+             and repeating it in words cost two lines of a panel that has to fit beside OBS and Zoom;
+             the description moved onto each pill's tooltip, read while deciding rather than after.
+             The three doors that used to sit along the bottom are icons here, so actions live in one
+             place instead of two ends of the panel. -->
+        <Grid Margin="0,0,0,5">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <Button Style="{StaticResource ToolBtn}" Content="&#xE72C;" Click="Refresh_Click"
+                        ToolTip="Recheck audio devices"/>
+                <Button Style="{StaticResource ToolBtn}" Content="&#xE895;" Click="Resync_Click"
+                        ToolTip="Resync audio — restart inputs and outputs"/>
+                <Button Style="{StaticResource ToolBtn}" Content="&#xE9F5;" Click="ResetCal_Click"
+                        ToolTip="Reset calibration — do this after changing a transmitter's gain"/>
+                <Rectangle Width="1" Fill="#3A3A44" Margin="3,3"/>
+                <Button Style="{StaticResource ToolBtn}" Content="&#xE7F4;" Click="Advanced_Click"
+                        ToolTip="Advanced — the full mixer"/>
+                <Button Style="{StaticResource ToolBtn}" Content="&#xE9D9;" Click="Diagnostics_Click"
+                        ToolTip="Diagnostics — why this mic, session report, calibration, devices"/>
+                <Button Style="{StaticResource ToolBtn}" Content="&#xE713;" Click="Settings_Click"
+                        ToolTip="Settings"/>
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <!-- With no banner in the panel this badge is the ONLY thing that says something is
                      wrong, so it carries the count and the worst severity, not just a glyph. -->
                 <Button x:Name="ChecksButton" Content="{Binding AlertBadgeText}" MinWidth="34" Height="20"
@@ -188,12 +207,16 @@
         <!-- Scenes: the one control that matters -->
         <UniformGrid Rows="1" Columns="4" Margin="0,0,0,6">
             <Button Content="Standby" Margin="0,0,3,0" Command="{Binding StandbyCommand}"
+                    ToolTip="{Binding Scenes.StandbyTip}"
                     Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.StandbyState}"/>
             <Button Content="Teaching" Margin="0,0,3,0" Command="{Binding TeachingCommand}"
+                    ToolTip="{Binding Scenes.TeachingTip}"
                     Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.TeachingState}"/>
             <Button Content="Prayer" Margin="0,0,3,0" Command="{Binding PrayerCommand}"
+                    ToolTip="{Binding Scenes.PrayerTip}"
                     Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.PrayerState}"/>
             <Button Content="Singing" Command="{Binding SingingCommand}"
+                    ToolTip="{Binding Scenes.SingingTip}"
                     Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.SingingState}"/>
         </UniformGrid>
 
@@ -337,13 +360,6 @@
                 </WrapPanel>
             </StackPanel>
         </Border>
-
-        <!-- Progressive disclosure: nothing is more than one click away -->
-        <UniformGrid Rows="1" Columns="3">
-            <Button Content="Advanced" Margin="0,0,3,0" Style="{StaticResource SmallBtn}" Click="Advanced_Click"/>
-            <Button Content="Diagnostics" Margin="0,0,3,0" Style="{StaticResource SmallBtn}" Click="Diagnostics_Click"/>
-            <Button Content="Settings" Style="{StaticResource SmallBtn}" Click="Settings_Click"/>
-        </UniformGrid>
 
         <TextBlock Text="{Binding StatusText}" Style="{StaticResource Cap}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
     </StackPanel>

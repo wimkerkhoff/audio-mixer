@@ -18,7 +18,9 @@ public partial class ChecksWindow : Window
     private void Refresh()
     {
         CheckedAt.Text = $"checked {System.DateTime.Now:HH:mm:ss}";
-        PassList.ItemsSource = _vm.PassingChecks();
+        AllClear.Visibility = _vm.AlertCount == 0
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
     }
 
     private void Recheck_Click(object sender, RoutedEventArgs e) => Refresh();

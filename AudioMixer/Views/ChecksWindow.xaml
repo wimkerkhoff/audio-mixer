@@ -67,8 +67,6 @@
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
             <Button Content="Check again" Style="{StaticResource Btn}" Margin="0,0,6,0" Click="Recheck_Click"/>
             <Button Content="Close" Style="{StaticResource Btn}" Click="Close_Click"/>
-            <TextBlock Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="10,0,0,0"
-                       Text="recorded either way"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -87,19 +85,13 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Passing checks are shown too. For an operator who cannot diagnose, "both buses
-                     have a microphone" is reassurance available nowhere else, and it teaches what
-                     the app is actually watching. -->
-                <ItemsControl x:Name="PassList" Margin="0,2,0,0">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Style="{StaticResource Check}" Tag="Ok">
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="11.5"
-                                           Foreground="#B6B7C4"/>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <!-- Only problems and warnings. Passing checks were shown here briefly and taken
+                     out again (operator, 2026-09-20): a list that is mostly green teaches people to
+                     skim it, which is the opposite of what a window that only opens when something
+                     is wrong is for. An empty list is the reassurance. -->
+                <TextBlock x:Name="AllClear" Style="{StaticResource Cap}" TextWrapping="Wrap"
+                           Margin="0,4,0,0" Visibility="Collapsed"
+                           Text="Nothing needs attention."/>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

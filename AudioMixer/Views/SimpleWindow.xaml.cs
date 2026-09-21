@@ -63,6 +63,11 @@ public partial class SimpleWindow : Window
 
     private ChecksWindow? _checks;
 
+    // The panel's own actions, so an operator never needs Advanced for routine housekeeping.
+    private void Refresh_Click(object sender, RoutedEventArgs e) => _vm.RefreshDevicesCommand.Execute(null);
+    private void Resync_Click(object sender, RoutedEventArgs e) => _vm.ResyncAudioCommand.Execute(null);
+    private void ResetCal_Click(object sender, RoutedEventArgs e) => _vm.ResetCalibrationCommand.Execute(null);
+
     private void Checks_Click(object sender, RoutedEventArgs e) =>
         Show(ref _checks, () => new ChecksWindow(_vm) { Owner = this });
 

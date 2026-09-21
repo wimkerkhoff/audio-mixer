@@ -280,14 +280,6 @@
                 <Button Style="{StaticResource IconBtn}" Content="&#xE713;"
                         ToolTip="Settings — mic roles and device-picker options"
                         Click="Settings_Click"/>
-                <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
-                <TextBlock Text="Mic strips" Foreground="#B4B4BE" FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"
-                           ToolTip="How many input strips to show (1-10)"/>
-                <ComboBox ItemsSource="{Binding InputCountOptions}"
-                          SelectedItem="{Binding InputCount, Mode=TwoWay}"
-                          Width="44" Height="20" FontSize="11"
-                          VerticalContentAlignment="Center"
-                          ToolTip="Number of input channels (1–10)"/>
                 <TextBlock Text="{Binding StatusText}" Foreground="#A8A8B4" FontSize="10" VerticalAlignment="Center" Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
             </DockPanel>
