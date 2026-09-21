@@ -42,18 +42,9 @@
                     <TextBlock Text="Microphone roles" Style="{StaticResource Head}"/>
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
                                Text="Which channel is the presenter's lapel. Scenes need this to survive Prayer clearing the priority flag, so it is a property of the mic rather than of the current setup."/>
-                    <ItemsControl ItemsSource="{Binding Channels}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <CheckBox IsChecked="{Binding IsLapel}">
-                                    <TextBlock>
-                                        <Run Text="{Binding CustomLabel}"/>
-                                        <Run Text=" is the lapel" Foreground="#A9A9B6"/>
-                                    </TextBlock>
-                                </CheckBox>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <ComboBox ItemsSource="{Binding LapelOptions}"
+                              SelectedIndex="{Binding LapelIndex, Mode=TwoWay}"
+                              FontSize="11" HorizontalAlignment="Left" MinWidth="180"/>
                 </StackPanel>
             </Border>
 

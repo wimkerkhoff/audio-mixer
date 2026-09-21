@@ -261,6 +261,37 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         catch { return "—"; }
     }
 
+    // --- the lapel, as a single choice ------------------------------------------------------------
+
+    /// <summary>
+    /// Which channel is the presenter's lapel, as one selection rather than a set of checkboxes.
+    /// Operator's call 2026-09-20: only one input is ever the lapel on this rig.
+    ///
+    /// This sets ROLE, not IsPriority. Role is what scenes read — it has to survive Prayer clearing
+    /// the priority flag, which is why it is a property of the mic rather than of the current setup.
+    /// Setting priority on several channels at once is still possible from the Advanced gear popup,
+    /// so the old pastor-plus-worship-leader case is awkward but not lost.
+    /// </summary>
+    public IReadOnlyList<string> LapelOptions =>
+        new[] { "(none)" }.Concat(Channels.Select(c =>
+            string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel)).ToList();
+
+    public int LapelIndex
+    {
+        get
+        {
+            var lapel = Channels.FirstOrDefault(c => c.IsLapel);
+            return lapel == null ? 0 : lapel.Index + 1;
+        }
+        set
+        {
+            // Exclusive by construction: one channel becomes the lapel, every other becomes a room mic.
+            for (int i = 0; i < Channels.Count; i++) Channels[i].IsLapel = (i == value - 1);
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(LapelOptions));
+        }
+    }
+
     public IReadOnlyList<string> PassingChecks()
     {
         var ids = Alerts.Select(a => a.Id).ToHashSet();
