@@ -74,7 +74,6 @@ AudioMixer/
 │   ├── IAutoMixControl.cs    # Per-output automix setters — the VM's one dependency, not N delegates
 │   ├── AudioDeviceInfo.cs    # Device id + friendly name record
 │   ├── ChannelSource.cs      # Stereo/Left/Right — which transmitter of a split receiver a strip takes
-│   ├── DelayLine.cs          # Ring buffer with adjustable read offset
 │   ├── PeakMeter.cs          # Peak dBFS per buffer, peak-hold decay
 │   ├── TapSampleProvider.cs / TrackingSampleProvider.cs   # Non-consuming taps in the graph
 │   ├── MixRecorder.cs        # WaveFileWriter wrapper, thread-safe start/stop
@@ -93,25 +92,20 @@ AudioMixer/
 │   ├── PresetStore.cs        # JSON load/save to %APPDATA%\AudioMixer\presets.json
 │   ├── PresetMapper.cs       # View-model state → MixerPreset (the reverse lives in ApplyPreset)
 │   ├── DeviceResolver.cs     # Preset device → live endpoint: id first, then friendly name (see gotcha)
-│   ├── DelayAnalyzer.cs      # "Detect Delays": onset-envelope cross-correlation → suggested delays
 │   ├── StateSnapshot.cs      # Builds the /state JSON (the selector's reasoning, not just mixer state)
 │   ├── DiagnosticsLog.cs     # Meter-tick logging: talker hand-offs + ~1 Hz output/input health dump
 │   └── StateServer.cs        # Opt-in loopback JSON state endpoint (diagnostics)
-├── Controls/VuMeter.xaml     # Gradient bar with peak-hold tick
+├── Controls/VuMeter.cs       # Custom-drawn gradient bar, target band, peak-hold tick
 └── Assets/app.ico
 tools/                        # Offline analysis + diagnostics — validate selector changes HERE first
 ├── AnalyzeInputs/            # C#: replays selector metrics over per-mic diag WAVs
-├── RefCorr/                  # C#: lapel-reference envelope correlation ranking
 ├── RxProbe/                  # C#: captures 2 endpoints at once — verify a split receiver at
 │                             #     sample level (corr + scalar-fit) after any remap
 ├── VolProbe/                 # C#: read/set a capture endpoint's Windows gain (see the gain gotcha).
 │                             #     Lists ALL active capture endpoints; name+level args set one
 ├── gate_rate.py              # per-mic digital-silence rate + simultaneity (see finding 4)
 ├── naturalness.py            # flux-CV artifact ranking (the "natural" metric, offline)
-├── replay_natural.py         # Replays the shipped "Prefer natural" rule over a capture
-├── replay_share.py / scene4.py / scene5.py   # Share/scene replays
-├── voice_quality.py          # Praat HNR/CPPS/jitter/shimmer (shows the inversion — see findings)
-├── spectro.py / comb_test.py / singing_vs_speech.py / find_singing.py / live_wav.py
+├── comb_test.py / singing_vs_speech.py / find_singing.py / live_wav.py
 ├── audio-device-diag.ps1     # WASAPI/BT/dongle enumeration + half-link detection
 └── build-readme.mjs          # README.md → README.html
 ```
@@ -142,7 +136,7 @@ view model.
 **Pipeline per channel:**
 ```
 WasapiCapture → resample to 48kHz stereo float32 → side split (L/R/stereo) → peak/analysis taps →
-low-cut → mute gate → gain → DelayLine (ring buffer w/ read offset) → post peak →
+low-cut → mute gate → gain → post peak →
 level/flux/RF measurement → per-output automix gain → bus mixer
 ```
 
@@ -232,33 +226,17 @@ Gate's ~200 ms hold can clip the first syllable of a fast interjection. Share's 
 hear one voice.
 
 **Leader hold.** The selected leader is held with hysteresis (`HandoffHoldTicks` ~200 ms,
-`HandoffHysteresis` ~3 dB) so a brief louder moment elsewhere can't steal it. Gate always uses the
-held leader; **Share** uses it when **Stable hand-off** is on (`OutputViewModel.StableHandoff`,
-default on, persisted) and anchors its gain-share to the leader's level rather than the
-instantaneous max — off = legacy instantaneous-loudest. This hold is the actual fix for "far mic
-wins"; see finding 1.
+`HandoffHysteresis` ~3 dB) so a brief louder moment elsewhere can't steal it. It is unconditional —
+finding 6a calls it exactly as necessary on a DSP-free rig, so a switch that turned it off could only
+re-create "far mic wins" (finding 1). **Selection is level only**: smoothed RMS argmax with a
+multiplicative hysteresis margin. The correlation ("Match lapel") and flux-CV ("Prefer natural") rules
+were removed 2026-09-20 — see above for why.
 
-**Selection rules** — precedence in `Tick`: `selMode` = correlation if `useCorr`, else natural if
-`useNatural`, else level. `Beats(selMode, …)` applies the matching margin.
-
-1. **Level** (default). Smoothed RMS argmax, multiplicative `HandoffHysteresis` margin.
-2. **Match lapel** (`OutputViewModel.ReferenceGuided`, default off, persisted). Picks the room mic
-   whose loudness envelope best correlates with the active priority/lapel mic — the lapel is a clean
-   reference for the talker's voice, so the room mic tracking it most faithfully is the least
-   reverberant/contaminated. `AutoMixer` keeps a 2 s per-channel envelope ring (`_envHist`) and every
-   ~50 ms recomputes a best-lag (±600 ms) normalized cross-correlation vs the reference over speech
-   frames (`LaggedCorr` → smoothed `_corr`); the held-leader test uses `_corr` with an **additive**
-   `CorrHysteresis`. Engages only while a priority mic is *speaking* and `_corr > CorrReady`;
-   otherwise falls back to level. The reference is global (`_refIndex` = loudest active priority
-   mic), so it works even on an output the lapel isn't routed to. See finding 2.
-3. **Prefer natural** (`OutputViewModel.PreferNatural`, default off, persisted; lower precedence than
-   Match lapel). Reference-free, for the no-lapel case. Among mics within `NaturalFloorRatio` (−8 dB)
-   of the loudest, picks the lowest **spectral-flux instability** (`InputChannel.CurrentFluxCv`).
-   Held-leader margin is **multiplicative** (`NaturalHystRatio` 0.85 — challenger must be ≥15% lower
-   CV); an early *additive* 0.05 margin was ≈ zero hysteresis and chopped near-equal mics. See
-   finding 3. Behavioural caveat: this rule picks the globally lowest-CV mic, so with talkers spread
-   around the room it pins one mic regardless of who is speaking — flux-CV is good at *vetoing* a
-   bad mic, poor at *picking* among good ones.
+Known gap, pinned by `AutoMixerTests.ASingleTickSpikeCurrentlyDoesTakeTheBus`: a single 10 ms tick
+~15 dB over the leader takes the bus, because the margin is cleared instantly and the hold only blocks
+a change while it is counting down. Under Gate that mutes the actual talker for 200 ms. It is a
+different shape from finding 1's sustained failure and is invisible in the aggregates. Fixing it is a
+selector change and needs a labelled offline replay first.
 
 `InputChannel.CurrentFluxCv` is a 512-pt FFT per voiced 512-sample window **accumulated across
 capture buffers** in the audio thread (EMA mean/variance of normalized-spectrum frame-to-frame
@@ -303,21 +281,11 @@ strips instead, one `ChannelSource.Left` and one `Right`. Device pickers are the
 and picking a half-claimed endpoint auto-takes the free side. A Stereo claim still takes the endpoint
 whole and keeps the bare device id as its `used` key, so pre-split presets resolve unchanged.
 
-**Quality-weighted Share** (`SelWeight`). In correlation/natural mode each mic's level is scaled by
-its quality (CV for natural, corr for lapel) *before* the gain-share, so a loud-but-bad mic ducks
-even when louder than a quieter, cleaner leader. Without this, Share anchors to the leader's level
-and clamps every louder mic to unity, leaving a scratchy near mic wide open. Level mode is unchanged
-(weight ≡ 1). **STALE CONSTANTS:** the natural branch maps CV through `NatCvGood = 1.0` /
-`NatCvBad = 2.5`, tuned to the *pre-fix inflated* CV scale (1.3–2.6). Post-fix CV (~0.35–0.5) sits
-below `NatCvGood`, so `t` clamps to 0 and every mic weighs 1.0 — **quality-weighted Share is
-currently inert in natural mode.** Retune only against a labeled offline replay (see "Validating a
-selector change"); the *selection* margins are unaffected because they're multiplicative.
-
 **Diagnostic surface.** `InputChannel.IsDucking` (any routed output's gain < 0.85) drives a per-input
 amber LED; `InputChannel.IsAutoMixActive` (leader on any routed output, from `AutoMixer._activeInput`)
-drives a green LED — both polled on the meter timer. The crest-derived `InputChannel.Clarity` (0..1,
-NaN when idle) shows as a "Mic clarity" bar in the gear popup — **readout only, not used for
-selection** (crest failed as a proximity cue; see finding 1). `AudioEngine.AutoMixActiveInput(o)`
+drives a green LED — both polled on the meter timer. The crest-derived "Mic clarity" readout was
+removed 2026-09-21: crest failed as a proximity cue through DSP (finding 1) and on a DSP-free mic it
+is dominated by handling transients, so it was neither used for selection nor worth showing. `AudioEngine.AutoMixActiveInput(o)`
 exposes the per-output winner and `MainViewModel.LogAutoMixSelectionChanges` writes each hand-off to
 `AudioLog`.
 
@@ -415,8 +383,10 @@ The app used to be unexercisable without a live congregation, which blocked all 
   a healthy-but-far mic is quiet-and-smooth. Only assess a mic while it's *voiced*. Raw counts only,
   no thresholds in-app — classify after the session.
 - **Diagnostic state endpoint**: `StateServer` serves a live JSON snapshot at
-  `http://127.0.0.1:<port>/state` — channels (levels/routes/mute/gains/clarity/`refCorr`/`fluxCv`),
-  outputs (mode/strength/stable/reference/preferNatural + winner), plus `referenceInput`. **Opt-in**
+  `http://127.0.0.1:<port>/state` — channels (levels/routes/mute/automix gains/`speechDb`/`floorDb`/
+  `envDb`/`fluxCv`), outputs (mode/leveler state/`winner`/`winnerHold`/`activeInput`), plus the scene,
+  the alert list and a `replay` block (null when live). Its shape is pinned by `StateSnapshotTests`,
+  because renaming a key breaks the offline tooling silently. **Opt-in**
   via `AUDIOMIXER_STATE` (port number, default 7077) or `--state[=PORT]`. Read-only, loopback only;
   `MainViewModel.BuildStateJson` marshals to the UI thread. Fastest way to watch the automixer's
   *reasoning* (env vs corr vs cv vs the selected leader) without the GUI.
@@ -456,7 +426,7 @@ stabilize the level selection; don't trust spectral/crest features through a spe
 **2. Loudest ≠ best-sounding, and the mic's own signal can't tell you — use the lapel as reference.**
 A room mic can read *louder* than another yet sound clearly worse (AGC make-up gain, desk
 coupling/proximity boom, a nearby vent or PA), so loudest-wins picks the bad mic. Validated offline
-with `tools/RefCorr` on a labeled capture (operator confirmed In4 good / In5 loud-but-bad): level
+offline on a labeled capture (operator confirmed In4 good / In5 loud-but-bad): level
 ranked In5 > In4 (picks bad); refSNR also failed (gating zeroes the noise floor, so it favored a
 distant quiet mic); **envelope-correlation-to-lapel ranked In4 (0.774) > In5 (0.706)** — the bad mic
 is loudest yet correlates *worst*, its envelope smeared by reverb/noise. Shipped as "Match lapel".
@@ -467,12 +437,11 @@ margins are noise (In2 0.778 ≈ In4 0.774) — and it needs an active lapel.
 A mic can be loud AND clean-by-the-numbers yet sound scratchy, because the noise suppression
 **over-processes**. On the labeled capture the bad mic (In5) scored HNR 13.2 / **CPPS 11.3, higher
 than the clean lapel** (8.6), with lower jitter/shimmer than the good mic — so HNR/CPPS/jitter/
-shimmer all rank the bad mic *cleanest* (inverted; `tools/voice_quality.py` reproduces this). What
+shimmer all rank the bad mic *cleanest* (inverted; measured with Praat). What
 sounds scratchy is **intermittent**: gating chatter, musical noise, broadband transient clicks
 (vertical streaks in a spectrogram) — an unstable spectrum over time. The discriminator that works is
 **spectral-flux coefficient-of-variation** (`flux_cv`, `tools/naturalness.py`): natural mics and the
-lapel ~0.41, the scratchy mic ~0.52–0.65, consistent across recordings. Offline replay
-(`tools/replay_natural.py`) flips selection from the bad mic (74%/59% of voiced time) to the good mic
+lapel ~0.41, the scratchy mic ~0.52–0.65, consistent across recordings. Offline replay flips selection from the bad mic (74%/59% of voiced time) to the good mic
 (64%/58%) on both sessions. Caveats: validated on 2 recordings, one room, one set of Ankers;
 flux-CV also penalizes distant/reverberant mics (hence the level floor) and, per the behavioural
 caveat above, vetoes better than it picks. A high flux-CV can also mean **RF dropouts**, not a bad
@@ -577,8 +546,7 @@ histogram, not dialled in downstream.
 
 **Validating a selector change.** Never tune the live selector from a live impression. Capture
 "record all inputs" during a real session *with operator labels* of which mic sounded better when,
-then replay offline (`tools/AnalyzeInputs`, `tools/RefCorr`, `tools/replay_natural.py`,
-`tools/naturalness.py`) before touching `AutoMixer`. Judge mic quality over a longer listen with the
+then replay offline (`tools/AnalyzeInputs`, `tools/naturalness.py`) before touching `AutoMixer`. Judge mic quality over a longer listen with the
 real speaker — short A/B impressions have disagreed with both the metric and the operator's own
 later judgment.
 
@@ -754,7 +722,7 @@ later judgment.
   permanently silent until the OutputBus restarts.
 - The per-output `BufferedWaveProvider` (`InputChannel._outBuffers`) sets the **hard cap on end-to-end
   latency**. Sized generously (e.g. 2 s) with input pushing before output pulls, that backlog becomes
-  audible latency. Keep it small (~200 ms) AND clear it when (re)starting an output
+  audible latency. Keep it small (`CreateOutBuffer` uses 500 ms) AND clear it when (re)starting an output
   (`AudioEngine.RestartOutputBus_NoLock` → `ClearOutputBuffer`). Symptom: "hello" arrives 1–2 s late.
 - NAudio's property is `DiscardOnBufferOverflow` (not `DiscardOnBufferFull` — that name doesn't exist
   in 2.2.1 despite older docs).
@@ -772,14 +740,24 @@ later judgment.
 
 ### Measurement & recording
 
+- **A replay fixture lives in the folder retention prunes, so it must be moved to `analysis/keep/`.**
+  `ReplayRig.DefaultDirectory` IS `analysis/`, and `Prune()` runs at every record start — i.e. ~12 s
+  after every launch. Both golden baselines referenced stamp `20260809-092931`, 42 days older than the
+  28-day rule, so their source WAVs were deleted on the first launch after retention shipped and the
+  fixtures could never be re-run. `EnumerateFiles` is top-level only, so a subfolder is already immune;
+  `RecordingRetention.KeepFolder` names it and `ReplayRig` lists and opens from it, preferring a kept
+  copy. Move any capture worth replaying there the day you record it — a fixture is the only way to
+  exercise the selector without a room full of people, and losing one is silent.
+
 - **Recording is always on, and the disk arithmetic is why it has three bounds rather than one.** A
   single stream at the internal format (48 kHz stereo float32) is **1.29 GB/hour**; five mics and two
   buses is **~9 GB/hour**, so a capped hour is ~9 GB (~6 GB once split strips go mono) and four
   weeks at two services a week is ~50-70 GB against ~129 GB free. Age alone would therefore prune about a week
   *after* the disk filled. So: recording stops itself at **1 hour** (somebody forgetting to close the
   app must not mean a recording that runs till the disk is full), files expire at **28 days**, and
-  `RecordingRetention` additionally deletes **oldest-first whenever free space drops under 20 GB**,
-  refuses to start under 15 GB and stops an in-flight recording under 8 GB — the stop floor being
+  `RecordingRetention` additionally deletes **oldest-first when free space is under 20 GB at the
+  moment a recording starts** (pruning runs then, not continuously), refuses to start under 15 GB and
+  stops an in-flight recording under 8 GB — the stop floor being
   lower than the start floor on purpose, so a session already running is given every chance to finish.
   Session records are never swept: they are tens of kilobytes and are what you still want once the
   audio is gone.
@@ -899,6 +877,17 @@ later judgment.
   `#C7C7D2`) and `PopupHelp` exist because popup text sits on the darker `#1B1B22` surface and is
   *read*. The leveler popup was built with `Lbl` throughout and the operator reported it as too dim.
 
+
+- **A `System.Threading.Timer`'s callback cannot tell itself apart from another caller unless you
+  give it a state object.** `AutoMixTick` was registered as `new Timer(AutoMixTick, null, 10, 10)` and
+  `ReplayPumped` also called `AutoMixTick(null)`, so the guard `if (replaying && state != null) return;`
+  could never be true and the wall-clock timer never stood down. Replay therefore ran the selector at
+  **200 ticks per audio-second instead of 100** (measured 2026-09-21 on fixture `20260920-211335`),
+  halving `HandoffHoldTicks` and `PriorityHoldTicks` — so the deterministic, speed-independent replay
+  this file promises did not hold, and every golden baseline was recorded under it. Fixed with a
+  `WallClock` sentinel passed as the timer's state. The symptom is invisible: nothing errors, the
+  numbers are merely wrong, and a hand-off count alone will not reveal it on stable material — it took
+  a scratch build with a tick counter in `/state` to see.
 
 - **The meter tick and the autosave debounce share one `PropertyChanged` stream, so filtering it with
   a blocklist silently disables autosave.** `ChannelViewModel.RefreshMeters` raises ~13 display

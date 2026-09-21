@@ -116,17 +116,6 @@ Keep as-is: `live_wav.py`, `comb_test.py`, `find_singing.py`, `singing_vs_speech
       `:511-518` green LED (resolved); `:520-528`, `:659-662` Mic clarity (moot after 2.1);
       `:664-679` Anker evidence/ceiling; `:682-689` "Recently shipped" lists removed features.
       Keep `:372-404` (Broadcast ❌ history), `:354-371`, `:575-597`.
-- [ ] **CLAUDE.md** drift: layout lists `Controls/VuMeter.xaml` (only `VuMeter.cs` exists),
-      `DelayLine.cs`, `DelayAnalyzer.cs`; `:103-113,580-581` tool lists include RefCorr/
-      replay_natural/replay_share/scene4/5; `:145,193` pipeline still has DelayLine and a 0–1000 ms
-      delay range; `:234-237,241-268,306-321` describe Stable hand-off, selection rules 2–3,
-      quality-weighted Share / `SelWeight` / `NatCvGood` and the "Mic clarity bar in the gear popup"
-      as live; `:419` lists `/state` fields (`strength/stable/reference/preferNatural/refCorr/
-      referenceInput`) that are gone; `:343,863-864` say replay-baseline passes `--advanced`;
-      "retention deletes oldest-first whenever free space drops under 20 GB" — it prunes only at
-      record start, never continuously and never after `MustStopNow`. Also `InputChannel`'s
-      per-output buffer is 500 ms (`CreateOutBuffer`) where CLAUDE.md says ~200 ms.
-
 ---
 
 ## 3. Project hygiene
