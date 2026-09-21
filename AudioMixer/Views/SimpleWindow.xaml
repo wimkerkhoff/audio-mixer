@@ -329,11 +329,11 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <WrapPanel Margin="0,4,0,0">
-                    <TextBlock Text="▌live now" Foreground="#3FBF7F" FontSize="9" Margin="0,0,8,0"/>
-                    <TextBlock Text="▌open" Foreground="#4FA3EC" FontSize="9" Margin="0,0,8,0"/>
-                    <TextBlock Text="▌no signal" Foreground="#E2564D" FontSize="9" Margin="0,0,8,0"/>
-                    <TextBlock Text="▌off" Foreground="#5A6274" FontSize="9"/>
+                <WrapPanel Margin="0,5,0,0">
+                    <TextBlock Text="▌ live now" Foreground="#3FBF7F" FontSize="9" Margin="0,0,10,0"/>
+                    <TextBlock Text="▌ open" Foreground="#4FA3EC" FontSize="9" Margin="0,0,10,0"/>
+                    <TextBlock Text="▌ no signal" Foreground="#E2564D" FontSize="9" Margin="0,0,10,0"/>
+                    <TextBlock Text="▌ off" Foreground="#5A6274" FontSize="9"/>
                 </WrapPanel>
             </StackPanel>
         </Border>

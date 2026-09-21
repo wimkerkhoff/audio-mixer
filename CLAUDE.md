@@ -327,6 +327,13 @@ The app used to be unexercisable without a live congregation, which blocked all 
 - **Binding errors**: WPF resolves binding paths at runtime and swallows failures, so a clean build
   proves nothing about the UI. `--log` enables `BindingErrorListener`, which logs them.
   `--open-all` opens every window so one run covers all their markup.
+- **`--shots[=DIR]` renders every window to PNG and exits** — the only way to actually SEE the UI
+  without being at the machine. It uses `RenderTargetBitmap` on the visual tree, not a screen grab,
+  so it works with windows occluded, off-screen, or the **workstation locked** — where
+  `CopyFromScreen` silently returns the lock screen instead of the desktop, which looks exactly like
+  a window that failed to open. (`PrintWindow` is no use either: it returns blank for WPF content.)
+  Zero binding errors is *not* evidence the layout is right; it is also what a window that rendered
+  garbage reports.
 - **Unit tests** (`AudioMixer.Tests`) cover only pure logic — scene rules, health rules, the autosave
   allowlist invariant, the low-cut option mapping. Anything needing a device or a window is verified
   by a replay run instead. The one exception is `XamlResourceTests`, which reads the markup as *text*

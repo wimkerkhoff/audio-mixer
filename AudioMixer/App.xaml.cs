@@ -1,5 +1,7 @@
 using System.Threading;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using AudioMixer.Audio;
 using AudioMixer.Audio.Replay;
 
@@ -92,6 +94,7 @@ public partial class App : Application
     //   --replay[=STAMP] replay a recorded session instead of live mics (sandbox; see ReplayOptions)
     //   --speed=N        replay rate multiplier (batch runs); --loop  replay repeatedly
     //   --advanced       open the full mixer instead of the operator (Simple) panel
+    //   --shots[=DIR]    render every window to PNG and exit (works with the workstation locked)
     private static void ApplyCliFlags(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
@@ -131,6 +134,13 @@ public partial class App : Application
             {
                 if (Enum.TryParse<Models.Scene>(a[8..], ignoreCase: true, out var sc)) StartupScene = sc;
             }
+            else if (a.StartsWith("--shots", StringComparison.OrdinalIgnoreCase))
+            {
+                int eq = a.IndexOf('=');
+                _shotsDirectory = eq > 0 ? a[(eq + 1)..] : System.IO.Path.Combine(
+                    System.IO.Path.GetTempPath(), "AudioMixer-shots");
+                _openAllWindows = true;   // capturing one window is never what this is for
+            }
             else if (a.Equals("--open-all", StringComparison.OrdinalIgnoreCase))
             {
                 _useSimpleUi = true;
@@ -164,6 +174,7 @@ public partial class App : Application
     /// comparison — they cannot disagree about mixer state.
     /// </summary>
     private static bool _useSimpleUi = true;
+    private static string? _shotsDirectory;
 
     private void CreateWindows()
     {
@@ -197,6 +208,73 @@ public partial class App : Application
             main.Show();
             simple.OpenAuxiliaryWindows();
         }
+
+        if (_shotsDirectory != null) CaptureWindowsThenExit(_shotsDirectory);
+    }
+
+    /// <summary>
+    /// Renders every open window to a PNG and exits.
+    ///
+    /// Uses RenderTargetBitmap on the visual tree rather than a screen grab, which is the whole point:
+    /// it works when the window is behind others, off-screen, or — the case that prompted it — when the
+    /// workstation is LOCKED, where CopyFromScreen returns the lock screen instead of the desktop. It
+    /// captures the client area, not the title bar, which is what you want for documenting a UI anyway.
+    ///
+    /// Also the honest way to check a UI change actually looks right without being at the machine.
+    /// </summary>
+    private void CaptureWindowsThenExit(string directory)
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle)
+        {
+            // Devices enumerate, meters settle and the Checks window decides whether to open itself.
+            // Rendering before that photographs a half-built panel.
+            Interval = TimeSpan.FromSeconds(8),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            int n = 0;
+            try
+            {
+                System.IO.Directory.CreateDirectory(directory);
+                foreach (Window w in Windows)
+                {
+                    if (!w.IsLoaded || w.ActualWidth < 1 || w.ActualHeight < 1) continue;
+                    var name = Sanitise(string.IsNullOrWhiteSpace(w.Title) ? w.GetType().Name : w.Title);
+                    var path = System.IO.Path.Combine(directory, $"{++n:00}-{name}.png");
+                    Capture(w, path);
+                    AudioLog.Write($"Captured {w.Title} -> {path}");
+                }
+            }
+            catch (Exception ex)
+            {
+                AudioLog.Write($"Window capture failed: {ex.GetType().Name}: {ex.Message}");
+            }
+            Shutdown();
+        };
+        timer.Start();
+    }
+
+    private static void Capture(Window w, string path)
+    {
+        var dpi = VisualTreeHelper.GetDpi(w);
+        var rtb = new RenderTargetBitmap(
+            (int)Math.Ceiling(w.ActualWidth * dpi.DpiScaleX),
+            (int)Math.Ceiling(w.ActualHeight * dpi.DpiScaleY),
+            dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+        rtb.Render(w);
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(rtb));
+        using var stream = System.IO.File.Create(path);
+        encoder.Save(stream);
+    }
+
+    private static string Sanitise(string name)
+    {
+        foreach (var c in System.IO.Path.GetInvalidFileNameChars()) name = name.Replace(c, '-');
+        return name.Replace(' ', '-').Replace("—", "-").Trim('-');
     }
 
     private static bool _openAllWindows;
