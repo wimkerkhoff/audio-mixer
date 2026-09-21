@@ -36,9 +36,6 @@ public partial class SimpleWindow : Window
         settle.Start();
     }
 
-    /// <summary>The Advanced (full mixer) window, handed in so this panel can toggle it.</summary>
-    public Window? AdvancedWindow { get; set; }
-
     private void Pin_Changed(object sender, RoutedEventArgs e) => Topmost = PinButton.IsChecked == true;
 
     /// <summary>Opens Diagnostics and Settings — used by the --open-all binding smoke test.</summary>
@@ -46,19 +43,6 @@ public partial class SimpleWindow : Window
     {
         Diagnostics_Click(this, new RoutedEventArgs());
         Settings_Click(this, new RoutedEventArgs());
-    }
-
-    private void Advanced_Click(object sender, RoutedEventArgs e)
-    {
-        if (AdvancedWindow == null) return;
-        if (AdvancedWindow.IsVisible)
-        {
-            AdvancedWindow.Hide();
-            return;
-        }
-        AdvancedWindow.Show();
-        if (AdvancedWindow.WindowState == WindowState.Minimized) AdvancedWindow.WindowState = WindowState.Normal;
-        AdvancedWindow.Activate();
     }
 
     private ChecksWindow? _checks;

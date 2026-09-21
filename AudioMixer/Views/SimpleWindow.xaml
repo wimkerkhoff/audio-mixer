@@ -258,8 +258,6 @@
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE9F5;" Click="ResetCal_Click"
                         ToolTip="Reset calibration — do this after changing a transmitter's gain"/>
                 <Rectangle Width="1" Fill="#3A3A44" Margin="3,3"/>
-                <Button Style="{StaticResource ToolBtn}" Content="&#xE7F4;" Click="Advanced_Click"
-                        ToolTip="Advanced — the full mixer"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE9D9;" Click="Diagnostics_Click"
                         ToolTip="Diagnostics — why this mic, session report, calibration, devices"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE713;" Click="Settings_Click"
@@ -421,6 +419,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding TaggedLabel}"
@@ -450,6 +449,14 @@
                                           PeakDb="{Binding OutputPeakDb}"
                                           HoldDb="{Binding OutputPeakHoldDb}"
                                           Orientation="Horizontal"/>
+
+                            <!-- Device trim, applied after the meter and recorder taps, so turning it
+                                 down changes what is heard without changing what is measured. -->
+                            <Slider Grid.Row="2" Grid.ColumnSpan="3" Minimum="0" Maximum="100"
+                                    Height="14" Margin="0,2,0,0"
+                                    Value="{Binding VolumePercent, Mode=TwoWay}"
+                                    ToolTip="Output level for this bus. Applied after the meter, so it does not change what is recorded."
+                                    Style="{StaticResource LevelSlider}"/>
                         </Grid>
                     </Border>
                 </DataTemplate>

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using AudioMixer.Audio;
+using AudioMixer.ViewModels;
 using AudioMixer.Audio.Replay;
 
 namespace AudioMixer;
@@ -93,7 +94,6 @@ public partial class App : Application
     //   --state[=PORT]   enable the loopback JSON state endpoint (default port 7077)
     //   --replay[=STAMP] replay a recorded session instead of live mics (sandbox; see ReplayOptions)
     //   --speed=N        replay rate multiplier (batch runs); --loop  replay repeatedly
-    //   --advanced       open the full mixer instead of the operator (Simple) panel
     //   --shots[=DIR]    render every window to PNG and exit (works with the workstation locked)
     private static void ApplyCliFlags(string[] args)
     {
@@ -118,18 +118,6 @@ public partial class App : Application
             {
                 ReplayOptions.Loop = true;
             }
-            else if (a.Equals("--simple", StringComparison.OrdinalIgnoreCase) ||
-                     a.Equals("--ui=simple", StringComparison.OrdinalIgnoreCase) ||
-                     a.Equals("--ui=new", StringComparison.OrdinalIgnoreCase))
-            {
-                _useSimpleUi = true;
-            }
-            else if (a.Equals("--advanced", StringComparison.OrdinalIgnoreCase) ||
-                     a.Equals("--ui=advanced", StringComparison.OrdinalIgnoreCase) ||
-                     a.Equals("--ui=classic", StringComparison.OrdinalIgnoreCase))
-            {
-                _useSimpleUi = false;
-            }
             else if (a.StartsWith("--scene=", StringComparison.OrdinalIgnoreCase))
             {
                 if (Enum.TryParse<Models.Scene>(a[8..], ignoreCase: true, out var sc)) StartupScene = sc;
@@ -143,7 +131,6 @@ public partial class App : Application
             }
             else if (a.Equals("--open-all", StringComparison.OrdinalIgnoreCase))
             {
-                _useSimpleUi = true;
                 _openAllWindows = true;
             }
             else if (a.StartsWith("--seek=", StringComparison.OrdinalIgnoreCase))
@@ -168,46 +155,31 @@ public partial class App : Application
 
     /// <summary>
     /// Simple mode is the default: a plain launch opens the operator panel, and Advanced is reachable
-    /// both from a button on that panel and from <c>--advanced</c> / <c>--ui=advanced</c>. Baseline
-    /// replay runs pass <c>--advanced</c> so they keep the window their goldens were recorded under.
     /// Both windows bind the SAME view model, which is what makes running them side by side a valid
     /// comparison — they cannot disagree about mixer state.
     /// </summary>
-    private static bool _useSimpleUi = true;
     private static string? _shotsDirectory;
+
+    private MainViewModel? _viewModel;
 
     private void CreateWindows()
     {
-        var main = new MainWindow();
-        MainWindow = main;
+        // App owns the view model. It used to belong to the Advanced window, which meant that window
+        // could never be closed — only hidden — because closing it disposed the engine underneath the
+        // operator panel. Advanced was retired on 2026-09-20 once everything it uniquely held had a
+        // home: microphone devices, split side, automix mode and the leveler in Settings; level,
+        // mute, routing, output trim and recording on the panel.
+        _viewModel = new MainViewModel();
 
-        if (!_useSimpleUi)
-        {
-            main.Show();
-            return;
-        }
-
-        var simple = new Views.SimpleWindow(main.ViewModel) { AdvancedWindow = main };
-
-        // Advanced starts hidden rather than closed: closing it would dispose the shared view model.
-        // With it hidden, the app must not exit on "last window closed", so shutdown is explicit.
-        ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        simple.Closed += (_, _) =>
-        {
-            main.Close();      // disposes the view model, stopping the engine cleanly
-            Shutdown();
-        };
+        var simple = new Views.SimpleWindow(_viewModel);
+        MainWindow = simple;
+        simple.Closed += (_, _) => Shutdown();
         simple.Show();
-        MainWindow = simple;   // so the single-instance signal raises the panel the operator is using
 
         // Diagnostics and Settings only resolve their bindings when opened, so a smoke run has to open
         // them or their markup is untested. Paired with --log this turns "did I break a binding" into a
         // one-command check across every window.
-        if (_openAllWindows)
-        {
-            main.Show();
-            simple.OpenAuxiliaryWindows();
-        }
+        if (_openAllWindows) simple.OpenAuxiliaryWindows();
 
         if (_shotsDirectory != null) CaptureWindowsThenExit(_shotsDirectory);
     }
@@ -310,6 +282,9 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Stops the engine and writes the session record. App owns the view model now, so this is the
+        // one place it is disposed — it used to happen when the Advanced window closed.
+        _viewModel?.Dispose();
         if (_ownsMutex) _instanceMutex?.ReleaseMutex();
         _instanceMutex?.Dispose();
         _showEvent?.Dispose();

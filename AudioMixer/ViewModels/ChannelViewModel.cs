@@ -194,6 +194,7 @@ public sealed class ChannelViewModel : ViewModelBase
                 RaisePropertyChanged(nameof(SourceLeft));
                 RaisePropertyChanged(nameof(SourceRight));
                 RaisePropertyChanged(nameof(SourceSuffix));
+                RaisePropertyChanged(nameof(SideIndex));
                 RaisePropertyChanged(nameof(HasAdvancedSettings));
             }
         }
@@ -202,6 +203,13 @@ public sealed class ChannelViewModel : ViewModelBase
     // Radio-button backing. Bound directly rather than through a converter on the enum: a WPF
     // trigger/converter comparison against a non-string value is the failure mode documented in
     // CLAUDE.md, and three bools cost less than debugging that again.
+    /// <summary>Combo-box backing for the split side, now that Settings owns this control.</summary>
+    public int SideIndex
+    {
+        get => (int)_source;
+        set { if (value >= 0 && value <= 2) Source = (ChannelSource)value; }
+    }
+
     public bool SourceStereo
     {
         get => _source == ChannelSource.Stereo;

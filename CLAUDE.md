@@ -54,12 +54,12 @@ RODE-PRO-RIG.md               # The 6x Wireless PRO replacement rig: plan, watch
 publish.ps1                   # Single-file publish
 AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): scenes, health, autosave allowlist
 AudioMixer/
-├── App.xaml / App.xaml.cs    # Single-instance mutex; window creation; ApplyCliFlags (see Conventions)
-├── MainWindow.xaml / .cs      # Advanced view (--advanced). Size set in code-behind, NOT bound (see gotcha)
-├── Views/                    # Operator UI. Separate files so MainWindow.xaml is never touched.
-│   ├── SimpleWindow.xaml     # Scene selector, on-air cards, mic dots, health banner (DEFAULT window)
+├── App.xaml / App.xaml.cs    # Single-instance mutex; OWNS MainViewModel; ApplyCliFlags (see Conventions)
+├── Views/                    # The whole UI. Four windows, no Advanced — see below.
+│   ├── SimpleWindow.xaml     # THE mixer: scenes, channel rows (level/mute/bus A+B), on-air cards
+│   ├── ChecksWindow.xaml     # Everything needing attention; opens itself only when something does
 │   ├── DiagnosticsWindow.xaml # Ranked "why this mic?" table; own 10 Hz timer, off when closed
-│   ├── SettingsWindow.xaml   # Mic roles, device-picker options, diagnostics summary
+│   ├── SettingsWindow.xaml   # The lapel, mic devices + split side, automix mode, leveler, low-cut
 │   └── OperatorConverters.cs # Severity->brush, mic-dot colour, null/inverse visibility
 ├── Audio/
 │   ├── AudioEngine.cs        # Capture/render lifecycle, graph wiring, AutoMix tick + stall watchdog
@@ -118,6 +118,24 @@ tools/                        # Offline analysis + diagnostics — validate sele
 
 Offline tools replay against the "record all inputs" per-mic WAVs at
 `%USERPROFILE%\Documents\AudioMixer\analysis\diag-input*.wav`.
+
+## The UI, after 2026-09-20
+
+**There is one mixer window.** The Advanced window was retired once everything it uniquely held had a
+home, which is worth recording because the split cost real confusion: two places to mute a mic, two
+device pickers, two toolbars, and a window that could not be closed (only hidden) because it owned the
+view model.
+
+- **Operator panel** (`SimpleWindow`) — scenes, one row per mic (state stripe, meter with the target
+  band, level, mute, bus A/B that lights when the automixer picks it), on-air cards per bus with their
+  own trim, and one toolbar. This is the mixer now, not a simplified view of one.
+- **Checks** — every warning and error, nothing that is merely fine. Opens itself only when something
+  needs attention, so its appearance is the signal; never blocks.
+- **Diagnostics** — why this mic, the session record, calibration, devices. Never needed to run a service.
+- **Settings** — the rig: which mic is the lapel (and therefore priority), each strip's device and split
+  side, automix mode, the bus leveler, the global low-cut, picker filters.
+
+`App` owns `MainViewModel` and disposes it in `OnExit`. `--advanced` / `--simple` are gone.
 
 ## Audio architecture
 

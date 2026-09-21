@@ -96,8 +96,12 @@ public class XamlResourceTests
     {
         var names = AppXamlFiles().Select(Path.GetFileName).ToList();
 
-        Assert.Contains("MainWindow.xaml", names);
+        // The Advanced window (MainWindow.xaml) was retired on 2026-09-20 once everything it uniquely
+        // held had a home in Settings or the panel.
+        Assert.DoesNotContain("MainWindow.xaml", names);
+
         Assert.Contains("SimpleWindow.xaml", names);
+        Assert.Contains("ChecksWindow.xaml", names);
         Assert.Contains("DiagnosticsWindow.xaml", names);
         Assert.Contains("SettingsWindow.xaml", names);
         Assert.True(names.Count >= 5, $"Only found {names.Count} XAML files — the search is broken.");

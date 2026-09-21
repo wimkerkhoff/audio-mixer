@@ -50,6 +50,90 @@
 
             <Border Style="{StaticResource Card}">
                 <StackPanel>
+                    <TextBlock Text="Microphones" Style="{StaticResource Head}"/>
+                    <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
+                               Text="Which device each strip listens to. A two-transmitter receiver in Split mode is ONE device carrying TX1 on the left and TX2 on the right — bind it to two strips, one Left and one Right, so the automixer has two mics to choose between."/>
+                    <ItemsControl ItemsSource="{Binding Channels}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="74"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"
+                                             MaxLength="20" FontSize="11" VerticalAlignment="Center"
+                                             Background="#1B1B22" Foreground="#E8E8EF" BorderBrush="#3A3A44"
+                                             ToolTip="Name this microphone"/>
+                                    <ComboBox Grid.Column="1" Margin="4,0" ItemsSource="{Binding AvailableDevices}"
+                                              SelectedItem="{Binding SelectedDevice}"
+                                              DisplayMemberPath="FriendlyName" FontSize="11"/>
+                                    <ComboBox Grid.Column="2" Width="66" FontSize="11"
+                                              SelectedIndex="{Binding SideIndex, Mode=TwoWay}"
+                                              IsEnabled="{Binding IsStereoCapture}"
+                                              ToolTip="Which transmitter of a split receiver this strip takes">
+                                        <ComboBoxItem Content="Stereo"/>
+                                        <ComboBoxItem Content="Left"/>
+                                        <ComboBoxItem Content="Right"/>
+                                    </ComboBox>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="Bus leveler" Style="{StaticResource Head}"/>
+                    <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
+                               Text="Slow broadcast-style levelling for talkers who are quieter, louder or further from a mic. Off by default. It sits AFTER the automixer on purpose — compression before that would flatten the level differences the selector uses to tell which mic is closest. Below the idle floor the gain freezes rather than falling, so it can never punch holes in sustained material; calibrate that floor per room by watching the bus meter with the room empty and setting it ~6 dB above."/>
+                    <ItemsControl ItemsSource="{Binding Outputs}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <CheckBox IsChecked="{Binding LevelerEnabled}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding TaggedLabel}" Foreground="#D8D8DE" FontSize="11"
+                                                   VerticalAlignment="Center" Margin="6,0,8,0"/>
+                                        <ComboBox Width="84" FontSize="11"
+                                                  ItemsSource="{Binding LevelerStrengthOptions}"
+                                                  SelectedIndex="{Binding LevelerStrengthIndex, Mode=TwoWay}"
+                                                  IsEnabled="{Binding LevelerEnabled}"/>
+                                        <TextBlock Text="{Binding LevelerGainText}" Style="{StaticResource Cap}"
+                                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                                   FontFamily="Consolas"/>
+                                    </StackPanel>
+                                    <Expander Header="Advanced" Foreground="#9AA0AE" FontSize="10" Margin="22,2,0,0"
+                                              IsEnabled="{Binding LevelerEnabled}">
+                                        <StackPanel Margin="0,4,0,0">
+                                            <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerThresholdDb, StringFormat=Threshold {0:F0} dBFS}"/>
+                                            <Slider Minimum="-60" Maximum="0" Value="{Binding LevelerThresholdDb}"/>
+                                            <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerRatio, StringFormat=Ratio {0:F1}:1}"/>
+                                            <Slider Minimum="1" Maximum="10" Value="{Binding LevelerRatio}"/>
+                                            <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerAttackMs, StringFormat=Attack {0:F0} ms}"/>
+                                            <Slider Minimum="5" Maximum="500" Value="{Binding LevelerAttackMs}"/>
+                                            <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerReleaseMs, StringFormat=Release {0:F0} ms}"/>
+                                            <Slider Minimum="200" Maximum="8000" Value="{Binding LevelerReleaseMs}"/>
+                                            <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerMaxGainDb, StringFormat=Max boost {0:F0} dB}"
+                                                       ToolTip="Room noise rises with it one-for-one, and this room's floor is HVAC that no filter removes — so this is a noise budget, capped at 12 dB."/>
+                                            <Slider Minimum="0" Maximum="12" Value="{Binding LevelerMaxGainDb}"/>
+                                            <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerIdleFloorDb, StringFormat=Idle hold {0:F0} dBFS}"/>
+                                            <Slider Minimum="-70" Maximum="-20" Value="{Binding LevelerIdleFloorDb}"/>
+                                            <TextBlock Style="{StaticResource Cap}" Text="{Binding LimiterCeilingDb, StringFormat=Limiter ceiling {0:F1} dBFS}"/>
+                                            <Slider Minimum="-12" Maximum="-0.1" Value="{Binding LimiterCeilingDb}"/>
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
                     <TextBlock Text="Mixer" Style="{StaticResource Head}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <TextBlock Text="Mic strips" Style="{StaticResource Cap}" VerticalAlignment="Center"
@@ -95,12 +179,17 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="90"/>
                                         <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding CustomLabel}" Foreground="#D8D8DE"
+                                    <TextBlock Grid.Column="0" Text="{Binding TaggedLabel}" Foreground="#D8D8DE"
                                                FontSize="11" VerticalAlignment="Center"/>
                                     <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableDevices}"
                                               SelectedItem="{Binding SelectedDevice}"
                                               DisplayMemberPath="FriendlyName" FontSize="11"/>
+                                    <ComboBox Grid.Column="2" Width="60" Margin="4,0,0,0" FontSize="11"
+                                              ItemsSource="{Binding AutoMixModeOptions}"
+                                              SelectedIndex="{Binding AutoMixModeIndex, Mode=TwoWay}"
+                                              ToolTip="Gate follows the talker and mutes the rest; Off passes every routed mic. Scenes set this — change it here only to override one."/>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
