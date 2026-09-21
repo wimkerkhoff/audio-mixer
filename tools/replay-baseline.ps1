@@ -16,6 +16,12 @@
     per-mic cv          median flux-CV, slow-moving and stable           (tolerance: 0.05)
     per-mic env         median level -- recorded for context, loose      (tolerance: 4 dB)
 
+  HERMETIC: each fixture owns its preset, stored beside the baseline as <Name>.preset.json and passed
+  with --preset. Without it a fixture inherited the operator's live preset and a DRIFT report meant
+  "the preset moved" as often as "the selector moved". -Update seeds the fixture preset from the live
+  one the first time; after that it is a checked-in part of the fixture -- edit it deliberately, and
+  expect the baseline to need re-recording when you do.
+
   IMPORTANT: record and check a baseline at the SAME -Speed. The automix tick is driven off the replay
   clock so the selector itself is speed-independent, but above about -Speed 2 the process starts
   saturating: /state polls get starved and the rig's catch-up cap begins dropping audio, which does
@@ -52,10 +58,27 @@ $baselineDir = Join-Path $PSScriptRoot 'baselines'
 if (-not (Test-Path $baselineDir)) { New-Item -ItemType Directory -Path $baselineDir | Out-Null }
 $baselinePath = Join-Path $baselineDir "$Name.json"
 
+# --- the fixture's own preset -------------------------------------------------------------------
+# Without this the run is NOT hermetic. --replay sandboxes autosave and output devices but not preset
+# LOADING, so every fixture used to inherit whatever %APPDATA%\AudioMixer\preset.json held that day
+# -- routing, low-cut, split ChannelSource, automix mode. Proof: the 'presentation' fixture failed
+# against its own baseline at 5c597e9, the commit that recorded it (60 hand-offs vs 14), which is
+# exactly what that day's preset predicts. So every DRIFT was as likely to be configuration as code,
+# and -Update laundered the difference away.
+$presetPath = Join-Path $baselineDir "$Name.preset.json"
+if (-not (Test-Path $presetPath)) {
+    if (-not $Update) {
+        throw "no preset stored for fixture '$Name' ($presetPath). Re-run with -Update to capture the current preset alongside a new baseline -- a fixture without its own preset cannot gate a regression."
+    }
+    $live = Join-Path $env:APPDATA 'AudioMixer\preset.json'
+    if (-not (Test-Path $live)) { throw "no preset at $live to seed fixture '$Name' from" }
+    Copy-Item $live $presetPath
+    Write-Host "seeded fixture preset from the live preset: $presetPath" -ForegroundColor Green
+}
+
 # --- run the fixture ----------------------------------------------------------------------------
-# --advanced is explicit, not inherited: the goldens were recorded under the Advanced window, and a
-# fixture must not change its UI load just because the app's default window changed.
-$args = @("--replay$(if ($Stamp) { "=$Stamp" })", "--seek=$Seek", "--for=$For", "--speed=$Speed", "--state=$Port", "--advanced")
+# --preset pins the configuration the selector runs against, which is the whole point of the fixture.
+$args = @("--replay$(if ($Stamp) { "=$Stamp" })", "--seek=$Seek", "--for=$For", "--speed=$Speed", "--state=$Port", "--preset=$presetPath")
 Write-Host "Running fixture '$Name': $($args -join ' ')" -ForegroundColor Cyan
 $proc = Start-Process -FilePath $Exe -ArgumentList $args -PassThru
 
@@ -127,7 +150,6 @@ for ($o = 0; $o -lt $nOut; $o++) {
     $outputs += [ordered]@{
         index        = $o
         mode         = $samples[0].outputs[$o].mode
-        preferNatural = $samples[0].outputs[$o].preferNatural
         handoffs     = $handoffs
         occupancy    = $occ
     }
@@ -139,6 +161,7 @@ $result = [ordered]@{
     seek     = $Seek
     duration = $For
     samples  = $samples.Count
+    preset   = (Get-FileHash $presetPath -Algorithm SHA256).Hash.Substring(0, 12)
     channels = $channels
     outputs  = $outputs
 }
@@ -152,6 +175,14 @@ if ($Update -or -not (Test-Path $baselinePath)) {
 
 $base = Get-Content $baselinePath -Raw | ConvertFrom-Json
 $issues = @()
+
+# Reported first and named for what it is. A fixture preset that has been edited changes what the
+# selector is being asked to do, so every number below moves for a reason that is not the code.
+if ($base.preset -and $base.preset -ne $result.preset) {
+    Write-Host "NOTE: fixture preset changed since this baseline ($($base.preset) -> $($result.preset))." -ForegroundColor Yellow
+    Write-Host "      Differences below are configuration, not necessarily code." -ForegroundColor Yellow
+    Write-Host ""
+}
 
 for ($o = 0; $o -lt $nOut; $o++) {
     $b = $base.outputs[$o]; $n = $result.outputs[$o]

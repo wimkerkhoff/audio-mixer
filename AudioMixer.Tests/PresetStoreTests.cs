@@ -208,12 +208,48 @@ public class PresetStoreTests : IDisposable
         Assert.NotNull(Store().Load());
     }
 
+    /// <summary>
+    /// `--preset=<path>` sets this, and it is what makes a replay fixture hermetic: without it every
+    /// golden baseline ran against whatever %APPDATA% held that day, so a DRIFT report meant "the
+    /// preset moved" as often as "the selector moved".
+    /// </summary>
+    [Fact]
+    public void ThePathOverrideRedirectsTheStore()
+    {
+        var custom = Path.Combine(_dir, "fixture.preset.json");
+        try
+        {
+            PresetStore.PathOverride = custom;
+            var store = new PresetStore();
+            Assert.Equal(custom, store.PresetPath);
+
+            store.Save(Preset("fixture"));
+            Assert.True(File.Exists(custom));
+            Assert.Equal("fixture", new PresetStore().Load()!.Channels[0].CustomLabel);
+        }
+        finally { PresetStore.PathOverride = null; }
+    }
+
+    /// <summary>An explicit constructor path still wins, so a test can never be redirected onto the
+    /// operator's real preset by a stray override.</summary>
+    [Fact]
+    public void AnExplicitPathBeatsTheOverride()
+    {
+        try
+        {
+            PresetStore.PathOverride = Path.Combine(_dir, "override.json");
+            Assert.Equal(_path, new PresetStore(_path).PresetPath);
+        }
+        finally { PresetStore.PathOverride = null; }
+    }
+
     [Fact]
     public void TheDefaultPathIsUnderAppData()
     {
         var expected = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AudioMixer");
 
+        Assert.Null(PresetStore.PathOverride);
         Assert.StartsWith(expected, new PresetStore().PresetPath);
         Assert.EndsWith("preset.json", new PresetStore().PresetPath);
     }

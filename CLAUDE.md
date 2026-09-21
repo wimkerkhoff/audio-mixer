@@ -340,21 +340,21 @@ The app used to be unexercisable without a live congregation, which blocked all 
 - **Golden baselines**: `tools/replay-baseline.ps1 -Name <fixture> ... [-Update]`, baselines in
   `tools/baselines/`. Compares aggregates (mode, hand-off count, occupancy, median flux-cv). Record
   and check at the **same `-Speed`, 1–2**; higher saturates the process and starts dropping audio.
-  The script passes `--advanced` explicitly so a fixture keeps the window its goldens were recorded
-  under even though the app now defaults to Simple — a fixture must never inherit a UI change as a
-  change in CPU load.
-- **⚠ The baselines are NOT hermetic and currently cannot gate a regression.** `--replay` suppresses
-  autosave and output devices but **not preset *loading*** — `MainViewModel` calls
-  `TryLoadInitialPreset()` unconditionally before `StartReplayIfRequested()`, so every fixture runs
-  against whatever `%APPDATA%\AudioMixer\preset.json` happens to hold *today*: routing, low-cut,
-  split `ChannelSource`, automix mode. Change your routing and every golden "drifts" with no code
-  change. Verified 2026-08-30 by running the `presentation` fixture at **`5c597e9`, the very commit
-  that recorded it**: 60 hand-offs vs its own stored 14, with output B's occupancy shifted from
-  51.3%/32.8% to 0%/80% — exactly what that day's preset (only ch4 routed to B; ch1/ch2 on 90/100 Hz
-  low-cuts and Left/Right split) predicts. So a `DRIFT` report means "the preset moved" at least as
-  often as "the selector moved", and `-Update` silently launders the difference. Do **not** conclude
-  a selector regression from a baseline diff without first checking the preset's mtime; and don't
-  re-record to make it green. Fix (ROADMAP): give each baseline its own preset.
+- **Each fixture owns its preset** (`tools/baselines/<Name>.preset.json`, passed with `--preset`).
+  This is what makes a baseline mean anything. `--replay` sandboxes autosave and output devices but
+  **not preset loading** — `MainViewModel.TryLoadInitialPreset()` runs unconditionally — so until
+  2026-09-21 every fixture inherited whatever `%APPDATA%\AudioMixer\preset.json` held that day:
+  routing, low-cut, split `ChannelSource`, automix mode. Verified then by running the `presentation`
+  fixture at **`5c597e9`, the very commit that recorded it**: 60 hand-offs vs its own stored 14, and
+  output B's occupancy 51.3%/32.8% → 0%/80% — exactly what that day's preset (only ch4 routed to B,
+  ch1/ch2 on 90/100 Hz low-cuts and Left/Right split) predicts. So a `DRIFT` meant "the preset moved"
+  at least as often as "the selector moved", and `-Update` silently laundered the difference.
+  `-Update` now seeds the fixture preset from the live one the first time and the baseline records
+  its hash, so a changed fixture preset is **reported as configuration drift before any numbers are
+  compared** rather than read as a selector regression. A fixture preset is a checked-in part of the
+  fixture: edit it deliberately, and expect to re-record the baseline when you do. `--no-preset` would
+  not have worked — the defaults route only channel 0, so the fixture would exercise no selection at
+  all.
 - **Binding errors**: WPF resolves binding paths at runtime and swallows failures, so a clean build
   proves nothing about the UI. `--log` enables `BindingErrorListener`, which logs them.
   `--open-all` opens every window so one run covers all their markup.
@@ -861,7 +861,8 @@ later judgment.
   `{StaticResource Cap}`, a style that exists only in the three `Views/` windows; WPF threw
   `XamlParseException` inside `UniformGrid.MeasureOverride` while showing the window and the process
   died before painting. It shipped in `ed756fa` and every `--advanced` launch — including
-  `tools/replay-baseline.ps1`, which passes `--advanced` — crashed for weeks. `BindingErrorListener`
+  `tools/replay-baseline.ps1`, which passed `--advanced` at the time — crashed for weeks, and the one
+  harness that would have caught it was the one the crash disabled. `BindingErrorListener`
   does **not** catch this: it sees binding failures, not a fatal parse error. Guarded now by
   `AudioMixer.Tests/XamlResourceTests`, which checks **per file** that every referenced key is defined
   in that file. Per-file is the whole point — globally the key sets match, because `Cap` *is* defined,

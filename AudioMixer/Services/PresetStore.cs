@@ -27,9 +27,19 @@ public sealed class PresetStore
 
     private string TempPath => PresetPath + ".tmp";
 
+    /// <summary>
+    /// Set by <c>--preset=&lt;path&gt;</c>. A replay fixture MUST run against its own preset: routing,
+    /// low-cut, split side and automix mode all change what the selector does, so a golden baseline
+    /// that inherits whatever `%APPDATA%\AudioMixer\preset.json` holds today is measuring the
+    /// operator's configuration, not the code. Proven: the `presentation` fixture failed against its
+    /// own baseline at the very commit that recorded it.
+    /// </summary>
+    public static string? PathOverride { get; set; }
+
     /// <param name="path">Overridable so tests never touch the operator's real preset.</param>
     public PresetStore(string? path = null)
     {
+        path ??= PathOverride;
         if (path != null)
         {
             PresetPath = path;

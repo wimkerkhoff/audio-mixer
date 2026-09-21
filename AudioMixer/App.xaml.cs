@@ -93,6 +93,8 @@ public partial class App : Application
     //   --log            enable file logging (%TEMP%\AudioMixer.log)
     //   --state[=PORT]   enable the loopback JSON state endpoint (default port 7077)
     //   --replay[=STAMP] replay a recorded session instead of live mics (sandbox; see ReplayOptions)
+    //   --preset=PATH    load (and save) the preset at PATH instead of %APPDATA% -- what makes a
+    //                    replay fixture hermetic; see tools/replay-baseline.ps1
     //   --speed=N        replay rate multiplier (batch runs); --loop  replay repeatedly
     //   --shots[=DIR]    render every window to PNG and exit (works with the workstation locked)
     private static void ApplyCliFlags(string[] args)
@@ -117,6 +119,10 @@ public partial class App : Application
             else if (a.Equals("--loop", StringComparison.OrdinalIgnoreCase))
             {
                 ReplayOptions.Loop = true;
+            }
+            else if (a.StartsWith("--preset=", StringComparison.OrdinalIgnoreCase))
+            {
+                Services.PresetStore.PathOverride = a[9..];
             }
             else if (a.StartsWith("--scene=", StringComparison.OrdinalIgnoreCase))
             {
