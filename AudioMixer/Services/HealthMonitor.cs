@@ -129,7 +129,7 @@ public static class HealthMonitor
             if (!o.HasDevice)
             {
                 alerts.Add(new HealthAlert($"out{o.Index}.nodevice", AlertSeverity.Critical,
-                    $"{o.Label}: no output device selected — nothing is reaching it.",
+                    $"{o.Label} has no output device. Nothing is reaching it.",
                     "Open Settings", FixKind.OpenSettings, o.Index));
                 continue;
             }
@@ -141,7 +141,7 @@ public static class HealthMonitor
             if (!o.Playing)
             {
                 alerts.Add(new HealthAlert($"out{o.Index}.stopped", AlertSeverity.Critical,
-                    $"{o.Label} has stopped playing — the device is still there but the stream died.",
+                    $"{o.Label} has stopped playing. The device is still there, but the stream died.",
                     "Resync", FixKind.Resync, o.Index));
                 continue;
             }
@@ -163,7 +163,7 @@ public static class HealthMonitor
         if (live.Count == 0)
         {
             alerts.Add(new HealthAlert("inputs.none", AlertSeverity.Critical,
-                "No microphone is routed and unmuted — the stream has no source.",
+                "No microphone is routed and unmuted. The stream has no source.",
                 "Switch a mic's buses back on"));
         }
 
@@ -173,7 +173,7 @@ public static class HealthMonitor
                                             && o.VolumePercent < OutputVolumeFloorPercent))
         {
             alerts.Add(new HealthAlert($"out{o.Index}.novolume", AlertSeverity.Warning,
-                $"{o.Label} volume is turned down to {o.VolumePercent:F0}% — you will not hear it.",
+                $"{o.Label} volume is down to {o.VolumePercent:F0}%. You will not hear it.",
                 "Turn it up", FixKind.RaiseVolume, o.Index));
         }
 
@@ -194,7 +194,7 @@ public static class HealthMonitor
         foreach (var c in live.Where(c => c.CalibrationStale))
         {
             alerts.Add(new HealthAlert($"in{c.Index}.stalecal", AlertSeverity.Warning,
-                $"{c.Label}'s level has changed since it was last measured — the reading below is out of date.",
+                $"{c.Label}'s level has changed since it was last measured. The reading below is out of date.",
                 "Reset calibration", FixKind.ResetCalibration, c.Index));
         }
 
@@ -207,8 +207,8 @@ public static class HealthMonitor
             bool quiet = off < 0;
             alerts.Add(new HealthAlert($"in{c.Index}.level", AlertSeverity.Warning,
                 quiet
-                    ? $"{c.Label} is quiet — speech is {-off:F0} dB below target."
-                    : $"{c.Label} is hot — speech is {off:F0} dB above target and may distort.",
+                    ? $"{c.Label} is quiet. Speech is {-off:F0} dB below target."
+                    : $"{c.Label} is hot. Speech is {off:F0} dB above target and may distort.",
                 quiet ? "Check the transmitter is on and its gain is set" : "Turn the transmitter gain down"));
         }
 
@@ -224,7 +224,7 @@ public static class HealthMonitor
             if (stereo.Count == 0) continue;
             var names = string.Join(" and ", g.Select(c => c.Label));
             alerts.Add(new HealthAlert($"in{stereo[0].Index}.split", AlertSeverity.Warning,
-                $"{names} share one receiver but are not split — both carry the same blended audio.",
+                $"{names} share one receiver but are not split. Both carry the same blended audio.",
                 "Split them L / R", FixKind.SplitSides, stereo[0].Index));
         }
 
@@ -236,8 +236,8 @@ public static class HealthMonitor
             if (c.SecondsSinceSound > IdleLapelSeconds)
             {
                 alerts.Add(new HealthAlert($"in{c.Index}.idlepriority", AlertSeverity.Warning,
-                    $"{c.Label} is armed as priority but has been silent {c.SecondsSinceSound / 60:F0} min — " +
-                    "if it is bumped it will duck every room mic off the stream.",
+                    $"{c.Label} is the priority mic but has been silent {c.SecondsSinceSound / 60:F0} min. " +
+                    "If it is bumped it will duck every room mic off the stream.",
                     "Clear priority", FixKind.ClearPriority, c.Index));
             }
         }
@@ -248,7 +248,7 @@ public static class HealthMonitor
             foreach (var c in s.Channels.Where(c => c.IsPriority && c.Routed))
             {
                 alerts.Add(new HealthAlert($"in{c.Index}.singingpriority", AlertSeverity.Critical,
-                    $"{c.Label} is still a priority mic during Singing — the congregation is being ducked off the stream.",
+                    $"{c.Label} is still the priority mic during Singing. The congregation is being ducked off the stream.",
                     "Re-apply Singing", FixKind.ReapplyScene, c.Index));
             }
         }
@@ -257,7 +257,7 @@ public static class HealthMonitor
         foreach (var c in s.Channels.Where(c => c.IsPriority && !c.Routed && c.LevelDb > SpeechDb))
         {
             alerts.Add(new HealthAlert($"in{c.Index}.offair", AlertSeverity.Critical,
-                $"{c.Label} is live but not routed to any output — the presenter is off-air.",
+                $"{c.Label} is live but not routed to any output. The presenter is off-air.",
                 "Put it back on air", FixKind.RouteToBuses, c.Index));
         }
 
@@ -268,7 +268,7 @@ public static class HealthMonitor
             if (!s.IsReplaying && c.SecondsSinceData > StallSeconds)
             {
                 alerts.Add(new HealthAlert($"in{c.Index}.stalled", AlertSeverity.Critical,
-                    $"{c.Label} has stopped delivering audio ({c.SecondsSinceData:F0}s) — the device may have dropped.",
+                    $"{c.Label} has stopped delivering audio ({c.SecondsSinceData:F0}s). The device may have dropped.",
                     "Resync", FixKind.Resync, c.Index));
                 continue;
             }
@@ -284,7 +284,7 @@ public static class HealthMonitor
             if (c.Routed && !c.Muted && c.SecondsSinceSound > DeadMicSeconds)
             {
                 alerts.Add(new HealthAlert($"in{c.Index}.dead", AlertSeverity.Warning,
-                    $"{c.Label} has been silent for {c.SecondsSinceSound:F0}s — check it is powered and in range.",
+                    $"{c.Label} has been silent for {c.SecondsSinceSound:F0}s. Check it is powered and in range.",
                     null));
             }
         }

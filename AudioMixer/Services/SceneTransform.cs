@@ -114,14 +114,14 @@ public static class SceneTransform
     /// <summary>One-line plain-English summary of what a scene will do, for the confirm/undo affordance.</summary>
     public static string Describe(Scene scene, VoiceSource source) => scene switch
     {
-        Scene.Standby => "Outputs muted — nothing reaches Zoom or the recording.",
+        Scene.Standby => "Outputs muted. Nothing reaches Zoom or the recording.",
         Scene.Teaching => source == VoiceSource.RoomMics
-            ? "Room mics, follow-the-talker (Gate). Lapel out."
-            : "Lapel leads and ducks the room; room mics follow the talker (Gate).",
-        Scene.Prayer => "Room mics, turn-taking (Gate). Lapel muted and unrouted.",
+            ? "Room mics, follow the talker. Lapel out."
+            : "Lapel leads and ducks the room. Room mics follow the talker.",
+        Scene.Prayer => "Room mics, turn-taking. Lapel muted and unrouted.",
         Scene.Singing => source == VoiceSource.RoomMics
-            ? "Room mics open and flat, no ducking, no follow-the-talker."
-            : "Lapel only, flat. Room mics out, ducking suspended.",
+            ? "Room mics all open. No ducking, no follow-the-talker."
+            : "Lapel only. Room mics out, ducking suspended.",
         _ => "",
     };
 }

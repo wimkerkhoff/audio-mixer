@@ -39,10 +39,10 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Style="{StaticResource Cap}" TextWrapping="Wrap" VerticalAlignment="Center"
-                       Text="Rank is the current selection order. A mic can read hot here and still be ducked — automix gain is applied after the meter tap. speech/floor accumulate until reset."/>
+                       Text="Rank is the current selection order. A mic can read hot here and still be ducked, because automix gain is applied after the meter tap. Speech and floor accumulate until reset."/>
             <Button Grid.Column="1" Content="Reset calibration" Margin="8,0,0,0" Padding="8,3"
                     Command="{Binding ResetCalibrationCommand}"
-                    ToolTip="Clear the speech/floor histograms on every input. Do this after changing a transmitter's gain — the old readings would otherwise keep dragging the median."/>
+                    ToolTip="Clear the speech and floor readings on every input. Do this after changing a transmitter's gain, or the old buffers keep dragging the median."/>
         </Grid>
 
         <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Outputs}" Margin="0,0,0,8">
@@ -82,9 +82,9 @@
                 <TextBlock Grid.Column="0" Text="rank" Style="{StaticResource Head}"/>
                 <TextBlock Grid.Column="1" Text="mic" Style="{StaticResource Head}"/>
                 <TextBlock Grid.Column="2" Text="speech" Style="{StaticResource Head}"
-                           ToolTip="Median level of this mic's voiced buffers, in dBFS. This is what transmitter gain is set against — aim for -24, green means within 3 dB of it. A peak meter cannot show this."/>
+                           ToolTip="Median level of this mic's voiced buffers, in dBFS. Set transmitter gain against it: aim for -24, green means within 3 dB."/>
                 <TextBlock Grid.Column="3" Text="floor" Style="{StaticResource Head}"
-                           ToolTip="Median level of its non-voiced buffers: the room floor this mic actually hears. Read it with the room empty to derive the automixer's silence floor."/>
+                           ToolTip="Median level of this mic's non-voiced buffers, in dBFS. The room floor it hears."/>
                 <TextBlock Grid.Column="4" Text="env dB" Style="{StaticResource Head}"/>
                 <TextBlock Grid.Column="5" Text="flux-cv" Style="{StaticResource Head}"/>
                 <TextBlock Grid.Column="6" Text="gain A" Style="{StaticResource Head}"/>
@@ -133,7 +133,7 @@
         <TabItem Header="Session">
             <DockPanel Margin="8">
                 <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,6,0,0"
-                           Text="Accumulated since this launch and written to Documents\AudioMixer\sessions every couple of minutes, whether or not recording was armed. Kept 90 days."/>
+                           Text="Accumulated since launch and written to Documents\AudioMixer\sessions every couple of minutes, whether or not recording was armed. Kept for 90 days."/>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="SessionPanel"/>
                 </ScrollViewer>
@@ -148,7 +148,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Style="{StaticResource Cap}" TextWrapping="Wrap" VerticalAlignment="Center"
-                               Text="Speech should sit in the band. These medians are what every absolute threshold in the automixer is fitted against, so a mic far outside it makes the selector unstable — not just quiet. Cumulative: reset after ANY transmitter gain change."/>
+                               Text="Speech should sit in the band. The automixer's thresholds are fitted against these medians, so a mic far outside the band makes the selector unstable, not just quiet. Reset after any transmitter gain change."/>
                     <Button Grid.Column="1" Content="Reset calibration" Margin="8,0,0,0" Padding="8,3"
                             Command="{Binding ResetCalibrationCommand}"/>
                 </Grid>
@@ -183,7 +183,7 @@
         <TabItem Header="Devices">
             <DockPanel Margin="8">
                 <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,6,0,0"
-                           Text="Bus is the Windows device-enumerator name, not a guess from the friendly name — BTHENUM is the only value that means Bluetooth. Identity says whether a preset can re-find this device after it moves: &quot;serial&quot; follows the device between ports and tells two identical receivers apart, &quot;port&quot; means a different USB port looks like a brand new device. Endpoint gain is keyed to the endpoint, so it resets when a receiver moves to another USB port."/>
+                           Text="Bus is the Windows device-enumerator name; BTHENUM is the only value that means Bluetooth. Identity says whether a preset can re-find this device after it moves: &quot;serial&quot; follows the device between ports and tells two identical receivers apart, &quot;port&quot; means a different USB port looks like a new device. Endpoint gain is stored against the port, so it resets when a receiver moves."/>
                 <DataGrid x:Name="DeviceGrid" AutoGenerateColumns="False" IsReadOnly="True"
                           Background="#16161C" RowBackground="#1E1E24" AlternatingRowBackground="#22222A"
                           Foreground="#D8D8DE" BorderThickness="0" GridLinesVisibility="Horizontal"

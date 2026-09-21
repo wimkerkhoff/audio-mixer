@@ -130,9 +130,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         _engine = new AudioEngine();
         _engine.InputRestarted += (idx, attempt) => RunOnUi(() =>
-            StatusText = $"Input {idx + 1} dropped — auto-restarted (attempt {attempt}).");
+            StatusText = $"Input {idx + 1} dropped and was restarted (attempt {attempt}).");
         _engine.InputRestartGaveUp += idx => RunOnUi(() =>
-            StatusText = $"Input {idx + 1} not responding — re-pick the device or click Resync.");
+            StatusText = $"Input {idx + 1} is not responding. Re-pick the device, or click Resync.");
 
         _allInputDevices = AudioDeviceInfo.Enumerate(DataFlow.Capture);
         _allOutputDevices = AudioDeviceInfo.Enumerate(DataFlow.Render);
@@ -143,7 +143,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _deviceWatcher.DevicesChanged += () => RunOnUi(() =>
         {
             RefreshDevices();
-            StatusText = "Audio devices changed — rechecked.";
+            StatusText = "Audio devices changed. Device lists refreshed.";
         });
 
         for (int i = 0; i < _engine.InputCount; i++)
@@ -299,7 +299,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string AlertBadgeState => Alerts.Count == 0 ? "clear"
         : Alerts.Any(a => a.Severity == AlertSeverity.Critical) ? "bad" : "warn";
 
-    public string AlertBadgeText => Alerts.Count == 0 ? "checks" : $"◎ {Alerts.Count}";
+    /// <summary>
+    /// A glyph when there is nothing to report, so the toolbar reads as a row of icons rather than
+    /// one odd button labelled with a word; the count only appears when there is a count worth
+    /// showing.
+    /// </summary>
+    public string AlertBadgeText => Alerts.Count == 0 ? "✓" : $"⚠ {Alerts.Count}";
 
     // --- Diagnostics: Session and Devices tabs ---------------------------------------------------
 
@@ -696,7 +701,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 case FixKind.ResetCalibration:
                     if (ch == null) { ResetCalibration(); return; }
                     _engine.Inputs[ch.Index].ResetCalibration();
-                    StatusText = $"{Label(ch)}'s calibration cleared — it will settle again as it is used.";
+                    StatusText = $"{Label(ch)}'s calibration cleared. It will settle again as the mic is used.";
                     break;
 
                 case FixKind.Resync:
@@ -810,7 +815,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
             rig.ReachedEnd += () => RunOnUi(() =>
             {
-                StatusText = $"Replay finished — {rig.Stamp}";
+                StatusText = $"Replay finished: {rig.Stamp}";
                 if (!rig.Loop && Audio.Replay.ReplayOptions.Duration > TimeSpan.Zero)
                     Application.Current?.Shutdown();
             });
@@ -943,7 +948,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (IsRecording && count != Channels.Count)
         {
             StopRecording();
-            StatusText = $"Recording stopped — changing to {count} mic strips starts a new one.";
+            StatusText = $"Recording stopped. Changing to {count} mic strips starts a new one.";
         }
 
         bool prevAutosave = _suppressAutosave;
@@ -1487,7 +1492,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var outputs = Outputs.Where(o => o.SelectedDevice != null).ToArray();
         if (inputs.Length == 0 && outputs.Length == 0)
         {
-            StatusText = "Nothing to record — no microphone or output device is selected.";
+            StatusText = "Nothing to record. No microphone or output device is selected.";
             return;
         }
 
@@ -1578,7 +1583,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (_retention.MustStopNow())
         {
             StopRecording();
-            StatusText = "Recording stopped — the disk is nearly full.";
+            StatusText = "Recording stopped. The disk is nearly full.";
             AudioLog.Write("Recording stopped: free space below the floor.");
         }
     }

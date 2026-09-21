@@ -141,7 +141,7 @@ public sealed class OutputViewModel : ViewModelBase
         var mode = Index < diag.Mode.Length ? diag.Mode[Index] : AutoMixMode.Off;
         if (mode == AutoMixMode.Off)
         {
-            SelectionVerdict = "automix off — every routed mic passes at unity";
+            SelectionVerdict = "Automix off. Every routed mic passes at unity.";
             return;
         }
 
@@ -153,15 +153,15 @@ public sealed class OutputViewModel : ViewModelBase
             // -1 has three causes and they mean very different things; say which.
             bool priority = active >= 0 && active < channels.Count && channels[active].IsPriority;
             SelectionVerdict = priority
-                ? $"{Name(active)} is priority — every room mic is ducked"
-                : "room is silent — all routed mics open, nothing selected";
+                ? $"{Name(active)} is the priority mic. Every room mic is ducked."
+                : "Room is silent. All routed mics open, nothing selected.";
             return;
         }
 
         int hold = Index < diag.WinnerHold.Length ? diag.WinnerHold[Index] : 0;
         string holdText = hold > 0 ? $", held {hold * 10} ms more" : "";
 
-        SelectionVerdict = $"{mode}: {Name(winner)} winning on level (+3 dB){holdText}";
+        SelectionVerdict = $"{Name(winner)} is winning on level{holdText}.";
     }
 
     private bool _isRecording;

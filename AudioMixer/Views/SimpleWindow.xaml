@@ -249,14 +249,14 @@
         <Grid Margin="0,0,0,5">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE72C;" Click="Refresh_Click"
-                        ToolTip="Recheck audio devices"/>
+                        ToolTip="Refresh device list"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE895;" Click="Resync_Click"
-                        ToolTip="Resync audio — restart inputs and outputs"/>
+                        ToolTip="Resync audio"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE9F5;" Click="ResetCal_Click"
-                        ToolTip="Reset calibration — do this after changing a transmitter's gain"/>
+                        ToolTip="Reset calibration. Do this after changing a transmitter's gain."/>
                 <Rectangle Width="1" Fill="#3A3A44" Margin="3,3"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE9D9;" Click="Diagnostics_Click"
-                        ToolTip="Diagnostics — why this mic, session report, calibration, devices"/>
+                        ToolTip="Diagnostics"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE713;" Click="Settings_Click"
                         ToolTip="Settings"/>
                 <Rectangle Width="1" Fill="#3A3A44" Margin="3,3"/>
@@ -265,14 +265,14 @@
                         ToolTip="{Binding RecordTooltip}"
                         Command="{Binding RecordCommand}"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE897;" Click="Help_Click"
-                        ToolTip="Help — open the documentation"/>
+                        ToolTip="Open the documentation"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <!-- With no banner in the panel this badge is the ONLY thing that says something is
                      wrong, so it carries the count and the worst severity, not just a glyph. -->
                 <Button x:Name="ChecksButton" Content="{Binding AlertBadgeText}" MinWidth="34" Height="20"
                         FontSize="10" Margin="0,0,3,0" Click="Checks_Click"
-                        ToolTip="Checks — what needs attention"
+                        ToolTip="Checks"
                         Style="{StaticResource ChecksBtn}" Tag="{Binding AlertBadgeState}"/>
                 <ToggleButton x:Name="PinButton" Width="24" Height="20"
                               ToolTip="Keep this panel above other windows"
@@ -349,7 +349,7 @@
                                                   Orientation="Horizontal" ShowTargetBand="True"
                                                   PeakDb="{Binding PostPeakDb}"
                                                   HoldDb="{Binding PostPeakHoldDb}"
-                                                  ToolTip="Level. The blue band is where speech should sit."/>
+                                                  ToolTip="Input level. Speech should sit in the blue band."/>
 
                                     <TextBlock Grid.Column="2" Text="{Binding PostPeakDb, StringFormat={}{0:F0}}"
                                                FontFamily="Consolas" FontSize="10" Foreground="#9A9AA6"
@@ -452,7 +452,7 @@
                             <Slider Grid.Row="2" Grid.ColumnSpan="3" Minimum="0" Maximum="100"
                                     Height="14" Margin="0,2,0,0"
                                     Value="{Binding VolumePercent, Mode=TwoWay}"
-                                    ToolTip="Output level for this bus. Applied after the meter, so it does not change what is recorded."
+                                    ToolTip="Output level for this bus. Does not affect the recording."
                                     Style="{StaticResource LevelSlider}"/>
                         </Grid>
                     </Border>

@@ -41,7 +41,7 @@
                 <StackPanel>
                     <TextBlock Text="Microphone roles" Style="{StaticResource Head}"/>
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
-                               Text="Which channel is the presenter's lapel. Scenes need this to survive Prayer clearing the priority flag, so it is a property of the mic rather than of the current setup."/>
+                               Text="Which microphone is the presenter's lapel. It is never gated, and it ducks the room mics while the presenter is speaking."/>
                     <ComboBox ItemsSource="{Binding LapelOptions}"
                               SelectedIndex="{Binding LapelIndex, Mode=TwoWay}"
                               FontSize="11" HorizontalAlignment="Left" MinWidth="180"/>
@@ -52,7 +52,7 @@
                 <StackPanel>
                     <TextBlock Text="Microphones" Style="{StaticResource Head}"/>
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
-                               Text="Which device each strip listens to. A two-transmitter receiver in Split mode is ONE device carrying TX1 on the left and TX2 on the right — bind it to two strips, one Left and one Right, so the automixer has two mics to choose between."/>
+                               Text="Which device each strip listens to. A two-transmitter receiver in Split mode is one device carrying TX1 on the left and TX2 on the right: bind it to two strips, one set to Left and one to Right."/>
                     <ItemsControl ItemsSource="{Binding Channels}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -99,7 +99,7 @@
                 <StackPanel>
                     <TextBlock Text="Bus leveler" Style="{StaticResource Head}"/>
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
-                               Text="Slow broadcast-style levelling for talkers who are quieter, louder or further from a mic. Off by default. It sits AFTER the automixer on purpose — compression before that would flatten the level differences the selector uses to tell which mic is closest. Below the idle floor the gain freezes rather than falling, so it can never punch holes in sustained material; calibrate that floor per room by watching the bus meter with the room empty and setting it ~6 dB above."/>
+                               Text="Evens out talkers who are quieter, louder or further from a mic. Off by default. Set the idle floor about 6 dB above what the bus meter reads with the room empty, so the leveler holds steady instead of chasing silence."/>
                     <ItemsControl ItemsSource="{Binding Outputs}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -128,7 +128,7 @@
                                             <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerReleaseMs, StringFormat=Release {0:F0} ms}"/>
                                             <Slider Minimum="200" Maximum="8000" Value="{Binding LevelerReleaseMs}"/>
                                             <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerMaxGainDb, StringFormat=Max boost {0:F0} dB}"
-                                                       ToolTip="Room noise rises with it one-for-one, and this room's floor is HVAC that no filter removes — so this is a noise budget, capped at 12 dB."/>
+                                                       ToolTip="How much the leveler may lift a quiet talker. Room noise rises with it, so 12 dB is the ceiling."/>
                                             <Slider Minimum="0" Maximum="12" Value="{Binding LevelerMaxGainDb}"/>
                                             <TextBlock Style="{StaticResource Cap}" Text="{Binding LevelerIdleFloorDb, StringFormat=Idle hold {0:F0} dBFS}"/>
                                             <Slider Minimum="-70" Maximum="-20" Value="{Binding LevelerIdleFloorDb}"/>
@@ -153,7 +153,7 @@
                                   SelectedItem="{Binding InputCount, Mode=TwoWay}" Width="56"/>
                     </StackPanel>
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,12"
-                               Text="How many input strips the mixer shows, 1 to 10. Also in the Advanced toolbar — mirrored here because that is where it was looked for and not found."/>
+                               Text="How many input strips the mixer shows, 1 to 10."/>
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <TextBlock Text="Low-cut" Style="{StaticResource Cap}" VerticalAlignment="Center"
@@ -162,21 +162,21 @@
                                   SelectedIndex="{Binding LowCutIndex, Mode=TwoWay}" Width="72"/>
                     </StackPanel>
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,12"
-                               Text="Applies to every microphone. Removes rumble, HVAC and handling below the cutoff, and sits under congregational singing, whose fundamentals start around 98 Hz. A fixed band, never a gate — it cannot punch holes in sustained material. 80 Hz is right unless a microphone is on an instrument."/>
+                               Text="Applies to every microphone. Removes rumble and handling noise below the cutoff, and stays clear of singing, which starts around 98 Hz. Leave it at 80 Hz unless a microphone is on an instrument."/>
 
                     <TextBlock Text="Device pickers" Style="{StaticResource Head}"/>
                     <CheckBox IsChecked="{Binding HideVirtualInputs}"
                               Content="Hide virtual devices (VB-CABLE, VoiceMeeter) from input lists"/>
                     <TextBlock Style="{StaticResource Cap}"
-                               Text="Virtual capture devices are never the right microphone. VB-CABLE stays available for outputs — that is the Zoom path."/>
+                               Text="Hides VB-CABLE and VoiceMeeter from the microphone lists. They stay available as outputs, which is the Zoom path."/>
                     <CheckBox IsChecked="{Binding HideVoicemeeterOutputs}" Margin="0,8,0,0"
                               Content="Hide VoiceMeeter from output lists"/>
                     <TextBlock Style="{StaticResource Cap}"
-                               Text="VoiceMeeter is itself a mixer — this rig never chains the two — and it installs about ten render endpoints that bury the two that matter. VB-CABLE is NOT hidden: routing a bus into it is the path into Zoom."/>
+                               Text="VoiceMeeter installs about ten render endpoints, which buries the two you need. VB-CABLE is left visible: routing a bus into it is the path into Zoom."/>
                     <CheckBox IsChecked="{Binding WarnOnBluetoothMics}" Margin="0,8,0,0"
                               Content="Warn when a microphone is on Bluetooth"/>
                     <TextBlock Style="{StaticResource Cap}"
-                               Text="Warn when a microphone is connected over Bluetooth. A Bluetooth mic drops to HSP/HFP quality when it is used for input, and adds a second 2.4 GHz radio to the room. Decided from the Windows device-enumerator name, not guessed from the device's label."/>
+                               Text="Warn when a microphone is connected over Bluetooth. A Bluetooth mic drops to HSP/HFP quality when used as an input, and adds a second 2.4 GHz radio to the room."/>
                 </StackPanel>
             </Border>
 
@@ -200,7 +200,7 @@
                                     <ComboBox Grid.Column="2" Width="60" Margin="4,0,0,0" FontSize="11"
                                               ItemsSource="{Binding AutoMixModeOptions}"
                                               SelectedIndex="{Binding AutoMixModeIndex, Mode=TwoWay}"
-                                              ToolTip="Gate follows the talker and mutes the rest; Off passes every routed mic. Scenes set this — change it here only to override one."/>
+                                              ToolTip="Gate follows the talker and mutes the rest. Off passes every routed mic. Scenes set this for you."/>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

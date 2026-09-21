@@ -103,7 +103,7 @@
                            VerticalAlignment="Center" FontFamily="Consolas"/>
             </Grid>
             <TextBlock Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,4,0,0"
-                       Text="Nothing here stops you starting — close it and carry on if you already know. It stays live during the service, so a mic dropping out mid-meeting shows up here too."/>
+                       Text="Nothing here stops you starting. This stays live during the service, so a mic that drops out mid-meeting shows up here too."/>
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
