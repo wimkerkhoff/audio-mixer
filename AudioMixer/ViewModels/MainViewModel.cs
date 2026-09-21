@@ -549,6 +549,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _dismissedAlerts.RemoveWhere(id => !HealthMonitor
             .Evaluate(snapshot).Any(a => a.Id == id));
 
+        // Before the early return: the scene is not an alert, and hanging it off this comparison
+        // meant a session that ran cleanly (no alert ever changing) recorded whatever scene happened
+        // to be live at the first health tick.
+        if (_session != null) _session.Scene = Scenes.Current?.ToString();
+
         if (fresh.Count == Alerts.Count && fresh.Zip(Alerts).All(p => p.First == p.Second)) return;
 
         Alerts.Clear();
@@ -847,10 +852,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         StateSnapshot.Build(_engine, Channels, Outputs, InputCount, StatusText,
             Scenes.Current?.ToString(), Alerts);
 
-    private ChannelViewModel CreateChannel(int index) =>
-        new ChannelViewModel(
+    private ChannelViewModel CreateChannel(int index)
+    {
+        var ch = new ChannelViewModel(
             index, _engine.Inputs[index], _allInputDevices, AudioEngine.OutputCount,
             (idx, dev) => SetInputDevice(idx, dev));
+        // The low-cut is global, so a strip added at runtime must not come up at 0 Hz while every
+        // other mic is filtered — one unfiltered mic on the bus is all it takes to put the room's
+        // rumble back on the stream.
+        ch.HighPassHz = _lowCutHz;
+        return ch;
+    }
 
     private void AttachChannel(ChannelViewModel ch)
     {
@@ -1501,6 +1513,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// Ends a recording that has run too long or is about to fill the disk. Both exist because this
     /// records unattended: the failure being guarded against is nobody being there to notice.
     /// </summary>
+    private long _lastSpaceCheck;
+
+    /// <summary>How often the free-space floor is probed. It was read on every meter tick, i.e. a
+    /// DriveInfo query 30 times a second for the whole recording; a disk does not fill in 33 ms.</summary>
+    private const long SpaceCheckMs = 1000;
+
     private void CheckRecordingLimits()
     {
         if (!_recording) return;
@@ -1512,6 +1530,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             AudioLog.Write("Recording stopped: reached the maximum length.");
             return;
         }
+
+        long nowTicks = Environment.TickCount64;
+        if (nowTicks - _lastSpaceCheck < SpaceCheckMs) return;
+        _lastSpaceCheck = nowTicks;
 
         if (_retention.MustStopNow())
         {

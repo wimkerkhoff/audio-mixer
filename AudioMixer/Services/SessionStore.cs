@@ -55,7 +55,12 @@ public sealed class SessionStore
         {
             System.IO.Directory.CreateDirectory(Directory);
             var path = PathFor(summary.Stamp);
-            File.WriteAllText(path, JsonSerializer.Serialize(summary, Options));
+            // Written every two minutes and read by the offline tooling, so a kill mid-write would
+            // leave a half-record where a whole one used to be. Same replace-don't-truncate rule as
+            // PresetStore; no .bak, because the previous checkpoint is worth less than a preset.
+            var tmp = path + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(summary, Options));
+            File.Move(tmp, path, overwrite: true);
             Prune();
             return path;
         }

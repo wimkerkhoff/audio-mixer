@@ -1,0 +1,33 @@
+name: CI
+
+# Nothing ran dotnet test on push until 2026-09-21: release.yml only builds on a v* tag. That is how
+# a XamlParseException that killed the process on window open shipped and stayed broken for weeks —
+# the one harness that would have caught it (the replay baselines) was itself disabled by the crash.
+#
+# windows-latest is not a preference: the tests target net8.0-windows and reference a WPF assembly,
+# so they cannot build anywhere else.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore AudioMixer.sln
+
+      - name: Build
+        run: dotnet build AudioMixer.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test AudioMixer.sln -c Release --no-build --verbosity normal

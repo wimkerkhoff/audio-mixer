@@ -22,30 +22,30 @@ param([switch]$Slim)
 $ErrorActionPreference = 'Stop'
 $root = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $proj = Join-Path $root 'AudioMixer\AudioMixer.csproj'
-$out  = Join-Path $root ($Slim ? 'bin\publish-slim' : 'bin\publish')
+$out  = Join-Path $root $(if ($Slim) { 'bin\publish-slim' } else { 'bin\publish' })
 
 # Resolve dotnet: PATH first, then the user-local SDK (this box has no machine-wide install).
 $dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
 if (-not $dotnet) { $dotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe' }
 if (-not (Test-Path $dotnet)) { throw "dotnet not found. Install the .NET 8 SDK or fix PATH." }
 
-$kind = $Slim ? 'framework-dependent (needs .NET 8 Desktop Runtime)' : 'self-contained (standalone)'
+$kind = if ($Slim) { 'framework-dependent (needs .NET 8 Desktop Runtime)' } else { 'self-contained (standalone)' }
 Write-Host "Publishing AudioMixer - $kind, single-file, win-x64..." -ForegroundColor Cyan
 
 # Compression + native-lib self-extract are only valid for self-contained builds
 # (NETSDK1176). The framework-dependent build gets the native WPF DLLs from the runtime.
-$args = @(
+$publishArgs = @(
   'publish', $proj,
   '-c', 'Release',
   '-r', 'win-x64',
-  "--self-contained", ($Slim ? 'false' : 'true'),
+  "--self-contained", $(if ($Slim) { 'false' } else { 'true' }),
   '-p:PublishSingleFile=true',
   '-p:DebugType=none',
   '-p:DebugSymbols=false'
 )
 if (-not $Slim) {
-  $args += '-p:EnableCompressionInSingleFile=true'
-  $args += '-p:IncludeNativeLibrariesForSelfExtract=true'
+  $publishArgs += '-p:EnableCompressionInSingleFile=true'
+  $publishArgs += '-p:IncludeNativeLibrariesForSelfExtract=true'
 }
 & $dotnet @args -o $out
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit $LASTEXITCODE)." }

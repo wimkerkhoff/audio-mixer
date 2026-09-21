@@ -49,7 +49,16 @@ public sealed class DeviceWatcher : IDisposable
         }
     }
 
-    private void Bump() => _debounce.Change(DebounceMs, System.Threading.Timeout.Infinite);
+    /// <summary>
+    /// The COM notification callbacks keep arriving after Dispose — WASAPI does not unregister
+    /// synchronously — so this races the timer's disposal and would throw ObjectDisposedException onto
+    /// a COM thread, where nothing catches it.
+    /// </summary>
+    private void Bump()
+    {
+        try { _debounce.Change(DebounceMs, System.Threading.Timeout.Infinite); }
+        catch (ObjectDisposedException) { }
+    }
 
     public void Dispose()
     {

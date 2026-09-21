@@ -33,13 +33,14 @@ Thumbs.db
 desktop.ini
 
 # Claude Code local settings
-.claude/
+.claude/*
+!.claude/skills/
+
 
 # Scratch spectrogram from tools/spectro.py
 tools/spectro.png
+tools/scene.png
 
 # Python
 __pycache__/
 *.pyc
-bin/
-obj/

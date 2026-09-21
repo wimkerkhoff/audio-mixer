@@ -14,9 +14,6 @@ Each of these was traced through the code end to end. Ordered by how badly it hu
 
 ### 1.10 Medium — reported by the review, not independently re-traced
 
-- [ ] `SessionSummary.Scene` only updates when the alert set changes (`MainViewModel.cs:553-556`
-      sits after the early-return at `:549`). Set it from `Scenes.SceneApplied`.
-- [ ] Strips added at runtime get low-cut 0: `CreateChannel` (`:764-767`) never applies `_lowCutHz`.
 - [ ] Old-preset low-cut migration is unreachable: `MixerPreset.LowCutHz` defaults to 80 when
       absent (`MixerPreset.cs:255`), so `preset.LowCutHz > 0` (`MainViewModel.cs:1200`) is always
       true and `Channels[0].HighPassHz` is never consulted; a saved `0` plus a channel value of 80
@@ -29,15 +26,8 @@ Each of these was traced through the code end to end. Ordered by how badly it hu
       1123-1151`) reads the unchanged value → "X unmuted" in the action log, and the scene is cleared.
 - [ ] Event-handler leak: `RouteToggleViewModel.AttachOutput` (`ChannelViewModel.cs:437`) subscribes
       to `OutputViewModel.PropertyChanged`; `DetachChannel` never unsubscribes.
-- [ ] `CheckRecordingLimits` → `MustStopNow()` → `new DriveInfo().AvailableFreeSpace` at 30 Hz while
-      recording (`MainViewModel.cs:1386`, `RecordingRetention.cs:52`). Throttle to ~1 Hz.
-- [ ] `SessionStore.Save` (`:174`) uses `File.WriteAllText` — the truncate-in-place `PresetStore`
-      just fixed — on a file rewritten every 2 min and read by offline tooling.
 - [ ] `preset.json` has no schema version; `AutoMixMode` `1` now means Gate and used to mean Share,
       `Role == 0` is ambiguous. Add `Version`.
-- [ ] `StateServer.Loop` swallows handler exceptions silently (`StateServer.cs:61`); a throw in
-      `_stateJson()` returns an empty 200. Write to `AudioLog`.
-- [ ] `DeviceWatcher.Bump` (`:163`) calls `_debounce.Change` after `Dispose` can have run.
 - [ ] `ClearDeviceCommand` is bound nowhere; the Settings picker has no "(none)" item, so a strip
       cannot be unbound or made to forget its desired device.
 - [ ] `VuMeter.OnRender` allocates unfrozen brushes/pens per render at 30 Hz per meter
@@ -141,19 +131,8 @@ Keep as-is: `live_wav.py`, `comb_test.py`, `find_singing.py`, `singing_vs_speech
 
 ## 3. Project hygiene
 
-- [ ] `publish.ps1:1` `#requires -version 5` but `:25,32,41` use the `? :` ternary, which parses
-      only on PowerShell 7. Change the header or replace the ternaries. `:37` shadows `$args`.
-- [ ] No CI runs `dotnet test` (`.github/workflows/release.yml` builds on `v*` tags only). Add a
-      `ci.yml` on push/PR running `dotnet test AudioMixer.sln` on `windows-latest` (tests target
-      `net8.0-windows` + WPF). CLAUDE.md already records a crash that shipped for weeks because of
-      this.
 - [ ] `<Version>1.0.0</Version>` is hardcoded; the release workflow never passes
       `-p:Version=${GITHUB_REF_NAME#v}`, so a `v1.2.0` tag ships an assembly reporting 1.0.0.
-- [ ] `.claude/` is gitignored (`.gitignore:36`), so `.claude/skills/session-review`, which CLAUDE.md
-      tells sessions to invoke, is not in the repo and is absent from a fresh clone. Un-ignore
-      `.claude/skills/` or move the procedure somewhere tracked.
-- [ ] `.gitignore`: `bin/`/`obj/` listed twice (`:2-3,42-43`); `tools/scene.png` not ignored while
-      `tools/spectro.png` is.
 - [ ] `TreatWarningsAsErrors` not set in any project; no `Directory.Build.props`, so the four tools
       projects each pin NAudio separately and are not in the `.sln`, so nothing ever builds them.
 - [ ] Tests: `PresetMapperTests.EveryChannelFieldWrittenHereHasAnAllowlistEntry` checks a hand-typed

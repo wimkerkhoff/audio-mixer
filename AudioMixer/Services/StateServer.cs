@@ -58,7 +58,12 @@ public sealed class StateServer : IDisposable
                 ctx.Response.ContentLength64 = bytes.Length;
                 ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // Silently returning an empty 200 made a throwing snapshot look like an empty mixer,
+                // which is exactly the wrong signal on the endpoint used to diagnose a live service.
+                Audio.AudioLog.Write($"/state handler failed: {ex.GetType().Name}: {ex.Message}");
+            }
             finally { try { ctx.Response.Close(); } catch { } }
         }
     }
