@@ -274,23 +274,48 @@ public class AutoMixerTests
 
     /// <summary>
     /// The 2026-08-30 fix: the duck used to be recomputed bare each tick, so an ordinary sentence gap
-    /// released it and handed the bus to a room mic — measured at 13 hand-offs in 40 s. It is held for
-    /// ~1.2 s after the lapel goes quiet.
+    /// released it and handed the bus to a room mic — measured at 13 hand-offs in 40 s.
+    ///
+    /// Reaching the hangover at all takes care. The envelope's release is 250 ms, so after the lapel
+    /// stops the duck stays up on the envelope ALONE for ~40 ticks before `priorityActive` goes false;
+    /// a test that only covers those ticks passes without the hangover code ever running. (This test
+    /// did exactly that until coverage showed the branch at `_priorityHold[o]--` unexecuted.) So tick
+    /// past the release first, and only then assert.
     /// </summary>
     [Fact]
-    public void TheDuckIsHeldThroughAPresentersSentenceGap()
+    public void TheDuckIsHeldForOverASecondAfterThePresentersEnvelopeHasDecayed()
     {
         var rig = Rig(2);
         rig[0].IsPriority = true;
         rig[0].InjectLevelsForTest(0.05f);
-        rig[1].InjectLevelsForTest(0.002f);     // quiet room: under break-in
+        rig[1].InjectLevelsForTest(0.002f);   // quiet room: under PriorityBreakInRms, over the silence floor
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+        Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+
+        rig[0].InjectLevelsForTest(0f);       // the presenter pauses
+        Run(mix, rig, 80);                    // 800 ms — past the ~400 ms envelope release
+
+        Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+    }
+
+    /// <summary>...and it does eventually let go, or an unattended open lapel would duck the room off
+    /// the stream for the rest of the service.</summary>
+    [Fact]
+    public void OnceTheHangoverExpiresTheRoomComesBack()
+    {
+        var rig = Rig(2);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.05f);
+        rig[1].InjectLevelsForTest(0.002f);
         var mix = Gated(channels: 2);
         Run(mix, rig);
 
-        rig[0].InjectLevelsForTest(0f);         // the presenter pauses
-        Run(mix, rig, 40);                      // 400 ms, inside the 1.2 s hold
+        rig[0].InjectLevelsForTest(0f);
+        Run(mix, rig, 80 + 130);               // release, then past the full 120-tick hold
 
-        Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+        Assert.Equal(1f, rig[1].GetAutoMixGain(0));
+        Assert.Equal(1, mix.ActiveInput(0));
     }
 
     /// <summary>
