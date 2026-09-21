@@ -185,7 +185,7 @@
         <TabItem Header="Devices">
             <DockPanel Margin="8">
                 <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,6,0,0"
-                           Text="Bus is the Windows device-enumerator name, not a guess from the friendly name — BTHENUM is the only value that means Bluetooth. Endpoint gain is keyed to the endpoint, so it resets when a receiver moves to another USB port."/>
+                           Text="Bus is the Windows device-enumerator name, not a guess from the friendly name — BTHENUM is the only value that means Bluetooth. Identity says whether a preset can re-find this device after it moves: &quot;serial&quot; follows the device between ports and tells two identical receivers apart, &quot;port&quot; means a different USB port looks like a brand new device. Endpoint gain is keyed to the endpoint, so it resets when a receiver moves to another USB port."/>
                 <DataGrid x:Name="DeviceGrid" AutoGenerateColumns="False" IsReadOnly="True"
                           Background="#16161C" RowBackground="#1E1E24" AlternatingRowBackground="#22222A"
                           Foreground="#D8D8DE" BorderThickness="0" GridLinesVisibility="Horizontal"
@@ -193,6 +193,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="*"/>
                         <DataGridTextColumn Header="Bus" Binding="{Binding Bus}" Width="Auto"/>
+                        <DataGridTextColumn Header="Identity" Binding="{Binding Identity}" Width="Auto"/>
                         <DataGridTextColumn Header="Gain" Binding="{Binding Gain}" Width="Auto"/>
                         <DataGridTextColumn Header="Bound to" Binding="{Binding BoundTo}" Width="Auto"/>
                         <DataGridTextColumn Header="Side" Binding="{Binding Side}" Width="Auto"/>

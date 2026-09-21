@@ -337,7 +337,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public IReadOnlyList<SessionFile> PastSessions => new SessionStore().List();
 
     public sealed record DeviceRow(
-        string Endpoint, string Bus, string Gain, string BoundTo, string Side, string State);
+        string Endpoint, string Bus, string Identity, string Gain, string BoundTo, string Side,
+        string State);
 
     /// <summary>
     /// Every capture endpoint with the facts that decide whether it will still be here next week:
@@ -355,6 +356,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             rows.Add(new DeviceRow(
                 d.FriendlyName,
                 d.Bus ?? "—",
+                DeviceIdentity.Describe(DeviceIdentity.Classify(d.ContainerId, d.Bus)),
                 GainTextFor(d),
                 holder == null ? "—" : (string.IsNullOrWhiteSpace(holder.CustomLabel) ? holder.Label : holder.CustomLabel),
                 holder?.Source.ToString() ?? "—",
@@ -362,8 +364,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
         foreach (var o in Outputs.Where(o => o.SelectedDevice != null))
         {
-            rows.Add(new DeviceRow(o.SelectedDevice!.FriendlyName, o.SelectedDevice.Bus ?? "—", "—",
-                $"Bus {OutputViewModel.Tag(o.Index)} out", "—", "playing"));
+            rows.Add(new DeviceRow(
+                o.SelectedDevice!.FriendlyName, o.SelectedDevice.Bus ?? "—",
+                DeviceIdentity.Describe(DeviceIdentity.Classify(o.SelectedDevice.ContainerId,
+                                                                o.SelectedDevice.Bus)),
+                "—", $"Bus {OutputViewModel.Tag(o.Index)} out", "—", "playing"));
         }
         return rows;
     }
@@ -1100,11 +1105,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             var ch = Channels[i];
             if (ch.SelectedDevice != null) continue;
-            if (ch.DesiredDeviceId == null && ch.DesiredDeviceName == null) continue;
+            if (ch.DesiredDeviceId == null && ch.DesiredDeviceName == null
+                && ch.DesiredDeviceKey == null) continue;
 
             var claimed = ClaimsExcept(i);
             var match = DeviceResolver.Resolve(
-                _allInputDevices, ch.DesiredDeviceId, ch.DesiredDeviceName, claimed, ch.Source);
+                _allInputDevices, ch.DesiredDeviceId, ch.DesiredDeviceName, claimed, ch.Source,
+                ch.DesiredDeviceKey);
             if (match == null) continue;
 
             ch.SelectedDevice = match;
@@ -1334,8 +1341,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 // immediately rebuild it.
                 Channels[i].Source = (ChannelSource)Math.Clamp(cp.Source, 0, 2);
                 Channels[i].HighPassHz = _lowCutHz;   // one low-cut for every mic
+                // Seeded first so an unresolvable device is still remembered: the strip keeps what it
+                // wants, and ReattachDesiredDevices binds it the moment it reappears.
+                Channels[i].RestoreDesiredDevice(cp.DeviceId, cp.DeviceName, cp.DeviceKey);
                 var match = DeviceResolver.Resolve(
-                    _allInputDevices, cp.DeviceId, cp.DeviceName, usedInputIds, Channels[i].Source);
+                    _allInputDevices, cp.DeviceId, cp.DeviceName, usedInputIds, Channels[i].Source,
+                    cp.DeviceKey);
                 Channels[i].SelectedDevice = match;
                 Channels[i].VolumePercent = cp.VolumePercent;
                 Channels[i].Muted = cp.Muted;

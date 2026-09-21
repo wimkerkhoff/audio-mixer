@@ -20,7 +20,7 @@ public static class DeviceResolver
     // channels grabbing the same device when several normalize alike (e.g. identical un-renamed dongles).
     public static AudioDeviceInfo? Resolve(
         IEnumerable<AudioDeviceInfo> all, string? id, string? name, HashSet<string> used) =>
-        Resolve(all, id, name, used, ChannelSource.Stereo);
+        Resolve(all, id, name, used, ChannelSource.Stereo, null);
 
     /// <summary>
     /// As above, but claiming only one SIDE of the endpoint when <paramref name="side"/> is Left or
@@ -30,12 +30,21 @@ public static class DeviceResolver
     /// </summary>
     public static AudioDeviceInfo? Resolve(
         IEnumerable<AudioDeviceInfo> all, string? id, string? name, HashSet<string> used,
-        ChannelSource side)
+        ChannelSource side, string? key = null)
     {
         bool Free(AudioDeviceInfo d) => IsFree(used, d.Id, side);
 
         AudioDeviceInfo? match = null;
-        if (!string.IsNullOrEmpty(id))
+
+        // The container id FIRST, and only when it is serial-derived, because it is the one key that
+        // both survives a port change and separates two units of the same model. Everything below it
+        // fails at one or the other: the endpoint GUID is regenerated on every replug, and the friendly
+        // name is shared by identical receivers — which is why name matching can only ever refuse.
+        // Matching it also costs nothing when it is absent, which is every device that has no serial.
+        if (!string.IsNullOrEmpty(key) && Guid.TryParse(key, out var wanted))
+            match = Unambiguous(all.Where(d => d.ContainerId == wanted && Free(d)));
+
+        if (match == null && !string.IsNullOrEmpty(id))
             match = all.FirstOrDefault(d => d.Id == id && Free(d));
         // Name matching REFUSES when it cannot tell candidates apart. Two identical receivers share a
         // friendly name, so picking the first free one binds an arbitrary unit — and with each receiver
@@ -45,8 +54,8 @@ public static class DeviceResolver
         // mic bound is not, because nothing about it looks wrong.
         if (match == null && !string.IsNullOrWhiteSpace(name))
         {
-            var key = NameKey(name);
-            match = Unambiguous(all.Where(d => Free(d) && NameKey(d.FriendlyName) == key));
+            var nameKey = NameKey(name);
+            match = Unambiguous(all.Where(d => Free(d) && NameKey(d.FriendlyName) == nameKey));
         }
         // Last resort: the INTERFACE name inside the parens, and only when exactly one free endpoint
         // carries it. A different USB port mints a fresh endpoint that loses the user's rename and can

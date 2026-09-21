@@ -96,17 +96,34 @@ found. Label it, and mirror it into Settings beside the other persisted options.
 - **The soundcheck** (part of 4). The walked "speak into each mic" flow that verifies level *and*
   confirms which strip a transmitter landed on. It is the only preflight check that needs a human,
   the only one that would have caught 2026-09-20 before the meeting, and it doubles as the identify
-  flow below. Not started.
-- **Actions are still labels** (6). The Checks window shows each alert's suggested fix as text; none
-  of them is a button that does the thing. Moving the banner into its own window did not change that.
-- **Device identity on live hardware** (8a, 8c, 9). `tools/device-identity.ps1` exists and the PnP
-  evidence says Rode receivers carry serials, but the RX was in its charging case all day so this is
-  still unconfirmed. The identify flow and per-serial endpoint gain both wait on it.
+  flow below. Not started; **deferred by the operator 2026-09-21.**
+- ✅ **Actions are buttons** (6, done 2026-09-21). Ten alerts act: unmute a bus, turn one up, clear an
+  idle priority lapel, put an off-air presenter back on air, split a shared receiver L/R, reset one
+  strip's calibration, resync a stalled mic, re-apply Singing, open Settings for a missing device.
+  Three deliberately stayed text — a dead mic and a level under target need a physical fix, and a
+  silent bus could be routing, the device or the far end. A button that cannot help is worse than a
+  sentence.
+- 🛠 **Device identity** (8a done, 8c/9 open). **8a is confirmed**: with every device plugged in on
+  2026-09-21 the RX reported a real serial, and the container-id version nibble gives the same answer
+  from the audio api with no WMI — so the app now matches on it and two identical receivers are
+  distinguishable. See the gotcha in CLAUDE.md. What remains:
+    - **The replug test.** The cross-port claim is inferred from the GUID generation scheme, not
+      measured. Note the RX's container id, move it to another USB port, look again. 30 seconds, and
+      it is the last thing between this and being trusted.
+    - **8c, the identify flow.** Much less urgent now that serials work — it is the recovery path for
+      when identity *cannot* be resolved, which on this rig now means the Soundsync dongles only.
+    - **9, per-serial endpoint gain.** Waits on the replug test by design. Note the standing hazard:
+      on 2026-09-20 an endpoint raised to +24 dB clipped the capture while speech was still 14 dB low,
+      so silently re-applying a remembered boost over a corrected transmitter gain would re-create
+      that. Opt-in and visible only.
 
-**Risk to weigh against all of the above:** 15 commits shipped this session — device resolution,
-routing, output buffers, health rules — against 173 unit tests and **no working end-to-end gate**.
-The golden baselines would have caught the Advanced-window crash and were not run because they
-themselves were broken by it. Making them hermetic (and running them) may deserve to jump the queue.
+**Risk that was weighed against all of the above, and acted on 2026-09-21:** 15 commits shipped in
+one session — device resolution, routing, output buffers, health rules — against 173 unit tests and
+**no working end-to-end gate**. The golden baselines would have caught the Advanced-window crash and
+were not run because they themselves were broken by it. They are hermetic now (each fixture owns its
+preset), and the unit suite is 380. The baselines still need **re-recording** against their own
+presets before a diff means anything — the stored goldens were all taken under whatever preset was
+live that day.
 
 ### 🔲 Design review 2026-09-20 — the operating model, and what follows from it
 

@@ -33,6 +33,9 @@ public static class PresetMapper
                 // the identity the next launch resolves against.
                 DeviceId = c.SelectedDevice?.Id ?? c.DesiredDeviceId,
                 DeviceName = c.SelectedDevice?.FriendlyName ?? c.DesiredDeviceName,
+                DeviceKey = c.SelectedDevice != null
+                    ? DeviceIdentity.StableKey(c.SelectedDevice.ContainerId, c.SelectedDevice.Bus)
+                    : c.DesiredDeviceKey,
                 VolumePercent = c.VolumePercent,
                 Muted = c.Muted,
                 Priority = c.IsPriority,

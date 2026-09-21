@@ -30,6 +30,14 @@ public sealed class ChannelPreset
     public string? CustomLabel { get; set; }
     public string? DeviceId { get; set; }
     public string? DeviceName { get; set; }
+
+    /// <summary>
+    /// The device's container id, saved ONLY when it is serial-derived and therefore survives a port
+    /// change (see Services.DeviceIdentity). This is what tells two identical receivers apart: they
+    /// share a friendly name, so name matching can only refuse, and the endpoint GUID is regenerated
+    /// on every replug. Null for anything whose identity is the port it is in.
+    /// </summary>
+    public string? DeviceKey { get; set; }
     public float VolumePercent { get; set; } = 75f;
     public bool Muted { get; set; }
     public bool Priority { get; set; }

@@ -30,11 +30,28 @@ public sealed class ChannelViewModel : ViewModelBase
     public string? DesiredDeviceId { get; private set; }
     public string? DesiredDeviceName { get; private set; }
 
+    /// <summary>
+    /// The serial-derived container id of the device this strip wants, when it has one. Outlives both
+    /// of the above: the endpoint GUID is regenerated on every replug and the friendly name is shared
+    /// by two identical receivers, so this is the only key that survives a port change AND tells two
+    /// units of one model apart. Null for a device whose identity is the port it is in.
+    /// </summary>
+    public string? DesiredDeviceKey { get; private set; }
+
+    /// <summary>Seeds what this strip wants from a saved preset, before any device is bound.</summary>
+    public void RestoreDesiredDevice(string? id, string? name, string? key)
+    {
+        DesiredDeviceId = id;
+        DesiredDeviceName = name;
+        DesiredDeviceKey = key;
+    }
+
     /// <summary>Forget the desired device — an explicit "None" from the operator, not a disappearance.</summary>
     public void ClearDesiredDevice()
     {
         DesiredDeviceId = null;
         DesiredDeviceName = null;
+        DesiredDeviceKey = null;
     }
 
     private AudioDeviceInfo? _selectedDevice;
@@ -48,6 +65,9 @@ public sealed class ChannelViewModel : ViewModelBase
             {
                 DesiredDeviceId = value.Id;
                 DesiredDeviceName = value.FriendlyName;
+                // Only stored when it is actually durable — see Services.DeviceIdentity. Writing a
+                // port-derived container id would look authoritative and be no better than the GUID.
+                DesiredDeviceKey = Services.DeviceIdentity.StableKey(value.ContainerId, value.Bus);
             }
             if (SetField(ref _selectedDevice, value))
             {
