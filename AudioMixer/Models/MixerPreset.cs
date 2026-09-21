@@ -1,3 +1,5 @@
+using AudioMixer.Audio;
+
 namespace AudioMixer.Models;
 
 public sealed class MixerPreset
@@ -48,6 +50,18 @@ public sealed class ChannelPreset
 
 public sealed class OutputPreset
 {
+    /// <summary>
+    /// Maps a stored automix mode onto the current enum. It was Off=0, Share=1, Gate=2 until Share was
+    /// removed on 2026-09-20, so every preset written before then stores a 2 — out of range now. Both
+    /// old live modes become Gate: Share's job was follow-the-talker, which is what Gate does, and
+    /// every scene already forced Gate anyway.
+    ///
+    /// A real function rather than a line inside ApplyPreset, because a migration that is only
+    /// exercised by loading a preset is only tested by someone noticing the mixer misbehaving.
+    /// </summary>
+    public static Audio.AutoMixMode MigrateMode(int stored) =>
+        stored <= 0 ? Audio.AutoMixMode.Off : Audio.AutoMixMode.Gate;
+
     public string? CustomLabel { get; set; }
     public string? DeviceId { get; set; }
     public string? DeviceName { get; set; }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AudioMixer.Audio;
 using AudioMixer.Models;
 
 namespace AudioMixer.Tests;
@@ -59,8 +60,7 @@ public class AppOptionsPresetTests
     [InlineData(9, 1)]   // anything else is a live bus, so Gate
     public void OldAutoMixModesMigrateToTheCollapsedEnum(int stored, int expected)
     {
-        int migrated = stored <= 0 ? 0 : 1;
-        Assert.Equal(expected, migrated);
+        Assert.Equal((AutoMixMode)expected, OutputPreset.MigrateMode(stored));
     }
 
     [Fact]

@@ -433,6 +433,30 @@ assignment/discovery. *Why:* the Ankers churn; manual re-adding is error-prone f
 
 ## Automix validation & tuning
 
+### 🔬 A single-tick transient can take the bus — found by the first AutoMixer unit tests
+
+Pinned by `AutoMixerTests.ASingleTickSpikeCurrentlyDoesTakeTheBus`, which documents the behaviour
+rather than changing it.
+
+One 10 ms tick ~15 dB above the leader hands over the bus. The envelope's attack is 8 ms, so a single
+tick moves it most of the way, and neither guard catches this shape: `HandoffHysteresis` (+3 dB) is
+cleared instantly, and `HandoffHoldTicks` only blocks a change *while it is counting down* — once it
+has expired the very next tick may flip. Under Gate that hard-mutes whoever is actually speaking for
+the following 200 ms, so a cough, a dropped hymnbook or a chair scrape can swallow a syllable on the
+stream.
+
+This is not the failure finding 1 describes. That one was **sustained** — a distant mic's AGC make-up
+gain rising through a talker's pause — and hold + hysteresis do fix it, which is why the live
+hand-off rate came down. A transient is a different shape and is simply not guarded, which is
+invisible in every aggregate we collect: it costs one or two hand-offs, so it cannot be seen in
+`HandoffsPerMinute`.
+
+Candidate fix: require the challenger to hold its margin for several consecutive ticks before the
+hand-off, rather than beating it on the one tick the hold happens to have expired on. That is a
+selector change, so per CLAUDE.md it needs a labelled capture replayed offline with hand-off count
+and winner occupancy before and after — not a live impression. The decision track now records enough
+to find real instances: look for a winner that changes and changes straight back ~200 ms later.
+
 ### 🔬 Verify recent fixes at the next live session
 Now verifiable from the logged transcript (gains/cv/winner):
 - ✅ **Bounce fix (multiplicative natural hysteresis) — VALIDATED live 2026-08-09.** 155 hand-offs over

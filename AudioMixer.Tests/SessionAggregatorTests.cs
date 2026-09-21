@@ -220,4 +220,140 @@ public class SessionAggregatorTests
         Assert.Equal(-45.3f, s.Inputs[0].SpeechDb, 2);
         Assert.Equal("Prayer", s.Scene);
     }
+
+    // --- operator actions -------------------------------------------------------------------------
+    //
+    // Step 8 of the session-review skill is entirely this list: for each change, did it do what the
+    // operator intended, did it help the stream, and should the app have handled it itself. An empty
+    // list on a good session is the target, so the collapse rule below is load-bearing in both
+    // directions — under-collapse and a dragged slider buries the three changes that mattered;
+    // over-collapse and a genuine revert disappears.
+
+    [Fact]
+    public void AnActionIsRecordedWithItsTimeOfDay()
+    {
+        var a = new SessionAggregator(3, 2);
+        a.Action("09:51:04", "Muted LAPEL");
+
+        var s = Build(a);
+
+        Assert.Single(s.Actions);
+        Assert.Equal("09:51:04", s.Actions[0].TimeOfDay);
+        Assert.Equal("Muted LAPEL", s.Actions[0].What);
+    }
+
+    /// <summary>A dragged level slider raises one change per step; fifty "level 80%" say nothing one
+    /// does not, and they would bury the actions that carry information.</summary>
+    [Fact]
+    public void ConsecutiveIdenticalActionsCollapseToOne()
+    {
+        var a = new SessionAggregator(3, 2);
+        for (int i = 0; i < 50; i++) a.Action("09:51:04", "Rode L level 80%");
+
+        Assert.Single(Build(a).Actions);
+    }
+
+    /// <summary>Only CONSECUTIVE ones collapse — a setting changed, changed away and changed back is a
+    /// revert, which is exactly the "the operator was hunting" signal the review looks for.</summary>
+    [Fact]
+    public void AnActionRepeatedAfterADifferentOneIsKept()
+    {
+        var a = new SessionAggregator(3, 2);
+        a.Action("09:51:04", "Muted LAPEL");
+        a.Action("09:52:10", "Unmuted LAPEL");
+        a.Action("09:53:31", "Muted LAPEL");
+
+        var actions = Build(a).Actions;
+
+        Assert.Equal(3, actions.Count);
+        Assert.Equal("Muted LAPEL", actions[2].What);
+        Assert.Equal("09:53:31", actions[2].TimeOfDay);
+    }
+
+    [Fact]
+    public void ActionsKeepTheOrderTheyHappenedIn()
+    {
+        var a = new SessionAggregator(3, 2);
+        a.Action("09:51:04", "Scene: Prayer");
+        a.Action("09:58:12", "Rode R -> bus B off");
+        a.Action("10:04:00", "Reset calibration");
+
+        var actions = Build(a).Actions;
+
+        Assert.Equal(new[] { "Scene: Prayer", "Rode R -> bus B off", "Reset calibration" },
+                     actions.Select(x => x.What));
+    }
+
+    [Fact]
+    public void ABlankActionIsNotRecorded()
+    {
+        var a = new SessionAggregator(3, 2);
+        a.Action("09:51:04", "");
+        a.Action("09:51:05", "   ");
+        a.Action("09:51:06", null!);
+
+        Assert.Empty(Build(a).Actions);
+    }
+
+    /// <summary>Past the cap the session was hand-flown and the exact count has stopped being the
+    /// interesting part — but it must stop growing rather than grow unbounded for hours.</summary>
+    [Fact]
+    public void TheActionLogIsCappedAndKeepsTheEarliest()
+    {
+        var a = new SessionAggregator(3, 2);
+        for (int i = 0; i < SessionAggregator.MaxActions + 200; i++)
+            a.Action("09:51:04", $"change {i}");
+
+        var actions = Build(a).Actions;
+
+        Assert.Equal(SessionAggregator.MaxActions, actions.Count);
+        Assert.Equal("change 0", actions[0].What);
+        Assert.Equal($"change {SessionAggregator.MaxActions - 1}", actions[^1].What);
+    }
+
+    /// <summary>An untouched service is the goal, and it must read as an empty list rather than null —
+    /// the review distinguishes "nobody intervened" from "we did not capture it".</summary>
+    [Fact]
+    public void AHandsOffSessionReportsAnEmptyActionList()
+    {
+        var a = new SessionAggregator(3, 2);
+        a.Tick(Sec, new[] { 0, 0 }, Unity);
+
+        var s = Build(a);
+
+        Assert.NotNull(s.Actions);
+        Assert.Empty(s.Actions);
+    }
+
+    /// <summary>Actions and events are different kinds of fact — "the mix got worse at 10:14" means one
+    /// thing if a mic died then and another if somebody switched a bus off.</summary>
+    [Fact]
+    public void ActionsAndEventsAreKeptApart()
+    {
+        var a = new SessionAggregator(3, 2);
+        a.Note("stale", "10:14:00", "Calibration", AlertSeverity.Warning, "Calibration is stale");
+        a.Action("10:14:02", "Reset calibration");
+
+        var s = Build(a);
+
+        Assert.Single(s.Events);
+        Assert.Single(s.Actions);
+        Assert.Equal("Reset calibration", s.Actions[0].What);
+        Assert.Equal("Calibration is stale", s.Events[0].Message);
+    }
+
+    /// <summary>The summary must not alias the aggregator's own list — a session goes on recording
+    /// after a checkpoint is written, and a checkpoint that mutates afterwards is not a checkpoint.</summary>
+    [Fact]
+    public void ACheckpointIsASnapshotAndDoesNotGrowAfterwards()
+    {
+        var a = new SessionAggregator(3, 2);
+        a.Action("09:51:04", "Muted LAPEL");
+
+        var first = Build(a);
+        a.Action("09:55:00", "Unmuted LAPEL");
+
+        Assert.Single(first.Actions);
+        Assert.Equal(2, Build(a).Actions.Count);
+    }
 }

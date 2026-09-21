@@ -26,6 +26,20 @@ public sealed class InputChannel : IDisposable
     private float _currentPeakLinear;
     public float CurrentPeakLinear => Volatile.Read(ref _currentPeakLinear);
 
+    /// <summary>
+    /// Feeds the levels the automixer selects on, without a capture device.
+    ///
+    /// AutoMixer is the heart of the app and had no unit tests at all — everything it does is decided
+    /// from these two numbers plus routing and the priority flag, none of which needs audio hardware.
+    /// The only thing standing in the way was that the levels are normally written by the capture
+    /// callback, so this is that one seam and nothing more. Internal, like the conversion-chain seam.
+    /// </summary>
+    internal void InjectLevelsForTest(float rms, float peak = 0f)
+    {
+        Volatile.Write(ref _currentLevelLinear, rms);
+        Volatile.Write(ref _currentPeakLinear, peak <= 0f ? rms : peak);
+    }
+
     // Spectral-flux instability (coefficient of variation of frame-to-frame spectral change) latched
     // during voiced buffers. Validated offline (tools/naturalness.py) as a reference-free "scratchy/
     // over-processed mic" detector: the bad Anker's DSP makes it measure CLEAN on HNR/CPPS but its

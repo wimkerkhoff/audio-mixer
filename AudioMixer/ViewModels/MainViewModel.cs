@@ -1251,8 +1251,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 // Migrate presets written before Share was removed: the enum was Off=0, Share=1,
                 // Gate=2, so a saved 2 is out of range now and a saved 1 meant Share. Both become
                 // Gate — Share's job was follow-the-talker, and Gate is what every scene forced.
-                Outputs[o].AutoMixModeIndex =
-                    op.AutoMixMode <= 0 ? (int)AutoMixMode.Off : (int)AutoMixMode.Gate;
+                Outputs[o].AutoMixModeIndex = (int)OutputPreset.MigrateMode(op.AutoMixMode);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
 
                 // Strength first (it rewrites threshold/ratio/cap), then the individual values, so a
