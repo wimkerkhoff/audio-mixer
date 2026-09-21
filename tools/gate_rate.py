@@ -1,6 +1,6 @@
 """Per-mic digital-silence (noise-gate) rate, and whether the mics gate TOGETHER.
 
-The Anker S500s' noise suppression gates to true digital zero. During continuous sound (singing,
+The a gating speakerphones' noise suppression gates to true digital zero. During continuous sound (singing,
 music) every closure is a hole in the signal — and because all units hear the same acoustics they
 close *in unison*, so summing more mics cannot fill the holes. This quantifies both.
 

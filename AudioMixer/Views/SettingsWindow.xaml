@@ -176,7 +176,7 @@
                     <CheckBox IsChecked="{Binding WarnOnBluetoothMics}" Margin="0,8,0,0"
                               Content="Warn when a microphone is on Bluetooth"/>
                     <TextBlock Style="{StaticResource Cap}"
-                               Text="The Ankers must run over their 2.4 GHz Soundsync dongles. A Bluetooth link drops to HSP/HFP quality and adds a second radio that contends with the dongles — it degrades the weakest mic in the room, not necessarily the one on Bluetooth."/>
+                               Text="Warn when a microphone is connected over Bluetooth. A Bluetooth mic drops to HSP/HFP quality when it is used for input, and adds a second 2.4 GHz radio to the room. Decided from the Windows device-enumerator name, not guessed from the device's label."/>
                 </StackPanel>
             </Border>
 

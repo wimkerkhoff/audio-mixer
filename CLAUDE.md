@@ -675,7 +675,11 @@ later judgment.
   self-contending extra 2.4 GHz radio that garbles the weakest dongle input. Adaptive hopping (BT AFH +
   proprietary dongle) reduces but doesn't eliminate it. Fix: "Forget" every `Anker PowerConf S500` BT
   pairing (they auto-reconnect otherwise) so units run dongle-only; safe, because the mixer binds
-  Soundsync endpoints, not the BT (`…PowerConf S500`/Hands-Free) ones. Detect with
+  Soundsync endpoints, not the BT (`…PowerConf S500`/Hands-Free) ones. **Note the app's Bluetooth
+  rule no longer knows any of those names**: it decides purely from the Windows device-enumerator bus
+  (`BTHENUM`), because the name fallback it used to carry was a guess about one vendor's model
+  strings — and guessing is how the rule once told the operator "Anker 3 is connected over Bluetooth"
+  with no Anker in the building. An unreadable bus now fails quiet rather than wrong. Detect with
   `tools/audio-device-diag.ps1` — it dedupes BT devices **by radio address** (identical units share a
   FriendlyName, so `Sort -Unique` on name under-counts how many are live on BT).
 - **A chronically "bad" mic is usually out of RF range, not defective.** The furthest unit (~50 ft) sits

@@ -276,8 +276,9 @@ public static class HealthMonitor
             if (IsBluetooth(c.DeviceBus, c.DeviceName!))
             {
                 alerts.Add(new HealthAlert($"in{c.Index}.bluetooth", AlertSeverity.Warning,
-                    $"{c.Label} is connected over Bluetooth, not its Soundsync dongle — quality drops and it " +
-                    "contends with the other dongles.", "How to fix"));
+                    $"{c.Label} is connected over Bluetooth. A Bluetooth mic drops to HSP/HFP "
+                    + "quality when it is used for input, and adds a second 2.4 GHz radio to the room.",
+                    "Connect it by USB instead"));
             }
 
             if (c.Routed && !c.Muted && c.SecondsSinceSound > DeadMicSeconds)
@@ -300,20 +301,15 @@ public static class HealthMonitor
     /// wired USB device — and because the channel was still labelled from a retired mic, the banner
     /// read "Anker 3 is connected over Bluetooth" with no Anker in the building.
     ///
-    /// The name fallback survives only for when the bus cannot be read, and only on strings that
-    /// cannot mean anything else: "Hands-Free" is the Bluetooth HFP profile, and "PowerConf" is an
-    /// Anker unit's BT endpoint (its dongle endpoint says Soundsync instead).
+    /// There is no name fallback. It used to match "Hands-Free" and "PowerConf" when the bus could not
+    /// be read, which was a guess about one vendor's model names — and guessing is how this rule
+    /// earned its scar in the first place. An unreadable bus now means "not known to be Bluetooth",
+    /// which fails quiet rather than wrong.
     /// </summary>
     public static bool IsBluetooth(string? deviceBus, string deviceName)
     {
-        if (deviceBus != null)
-        {
-            return string.Equals(deviceBus, Audio.AudioDeviceInfo.BluetoothBus,
-                StringComparison.OrdinalIgnoreCase);
-        }
-
-        if (deviceName.Contains("Soundsync", StringComparison.OrdinalIgnoreCase)) return false;
-        return deviceName.Contains("Hands-Free", StringComparison.OrdinalIgnoreCase)
-            || deviceName.Contains("PowerConf", StringComparison.OrdinalIgnoreCase);
+        return deviceBus != null
+            && string.Equals(deviceBus, Audio.AudioDeviceInfo.BluetoothBus,
+                             StringComparison.OrdinalIgnoreCase);
     }
 }

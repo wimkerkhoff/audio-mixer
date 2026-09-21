@@ -1,7 +1,7 @@
 """Scan a 'record all inputs' session for candidate singing segments (multi-mic activity).
 
 Finding (2026-07-05): this does NOT reliably separate singing from teaching in a live room — the
-lapel + 2 room Ankers sit above the activity floor for basically the whole service, so 3-4 mics are
+lapel + 2 room mics sit above the activity floor for basically the whole service, so 3-4 mics are
 "active" continuously. Kept as a first-pass timeline viewer and as evidence that raw multi-mic
 activity is not a singing detector (see ROADMAP scene-control rationale).
 

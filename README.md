@@ -1,210 +1,199 @@
 # AudioMixer
 
-A small Windows desktop audio mixer for routing **1–10 microphone inputs** (configurable, default 3) to **2 outputs** (typically your headset/speakers and Zoom via VB-CABLE), with per-channel volume, mute, delay, routing toggles, VU meters, recording, a clap-test delay-detection feature, and a per-output **automixer** for multi-mic rooms.
+A Windows desktop mixer for a small AV rig: **1–10 microphones → 2 output buses**, typically a
+monitor headset and Zoom/OBS via VB-CABLE. It was built for a church meeting room where volunteers
+run the service alone, so the guiding rule is that the app should be on autopilot — the operator
+picks a scene and it handles the rest.
 
-Built because Bluetooth mics have ~100-300 ms more latency than wired ones and existing mixers either don't compensate for it or are overkill for a simple setup.
+Its real job is **choosing which microphone is on the stream**. In a room covered by several mics,
+every talker is picked up by all of them at different distances, and simply summing them gives
+comb-filter "echo", a raised noise floor and reverb. The automixer keeps one mic open and mutes the
+rest, holding its choice so a pause cannot hand the room to a distant mic.
 
-It also handles **distributed multi-mic rooms** — several mics (e.g. conference speakerphones) spread across a room so everyone is in range. Because every talker is picked up by *all* the mics at different distances, simply summing them produces comb-filter "echo", a raised noise floor, and reverb. The automixer fixes this by keeping only the mic(s) closest to the active talker open.
+![AudioMixer operator panel](docs/screenshot.png)
 
-![AudioMixer screenshot](docs/screenshot.png)
+## The four windows
 
-## Features
+| Window | What it is for |
+|---|---|
+| **Operator panel** | The mixer. Scenes, one row per mic (state stripe, meter with target band, level, mute, bus A/B that lights when the automixer picks it), an on-air card per bus, one toolbar. |
+| **Checks** | Everything needing attention, and nothing that is merely fine. It opens itself only when something is wrong, so its appearance is the signal. Each item offers a button that does the fix where one exists. Never blocks. |
+| **Diagnostics** | Why this mic (ranked, with the deciding numbers) · the session so far · calibration · devices. Never needed to run a service. |
+| **Settings** | The rig: which mic is the lapel, each strip's device and split side, automix mode, the bus leveler, the global low-cut, device-picker filters. |
 
-- **1–10 input channels** — count is configurable from the toolbar (default 3); each with its own device, volume slider, mute, delay (0-1000 ms), and routing toggles
-- **2 output buses** — each with its own device picker, **volume** slider, peak meter, and dB readout
-- **Routing matrix** — independent A/B toggles per input
-- **Auto-mix (per output)** — Off / Share / Gate modes with a strength slider and a **stable hand-off** toggle, applied independently to each output bus. Attenuates every mic except the one(s) closest to whoever is speaking — the fix for multiple distant mics picking up the same voice. **Share** = smooth gain-sharing (handles overlapping talkers); **Gate** = one mic open at a time (maximum echo rejection). Two per-input LEDs show what the mixer is doing: a **green LED** marks the mic currently selected as the talker, an **amber LED** marks a mic being ducked. A per-input **"priority mic"** flag keeps a dedicated mic (e.g. a presenter's lapel) always open and lets it duck the room mics while it's speaking. See [Auto-mix](#auto-mix) below.
-- **VU meters** — pre-fader and post-fader for each input, output level meter for each bus; green below -12 dBFS, yellow to -3, red above (clip warning)
-- **Delay compensation** — per-channel adjustable delay buffer (e.g., add 150 ms to the wired mic to align with a Bluetooth one), in each input's ⚙ advanced popup (the gear glows amber when an input has a non-default delay or priority setting)
-- **Auto-detect delays** — clap test that records all active inputs for 4 seconds and aligns them by **onset cross-correlation** (robust to soft/vocal sounds and speakerphone noise-suppression, not just sharp claps), then suggests per-channel delay values
-- **Recording** — a record button on **each output strip** captures that bus independently to a WAV file (48 kHz stereo float32) in `Documents\AudioMixer\recordings\`; you can record A and B at the same time
-- **Clear input device** — each input's device popup has a **✕ Clear device** option to unassign it
-- **Editable labels** — rename each input/output strip (e.g., "Rode", "Anker 1", "Headset", "Zoom")
-- **Auto-save** — every setting change persists 500 ms later to `%APPDATA%\AudioMixer\preset.json`
-- **Duplicate-device prevention** — a device picked for one slot disappears from the others' picker lists
-- **Compact UI** — non-resizable window with click-to-open device popups, no scrollbars, no inline dropdowns; width scales with the input count
+## Scenes
+
+The operator's main control. A scene rewrites every channel and output at once, so nobody has to
+remember which mic to mute.
+
+- **Standby** — nothing on the stream.
+- **Teaching** — one talker. Choose lapel or room mics as the voice source.
+- **Prayer** — turn-taking room mics, lapel muted and de-prioritised.
+- **Singing** — automix **off**: with a congregation singing there is no single talker to follow, so
+  follow-the-talker inverts and chops. Everything routed stays open.
+
+Scene rules live in a pure, unit-tested function (`Services/SceneTransform`), because a wrong rule
+drops the congregation off the stream silently.
+
+## Choosing the microphone
+
+Per output bus, **Off** or **Gate**:
+
+- **Off** — every routed mic passes at unity. What Singing uses.
+- **Gate** — winner takes all; every other mic is muted to zero. Everything else uses this.
+
+The winner is the loudest mic by smoothed RMS, **held**: a challenger must be about 3 dB louder
+*and* the current winner must have held for ~200 ms. That hold is the actual fix for "far mic wins" —
+the original bug was temporal, not a bad metric. The selector re-picked the loudest mic every 10 ms,
+so a distant mic's rise during a talker's pause stole the room.
+
+**One mic can be the lapel**, picked in Settings. It is never gated, and while the presenter is
+speaking it ducks the room mics — otherwise their voice reaches the bus twice, once clean and once
+delayed, and comb-filters. The duck is held for ~1.2 s across sentence gaps, and broken immediately
+by a genuinely loud interjection.
+
+A two-transmitter receiver (RØDE Wireless PRO in Split mode) is **one** audio device carrying TX1
+left and TX2 right. Bind it to two strips, one set to Left and one to Right, or the automixer sees a
+single blended channel it cannot arbitrate.
+
+## Recording, and reading a service back
+
+**Recording is always on.** It starts shortly after launch and stops itself after an hour, so nobody
+forgetting to close the app can fill the disk. Files expire after 28 days, and are also deleted
+oldest-first when free space is short.
+
+Each service leaves four things under `Documents\AudioMixer\`:
+
+| File | What it is |
+|---|---|
+| `analysis\diag-input{N}-{stamp}.wav` | one microphone, raw — pre-fader and pre-low-cut |
+| `analysis\decisions-{stamp}.csv` | 10 Hz: scene, winner per bus, leveler gain, each mic's level and applied gain |
+| `recordings\mix-{A,B}-{stamp}.wav` | what each bus actually sent |
+| `sessions\session-{stamp}.json` | aggregates, events, operator actions, and the config to read them against |
+
+The CSV is what makes a recording answerable. The per-mic WAVs are tapped *before* the automix gain,
+so they show what each mic heard and nothing about what was done with it; the mix shows that a choice
+was wrong but never what the alternative sounded like. Line the CSV up against the WAVs and "should
+it have picked mic 3 at 12:04" becomes a question with an answer.
+
+Session records are written **whether or not** anything else is recording, and kept for 90 days —
+the service that matters is the one nobody prepared for. They carry aggregates, not speech.
+
+A capture worth keeping as a replay fixture goes in `analysis\keep\`, which retention never touches.
+
+## Other things it does
+
+- **Bus leveler** (per output, default off) — a slow broadcast-style leveler for talkers who are
+  quieter or further away. It sits *after* the automixer on purpose: compression before the selector
+  flattens the level differences that say which mic is closest. Its make-up lift is capped, because
+  this room's noise floor is HVAC and every dB of lift is a dB of rumble.
+- **Global low-cut** (default 80 Hz) — rumble, handling and headroom. Not an S/N fix: measured, a
+  high-pass moves speech-band S/N by 0.1–0.2 dB.
+- **Gain calibration** — every capture buffer is tallied into 1 dB bins, voiced separately, at the
+  same tap the automixer's thresholds read. The Diagnostics readout is what transmitter gain gets set
+  against; a peak meter cannot do this job, because a DSP-free wireless mic's crest is ~20 dB.
+- **Device memory** — a strip remembers the device it wants even while that device is unplugged, and
+  re-binds the moment it reappears. Receivers that carry a hardware serial are told apart properly,
+  so two identical units cannot be swapped.
+- **Health checks** — every rule corresponds to a failure that actually happened and had to be
+  diagnosed by hand.
 
 ## Requirements
 
 - Windows 10 or 11
-- For **Zoom routing**: [VB-CABLE](https://vb-audio.com/Cable/) — free virtual audio cable. Install + reboot. Pick "CABLE Input" as Output B's device, then set Zoom's microphone to "CABLE Output".
+- For Zoom/OBS routing: [VB-CABLE](https://vb-audio.com/Cable/) — free. Install, reboot, set bus B's
+  device to "CABLE Input", then set Zoom's microphone to "CABLE Output".
 
-## Running
+## Getting it
 
-### From source (developer setup)
-
-```powershell
-git clone <repo path> audio-mixer
-cd audio-mixer
-winget install Microsoft.DotNet.SDK.8   # one-time, ~250 MB
-dotnet run --project AudioMixer
-```
-
-### Pre-built — two flavors
-
-Each GitHub Release ships **two single-file exes** — pick whichever suits the target:
-
-| Asset | Size | Requires on target | Use when |
+| | Size | Needs | Use when |
 |---|---|---|---|
-| **`AudioMixer.exe`** (self-contained) | ~68 MB | nothing | the default — any fresh Windows 10/11 x64 box, no install, no internet |
-| **`AudioMixer-slim.exe`** (framework-dependent) | ~0.8 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | tiny download / many machines that already have .NET 8 |
+| **`AudioMixer.exe`** (self-contained) | ~68 MB | nothing | the default — any fresh Windows 10/11 x64 box |
+| **`AudioMixer-slim.exe`** (framework-dependent) | ~0.8 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | machines that already have .NET 8 |
 
-If the slim exe runs on a machine without the runtime, Windows prompts the user to download it on first launch (`winget install Microsoft.DotNet.DesktopRuntime.8`, ~55 MB). The self-contained exe never prompts — it bundles the runtime and the native WPF DLLs (`D3DCompiler_47_cor3.dll`, `PenImc_cor3.dll`, `PresentationNative_cor3.dll`, `vcruntime140_cor3.dll`, `wpfgfx_cor3.dll`), self-extracted to a temp folder on first launch. Either way, copy **just the one file**. (Targets still install VB-CABLE manually if they want Zoom routing.)
-
-### Building locally
+Either way it is one file to copy. Download from the repo's **Releases** page, or build locally:
 
 ```powershell
-.\publish.ps1          # self-contained -> bin\publish\AudioMixer.exe (~68 MB)
-.\publish.ps1 -Slim    # framework-dependent -> bin\publish-slim\AudioMixer.exe (~0.8 MB)
+.\publish.ps1          # self-contained -> bin\publish\AudioMixer.exe
+.\publish.ps1 -Slim    # framework-dependent -> bin\publish-slim\AudioMixer.exe
 ```
 
-## Deploying to other computers
+Pushing a `v*` tag builds both on a Windows runner and attaches them to a GitHub Release. Ordinary
+pushes run the tests instead.
 
-Two equivalent ways to get the exe(s):
+## Running from source
 
-1. **Local build** — run `.\publish.ps1` (add `-Slim` for the small one), then copy the resulting `AudioMixer.exe` to the target (USB stick, network share, etc.).
-2. **GitHub Release (CI-built)** — push a version tag and let GitHub Actions build both for you:
+```powershell
+dotnet restore
+dotnet build
+dotnet run --project AudioMixer
+dotnet test AudioMixer.sln
+```
 
-   ```powershell
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
+### Command line
 
-   The [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow builds both exes on a Windows runner and attaches them to a GitHub Release. On any computer, open the repo's **Releases** page and download `AudioMixer.exe` (standalone) or `AudioMixer-slim.exe` — no toolchain needed on the target. The workflow only runs on `v*` tags, not on ordinary pushes.
-
-## Quick start
-
-1. Launch AudioMixer
-2. On **Input 1**, click the device button (top of the strip) → pick your microphone
-3. On **Output A** (right side), click the device button → pick your speakers/headset
-4. The **A** toggle on Input 1 is enabled automatically — you should hear yourself
-5. (Optional) Click **A** to rename to something memorable like "Headset"
-6. (Optional) For Zoom: install VB-CABLE, set **Output B** to "CABLE Input", enable Input 1's **B** toggle, and set Zoom's microphone to "CABLE Output"
-
-### Toolbar (left to right)
-
-- ↻ **Refresh devices** — re-enumerate Windows audio devices (after plugging in / out)
-- ⟳ **Resync audio** — flush all buffers and restart outputs (use if you notice growing latency)
-- ⏱ **Detect delays (clap test)** — see below
-- ● **Record all inputs (diagnostic)** — toggle to capture every selected input to its own *pre-auto-mix* WAV, so you can hear exactly what the mic selection is deciding on. Files land in `Documents\AudioMixer\analysis\diag-input{N}-{timestamp}.wav`. (For troubleshooting auto-mix selection, not for normal recording.)
-- **Inputs** — pick the number of input channels (1–10); the window resizes to fit
-
-(Mix recording is per-output — use the ● button on each output strip, not the toolbar.)
-
-### Delay detection
-
-If one of your mics is Bluetooth, it lags the others by 100-300 ms. To auto-compensate:
-
-1. Click the stopwatch icon in the toolbar
-2. A dialog tells you when to make ONE sharp sound (a clap, or a spoken "T!" if your mics suppress claps)
-3. AudioMixer records all active inputs for 4 seconds, then aligns them by **cross-correlating the onset envelopes** (the rising edge of the sound), which tolerates timbre/level differences between mics. It reports each input's arrival offset and a confidence score, and proposes per-channel delay values
-4. Accept "Apply suggested delays" — the latest-arriving input gets 0 ms; others get a delay equal to how much earlier they were
-
-Raw recordings are saved to `Documents\AudioMixer\analysis\input{N}-{timestamp}.wav` for inspection.
-
-> **Note:** delay compensation only helps when each mic has a *fixed* source (e.g. one person per mic). For a room where people speak from different positions, the per-mic offset changes with every talker — use **Auto-mix** instead.
-
-## Auto-mix
-
-For rooms with several mics (e.g. conference speakerphones spread across a space), every talker is picked up by *all* the mics at different distances. Summing them produces comb-filter "echo", a raised noise floor, and reverb. Auto-mix keeps only the mic(s) closest to the active talker open, attenuating the rest. It's set **per output** (e.g. on for the Zoom/CABLE bus, off for your headset).
-
-Each output's strip has an **Auto-mix** selector and a **Strength** slider:
-
-- **Off** — straight sum of all routed mics (default; unchanged behavior).
-- **Share** — gain-sharing: every mic is ducked in proportion to how far below the selected (closest) mic it is, smoothly. Two people on different mics both come through. Best for discussion/cross-talk. Higher Strength sharpens the ducking (the closest mic dominates more).
-- **Gate** — winner-take-all: only the single closest mic is open; the rest are pushed to a floor. Maximum echo rejection, but it passes one talker at a time. Higher Strength ducks the idle mics harder.
-
-**Strength** is the live tuning knob — start around the middle and adjust by ear in the room.
-
-**Stable hand-off** (checkbox, on by default): holds the currently-selected mic with hysteresis (~3 dB) and a short hold (~200 ms) so a brief louder moment on another mic — like a distant speakerphone's auto-gain pumping up during a talker's pause — can't steal the mix. Leave it on for most rooms; turn it off to fall back to picking the instantaneously loudest mic every frame (legacy behavior). Gate always uses the held selection; this toggle controls whether Share does too.
-
-**Per-bus LEDs:** each input strip shows two small LEDs by its label — **A** and **B**, one per output bus. Each is **green** when that input is live (passing) on that bus, **amber** when the automixer is ducking it there, and **dim** when the input isn't routed to that bus. At a glance you can see which mic is feeding which output and which are being held down. (Hover a bus's A/B route button at the bottom of the strip to see that output's name.)
-
-**Priority mic (e.g. a presenter's lapel):** if one input is the primary feed — like a presenter's wireless lapel at the front while room mics cover the audience — open that input's **advanced popup** (the ⚙ gear icon by its label) and tick **"Priority mic"**. A priority mic:
-
-- is **always full level** and never ducked, and is kept out of the competition (the automixer arbitrates only among the remaining room mics);
-- **ducks the room mics while it's speaking.** This is the important part: the presenter's voice also bleeds into the distant room mics, and without this you'd hear it twice (clean lapel + delayed room mic = echo). While the priority mic is active, the room mics are pushed down (amount follows that output's Strength), so only the clean lapel passes. When the presenter pauses, the room mics open back up for audience questions.
-
-You can mark **more than one** input as priority — e.g. a pastor *and* a worship leader, each on their own lapel. They're all kept always-open and each ducks the room mics while speaking. (Note: priority mics don't duck *each other*, so only flag mics that are isolated on different people — two priority mics picking up the same voice would double.)
-
-The gear popup also holds that input's **delay** setting and a live **Mic clarity** bar — a 0–100% readout of how clean/close that mic's signal looks (derived from its crest factor) while it hears speech. It's a diagnostic aid for comparing mics; it does not drive the selection (which is level-based — see the gotchas in `CLAUDE.md` for why spectral cues don't survive speakerphone DSP).
-
-### Match lapel (reference-guided selection)
-
-**The problem it solves:** normally the automixer picks the **loudest** room mic, assuming loudest = closest = best. With speakerphone-style mics (e.g. Anker) that isn't always true — one mic can read louder (its auto-gain, a nearby vent or PA, desk coupling) while actually *sounding worse* than a slightly quieter one. The plain automixer has no way to know that and will pick the loud-but-bad mic.
-
-**What it does:** when a presenter is on a **priority (lapel) mic**, that lapel is a clean, ground-truth copy of their voice. With **Match lapel** ticked on an output, instead of picking the loudest room mic the automixer picks the room mic whose voice **most closely matches the lapel** — i.e. the one that sounds most like the real voice, with the least room echo and noise. It still holds the choice steady (same hysteresis as Stable hand-off).
-
-**When to use it:**
-- Distributed speakerphone-style room mics **plus** a lapel on the talker, and you've noticed the automixer sometimes lands on a mic that sounds worse than another.
-- A single presenter (the lapel wearer) is the main voice and you want the best-sounding room pickup of *that* voice on an output (e.g. the headset/monitor when the lapel itself isn't routed there).
-
-**When it isn't the right tool:**
-- **No lapel, or the lapel isn't hearing the talker** — there's no reference to match, so it automatically falls back to loudest-wins. (It needs a *priority* mic that's actually picking up speech.)
-- **Multiple people far from the lapel** — the lapel only represents the person wearing it. A different person speaking on a distant room mic won't match the lapel, so use plain **Share**/**Gate** for genuine multi-talker discussion.
-- It's reliable at **rejecting a loud-but-bad mic**, but among several similarly-good mics it won't necessarily pick a single clear "best."
-- It needs a second or two of speech to warm up after you enable it (until then it falls back to loudest).
-
-It's experimental — verify by ear in your room before relying on it.
-
-### Prefer natural (reference-free)
-
-**The gap it fills:** *Match lapel* needs a lapel. **Prefer natural** needs no reference at all, so it works when there's **no lapel** and when **people are spread across the room** (each near a different mic).
-
-**What it does:** among the mics that are nearly as loud as the loudest (within a level floor, so it never jumps to a faint mic), it picks the one that sounds **most natural** — measured by how *stable* its sound is over time. The "scratchy/over-processed" speakerphone sound shows up as an unstable, fluctuating spectrum (gating chatter / musical noise); a natural mic is steadier. So it routes around the scratchy mic automatically. Lower priority than *Match lapel* — if both are ticked and a lapel is speaking, the lapel match wins; otherwise this takes over; otherwise loudest-wins.
-
-**When to use it:** distributed speakerphone-style mics with **no lapel**, or where different people talk from across the room and you want to avoid the over-processed/scratchy mic without any manual tuning.
-
-**When it isn't the right tool:**
-- It also avoids **distant, reverberant** mics (they're unstable too) — which is usually what you want, but it leans on the level floor to not pick something too quiet.
-- It needs a second or two of speech on a mic before it can judge it (falls back to loudest until then).
-- Validated **offline** against recordings (it correctly routes off the bad mic in our test captures), but not yet across many rooms — verify by ear.
-
-It's experimental — leave it off until you've confirmed it in your room.
-
-Notes:
-- Two people sharing *one* mic is the clean case: a single capture point, no multi-mic echo, both voices pass.
-- Two people on *different* mics: Share keeps both; Gate picks one. During the overlap, each open mic also carries the other voice as faint bleed, so a little coloration returns only while people talk over each other.
-- VU meters show the *pre*-auto-mix level, so a ducked mic still shows signal on its meter (watch the amber LED to see ducking).
+| Flag | What it does |
+|---|---|
+| `--replay[=STAMP]` | Feed the inputs from a recorded session instead of live mics. A sandbox: its own instance mutex, no autosave, no output devices. Add `--seek=MM:SS --for=MM:SS --speed=N --loop`. |
+| `--preset=PATH` | Load and save the preset at PATH instead of `%APPDATA%`. What makes a replay fixture reproducible. |
+| `--state[=PORT]` | Serve a live JSON snapshot on `http://127.0.0.1:7077/state` — the fastest way to see the selector's reasoning without the GUI. |
+| `--shots[=DIR]` | Render every window to PNG and exit. Works with the workstation locked, where a screen grab returns the lock screen. |
+| `--log` | Write `%TEMP%\AudioMixer.log`, including WPF binding failures. Crashes are always logged regardless, to `%TEMP%\AudioMixer.crash.log`. |
+| `--scene=NAME` | Apply a scene at startup. |
+| `--open-all` | Open every window, so one run covers all their markup. |
 
 ## Architecture
 
 ```
-WasapiCapture (per input device)
-  → resample to 48k stereo float32
-  → mute gate → gain → delay buffer → peak tap
-  → per-output auto-mix gain → per-output ring buffer
+WasapiCapture (per input)
+  → resample to 48 kHz stereo float32
+  → side split (L/R for a split receiver)
+  → peak + analysis taps
+  → low-cut → mute → gain
+  → per-output automix gain → per-output ring buffer
                           ↓
-                MixingSampleProvider (per output bus)
+            MixingSampleProvider (per output bus)
                           ↓
-                Peak tap → recorder tap (optional)
+            bus leveler + limiter → peak tap → recorder tap → volume
                           ↓
                 WasapiOut (per output device)
 ```
 
-- **Internal mix format**: 48 kHz, stereo, IEEE float32
-- **WASAPI shared mode** for all I/O (so Zoom can also use the same device)
-- **Per-output buffer**: 500 ms cap, `ReadFully=true` to avoid `MixingSampleProvider` evicting the source on short reads (see CLAUDE.md for the NAudio 2.2.1 gotcha)
-- **Auto-mix**: a ~100 Hz decision loop (off the audio threads) reads each channel's level and writes a per-channel, per-output gain that the channel applies at the routing-push step with a click-free ramp
-- **MVVM** with WPF — view-models in `AudioMixer/ViewModels/`, engine in `AudioMixer/Audio/`
+- **48 kHz stereo float32** internally; every capture resamples to it.
+- **WASAPI shared mode** everywhere — exclusive mode would lock Zoom out of the headset.
+- The **side split is first**, so everything downstream sees one transmitter rather than a blend.
+- The **low-cut sits after the analysis tap**, so the per-mic recordings stay unprocessed and offline
+  tools never measure our own filter.
+- The **leveler is the only dynamics stage**, and it is after the mixer for the reason above.
+- The **automix decision loop runs at ~100 Hz off the audio threads** and writes per-channel gains
+  lock-free; the channel applies them with a click-free ramp.
+- **MVVM**: engine in `Audio/`, pure rules in `Services/`, view models in `ViewModels/`, four windows
+  in `Views/`.
+
+Anything that makes a judgement — scene rules, health rules, the routing guard, session aggregates —
+lives in a pure function so it can be unit-tested. Nearly 400 tests cover that layer; anything
+needing a device or a window is exercised by a replay run instead.
 
 ## File locations
 
 | What | Where |
 |---|---|
-| Settings (auto-saved) | `%APPDATA%\AudioMixer\preset.json` |
-| Mix recordings | `Documents\AudioMixer\recordings\mix-A-…` / `mix-B-{timestamp}.wav` |
-| Clap-test recordings | `Documents\AudioMixer\analysis\input{N}-{timestamp}.wav` |
-| Diagnostic per-input recordings | `Documents\AudioMixer\analysis\diag-input{N}-{timestamp}.wav` |
-| Diagnostic log (opt-in) | `%TEMP%\AudioMixer.log` |
-
-The diagnostic log is **off by default**. To enable it, set the `AUDIOMIXER_LOG` environment variable (to any value) before launching — e.g. in PowerShell: `$env:AUDIOMIXER_LOG=1; .\AudioMixer.exe`.
+| Settings (auto-saved) | `%APPDATA%\AudioMixer\preset.json` (with a `.bak`) |
+| Per-mic captures + decision track | `Documents\AudioMixer\analysis\` |
+| Bus recordings | `Documents\AudioMixer\recordings\` |
+| Session records | `Documents\AudioMixer\sessions\` |
+| Kept replay fixtures | `Documents\AudioMixer\analysis\keep\` |
+| Log (opt-in) / crash log (always) | `%TEMP%\AudioMixer.log` / `%TEMP%\AudioMixer.crash.log` |
 
 ## Known limits
 
-- Two outputs pointing at the **same physical device** is allowed but quirky — auto-dedupe on preset load keeps the first slot and clears the second. WASAPI shared mode mostly handles two sessions per device, but the implementation has occasional issues.
-- Latency floor is the WASAPI shared-mode floor (≈50-100 ms) plus our 200-500 ms jitter buffer + Bluetooth mic device-side delay. Sub-30 ms is not achievable through this stack without switching to ASIO + exclusive mode (which would conflict with Zoom).
-- WPF doesn't support trimming reliably, so the self-contained .exe is ~150 MB.
+- Latency is the WASAPI shared-mode floor plus our jitter buffer. Sub-30 ms is not reachable through
+  this stack without ASIO and exclusive mode, which would conflict with Zoom.
+- Two outputs on the same physical device is allowed but quirky; preset load keeps the first and
+  clears the second.
+- WPF does not trim reliably, so the self-contained exe cannot get much below its current size.
+- Congregational singing through gating speakerphones cannot be fixed by any mix strategy — the
+  dropouts are in every source at once. See the measured findings in `CLAUDE.md`.
 
 ## License
 
@@ -212,4 +201,7 @@ Licensed under the **GNU General Public License v3.0** — see [LICENSE](LICENSE
 
 Copyright (C) 2026 Wim Kerkhoff
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GPL as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+This program is free software: you can redistribute it and/or modify it under the terms of the GPL as
+published by the Free Software Foundation, either version 3 of the License, or (at your option) any
+later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

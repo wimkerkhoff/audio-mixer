@@ -27,7 +27,7 @@
   powershell -File tools\audio-device-diag.ps1 -Filter ""      # all devices
 #>
 param(
-    [string]$Filter = "Anker"
+    [string]$Filter = "."
 )
 
 $BT_CONNECTED = '{83DA6326-97A6-4088-9453-A1923F573B29} 15'

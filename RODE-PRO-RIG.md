@@ -122,10 +122,10 @@ p50** (finding 7):
 | `AutoMixer.SilenceFloorRms` | `0.0018f` | −55 | quiet room mis-classified as speech, or real speech as silence |
 | `AutoMixer.PriorityActiveRms` | `0.01f` | −40 | the presenter stops ducking the room |
 | `AutoMixer.PriorityBreakInRms` | `0.0032f` | −50 | interjections can't break the duck, or every rustle does |
-| `AutoMixer.RefSpeechRms` | `0.01f` | −40 | "Match lapel" never engages (off on this rig, but still) |
 | `InputChannel.FluxVoiceRms` | `0.006f` | −44 | flux-CV stops accumulating; the RF-drop signal goes dead |
 
-`BROADCAST-MODE.md` planned to absorb the lost AGC make-up with **channel gain** — "one preset change
+The Broadcast-mode plan (since deleted — Anker removed the feature from the firmware) would have
+absorbed the lost AGC make-up with **channel gain** — "one preset change
 beats six retuned constants." **That option does not exist on this rig.** The fader is
 `percent / 100f` clamped at unity: attenuation only. So the scale has to be restored *at the
 transmitter*, which makes TX gain a code-constant dependency rather than an operator preference. Land
@@ -196,6 +196,12 @@ fixable timing problem for an unfixable selection problem.
 ---
 
 # Changes to make in the code
+
+**Status 2026-09-21.** The selector no longer has Share, Stable hand-off, Match lapel or Prefer
+natural — all four were Anker-era and were removed on 2026-09-20; the hold and hysteresis they used
+to be optional around are now unconditional. The golden baselines ARE hermetic now (each fixture owns
+its preset, passed with `--preset`), though they still need re-recording. Everything below is the
+2026-08-30 record, kept for the measurements in it.
 
 **Status 2026-08-30 — built and committed:** 1 (bus leveler + limiter), 6 (calibration readout) and
 7 (scenes verified, none added). Item 2 (ambiguous-device guard) is **deferred**: with one receiver
@@ -382,9 +388,6 @@ remap.
 | Setting | Value | Why |
 | --- | --- | --- |
 | Mode | **Gate** | several mics hear one voice; Share sums and combs |
-| Stable hand-off | **on** | a talker's pauses still let a neighbour momentarily win |
-| Prefer natural | **off** | flux-CV measures over-processing; with no DSP every mic reads ~0.29–0.33, so it has nothing to separate. Observed 2026-08-23 hard-gating the *only* room mic hearing the talker |
-| Match lapel | **off** | engages only while a priority lapel is *speaking*, which is never true when the room is |
 
 ### 6. Hand-off chatter — retune before the units arrive
 

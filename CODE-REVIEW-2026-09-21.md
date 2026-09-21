@@ -25,12 +25,6 @@ Each of these was traced through the code end to end. Ordered by how badly it hu
 
 ### 2.2 Wired, speakerphone-only — remove with a stated risk
 
-- [ ] **Bluetooth rule wording and name fallback.** Keep the enumerator-bus check
-      (`AudioDeviceInfo.IsBluetooth`) and the persisted `WarnOnBluetoothMics`; drop the
-      `PowerConf`/`Soundsync` name fallback (`HealthMonitor.cs:238-265`), the "contends with the
-      other dongles" message (`:218-224`), the Settings help text "The Ankers must run over their
-      2.4 GHz Soundsync dongles…" (`SettingsWindow.xaml:166-168`), and the comment at
-      `MainViewModel.cs:524-531`. Removes `HealthMonitorTests.cs:156-159` and the S500 `InlineData`.
 - [ ] **Flux-CV — decide on the first Rode capture.** One 512-pt FFT per 512 voiced samples per
       channel on the audio thread (`InputChannel.cs:486-541`), copied into `AutoMixer._cv` every
       tick and never read by selection. Finding 6b: every DSP-free mic reads ~0.29–0.33, nothing to
@@ -64,36 +58,8 @@ Each of these was traced through the code end to end. Ordered by how badly it hu
 ### 2.4 Tools
 
 Update:
-- [ ] `tools/gate_rate.py:3-5,20-21`, `tools/naturalness.py:3,27`, `tools/AnalyzeInputs/Program.cs:
-      5-9,15,38-41` — Anker labels/docstrings; `AnalyzeInputs:15` mirrors the crest constants
-      being deleted in 2.1.
-- [ ] `tools/audio-device-diag.ps1:30` default `-Filter "Anker"` now matches nothing; `:100-108`
-      summary text is Soundsync-specific.
-
-Keep as-is: `live_wav.py`, `comb_test.py`, `find_singing.py`, `singing_vs_speech.py`, `RxProbe`,
-`VolProbe`, `device-identity.ps1`, `build-readme.mjs`.
-
 ### 2.5 Docs
 
-- [ ] **README.md** describes the retired UI as current: per-channel delay and clap test (`:3,13,
-      18-19,94-105`), Off/Share/Gate + strength + stable hand-off (`:16,111-119,167`), per-output
-      record buttons (`:20,89`), toolbar input picker (`:90`), gear-popup priority and "more than one
-      priority mic" (`:123-130`), the entire Match lapel / Prefer natural sections (`:132-163`),
-      architecture line with a delay buffer and no side split / low-cut / leveler (`:175`), "500 ms
-      cap" (`:187`), clap-test file row (`:197`), 150 MB vs 68 MB exe size (`:207` vs `:49`).
-      `docs/screenshot.png` shows the Advanced window — re-shoot with `--shots`. Nothing mentions
-      scenes, Checks/Diagnostics/Settings, the leveler, split receivers, `--replay`, retention.
-- [ ] **README.html / RODE-PRO-RIG.html** are committed build artifacts (`build-readme.mjs:1-3`
-      says do not hand-edit) with no CI step regenerating them. Gitignore them or generate in CI.
-- [ ] **RODE-PRO-RIG.md**: `:125` lists `AutoMixer.RefSpeechRms` (does not exist); `:380-387`
-      settings rows for Stable hand-off / Prefer natural / Match lapel; `:127` BROADCAST-MODE ref;
-      `:200-211` progress log.
-- [ ] **ROADMAP.md**: `:73,116` Advanced window resizable; `:190-191` `--simple`/`--advanced`;
-      `:282-300` "pin the cleanest Anker"; `:413-431` Soundsync half-link / auto re-add Anker
-      (superseded by `Desired*`); `:460-476` verify Share weighting / Prefer natural / Match lapel;
-      `:511-518` green LED (resolved); `:520-528`, `:659-662` Mic clarity (moot after 2.1);
-      `:664-679` Anker evidence/ceiling; `:682-689` "Recently shipped" lists removed features.
-      Keep `:372-404` (Broadcast ❌ history), `:354-371`, `:575-597`.
 ---
 
 ## 3. Project hygiene

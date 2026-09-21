@@ -151,14 +151,25 @@ public class HealthMonitorTests
         Assert.False(HealthMonitor.IsBluetooth(null, "Headset Microphone (Lync USB Headset)"));
     }
 
-    /// <summary>Only used when the bus cannot be read, and only on strings that cannot mean anything else.</summary>
+    /// <summary>
+    /// There is no name fallback any more. It matched "Hands-Free" and "PowerConf" when the bus could
+    /// not be read — a guess about one vendor's model names, and guessing is exactly how this rule
+    /// earned its scar: a bare "Headset" match once told the operator "Anker 3 is connected over
+    /// Bluetooth" with no Anker in the building. An unreadable bus now fails quiet.
+    /// </summary>
     [Theory]
-    [InlineData("ANKER #2 (Anker Soundsync)", false)]
-    [InlineData("Microphone (7- Anker Soundsync)", false)]
-    [InlineData("Headset (Anker PowerConf S500 Hands-Free AG Audio)", true)]
-    [InlineData("Anker PowerConf S500", true)]
-    public void TheNameFallbackAppliesOnlyWhenTheBusIsUnknown(string device, bool expected) =>
-        Assert.Equal(expected, HealthMonitor.IsBluetooth(null, device));
+    [InlineData("Headset (Anker PowerConf S500 Hands-Free AG Audio)")]
+    [InlineData("Microphone (Wireless PRO RX)")]
+    [InlineData("Headset Microphone (Lync USB Headset)")]
+    public void AnUnreadableBusIsNeverGuessedFromTheName(string device) =>
+        Assert.False(HealthMonitor.IsBluetooth(null, device));
+
+    [Fact]
+    public void TheBluetoothBusIsWhatDecides()
+    {
+        Assert.True(HealthMonitor.IsBluetooth("BTHENUM", "anything at all"));
+        Assert.False(HealthMonitor.IsBluetooth("USB", "Headset (Some Bluetooth-sounding Name)"));
+    }
 
     /// <summary>End to end through Evaluate, not just the predicate: the banner is what the operator sees.</summary>
     [Fact]
@@ -176,7 +187,7 @@ public class HealthMonitorTests
     {
         var a = HealthMonitor.Evaluate(Snap(ch: new[]
         {
-            Mic(0, device: "Headset (Anker PowerConf S500 Hands-Free AG Audio)"),
+            Mic(0, device: "Headset (Some Wireless Mic)", bus: "BTHENUM"),
         }));
         Assert.Contains(a, x => x.Id.EndsWith(".bluetooth"));
     }

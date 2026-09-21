@@ -1,6 +1,6 @@
 """Reference-free 'naturalness' via temporal-stability / transient-artifact detection.
 
-Key finding: the bad Anker (In5) isn't noisy — its DSP OVER-processes, which inflates cleanliness
+Key finding: the bad speakerphone (In5) isn't noisy — its DSP OVER-processes, which inflates cleanliness
 metrics (HNR/CPPS even exceed the clean lapel). What actually sounds scratchy is intermittent:
 broadband transient clicks + gating chatter + musical noise = an UNSTABLE spectrum over time.
 So instead of measuring cleanliness, we measure INSTABILITY (lower = more natural):
@@ -24,7 +24,7 @@ rx = re.compile(r"diag-input(\d+)-(\d{8}-\d{6})\.wav$", re.I)
 parsed = [(p, int(m.group(1)), m.group(2)) for p in files if (m := rx.search(os.path.basename(p)))]
 stamp = sys.argv[2] if len(sys.argv) > 2 else max(p[2] for p in parsed)
 sess = sorted([p for p in parsed if p[2] == stamp], key=lambda x: x[1])
-LABELS = {1: "In1(lapel)", 2: "In2(Anker)", 3: "In3(2-Anker)", 4: "In4(GOOD)", 5: "In5(BAD)"}
+LABELS = {1: "In1(lapel)", 2: "In2(speakerphone)", 3: "In3(2-speakerphone)", 4: "In4(GOOD)", 5: "In5(BAD)"}
 print(f"Session {stamp}\n")
 
 def analyze(path, fs_hop=480, win=1024):

@@ -70,7 +70,8 @@ restore it. **Opt-in and visible only:** on 2026-09-20 an endpoint raised to +24
 capture while speech was still 14 dB low, so silently re-applying a remembered boost over a corrected
 transmitter gain would re-create that. The transmitter's own gain stays the real setting.
 
-**10 · Advanced window resizable + scrollable.** Fixed-size `CanMinimize` with no scrollbar has caused
+**10 · ✅ Moot — the Advanced window is gone (2026-09-20).** It was made resizable first; retiring it
+removed the whole class. Kept for the lesson: Fixed-size `CanMinimize` with no scrollbar has caused
 three silent-clipping incidents (the leveler row, the 10-input width, `UniformGrid` ignoring
 `MinWidth`). Removing the constraint removes the class and retires the width arithmetic and
 `WindowSizingTests` with it.
@@ -204,8 +205,8 @@ column would have shown a frozen value). Pairs with the clarity→flux-cv readou
 operator overrides below.
 
 ### ✅ Simple mode, scenes, health banner, Diagnostics + Settings — shipped 2026-08-09
-Shipped opt-in via `--simple`; promoted to the **default window on 2026-08-16** after a live run, with
-Advanced still one click away on the panel and available via `--advanced` / `--ui=advanced`.
+Shipped opt-in via `--simple`, promoted to the default on 2026-08-16, and became the ONLY mixer
+window on 2026-09-20 when Advanced was retired — its flags are gone with it.
 Simple mode binds the **same `MainViewModel` instance** as Advanced, so the two views cannot disagree —
 which also makes running them side by side a valid comparison. `MainWindow.xaml` was not touched.
 - **Scenes** are a pure transform (`Services/SceneTransform`) with 20 unit tests, including the safety
@@ -440,11 +441,13 @@ HSP/HFP quality and steals the device from the dongle link). The app should surf
 Anker is connected via Bluetooth, and ideally avoid selecting BT ("PowerConf S500 Hands-Free")
 capture endpoints as inputs — pairs with hiding virtual/BT devices from the input pickers.
 
-### 🔲 Auto-(re)add Anker devices to inputs
-On launch and on device-change, detect Anker capture endpoints and auto-assign them to input
-channels; re-add them when they drop and reappear (USB/BT renegotiation). Complements the existing
-capture-stall watchdog, which only restarts an *already-assigned* device — this handles
-assignment/discovery. *Why:* the Ankers churn; manual re-adding is error-prone for operators.
+### ✅ Auto-(re)add devices to inputs — SHIPPED 2026-09-20/21, differently
+Superseded by the `Desired*` memory rather than built as specified. A strip now REMEMBERS the device
+it wants even while that device is unplugged (the autosave used to overwrite that memory with nulls,
+which is why every replug cost a manual remap), and `ReattachDesiredDevices` re-binds it the moment
+it reappears — inputs and, since 2026-09-21, output buses too. Auto-*assigning* an unbound strip to a
+discovered device was deliberately not built: it is the greedy-fill the Ankers taught us not to do,
+and with serial-derived identity the right unit can be named instead of guessed.
 
 ---
 
@@ -483,13 +486,10 @@ Now verifiable from the logged transcript (gains/cv/winner):
   presentation). Prefer-natural was ON all session and did *not* reproduce the 2026-07-26 global-pin
   failure. **Still open:** whether it picks the mic *nearest the talker* — occupancy is distribution,
   not correctness, and no operator labels were captured. Needs a labeled Q&A segment.
-- Share quality-weighting — ⚠️ currently **inert**: the 2026-07-26 flux-CV scale change left
-  `AutoMixer.SelWeight`'s `NatCv` constants (1.0/2.5) tuned to the old inflated scale, so post-fix CV
-  (~0.4) clamps every mic to weight 1.0. Fix = rescale to the new scale (~0.40 good / ~0.55 bad),
-  validated against a labeled offline replay — do NOT tune by feel. Only affects Share+natural; Gate
-  is unaffected.
-- Prefer natural overall — sensible override rate, picks good mics.
-- Match lapel (reference-guided) — only testable when a lapel is actually in use.
+- ❌ Share quality-weighting, Prefer natural and Match lapel — all three removed 2026-09-20 along
+  with Share itself. Nothing left to verify. (The quality-weighting had also been silently inert
+  since the 2026-07-26 flux-CV rescale, which is its own lesson: a measurement fix can invalidate
+  constants tuned to the broken scale, and nothing tells you.)
 
 ### 🔬 Verify the 2026-08-02 refactor at the next launch
 A code-quality pass (commits `11acf2b`…`4b53877`) landed with **no behavior change intended**. Only
@@ -525,7 +525,10 @@ audio). The 09:28 service itself still ran `11acf2b`, so this was the first exec
   new dropout/glitch and check the log for `push to output … failed` (newly logged; it used to be
   swallowed silently, as did a throwing `AutoMixer.Tick`).
 
-### 🔲 Decide: the green "selected" LED — restore it or drop it
+### ✅ Decide: the green "selected" LED — RESOLVED 2026-09-20/21
+The operator panel's bus A/B badges now light when the automixer picks that mic, so "which mic is on
+the stream" is visible again — and `RowState` carries live/open/dead/off per row. `IsAutoMixActive`
+and `IsDucking` are no longer raised on the meter tick (RowState reads them itself). Original note:
 CLAUDE.md documents `IsAutoMixActive` driving a per-input **green "this mic is the winner" LED**, but
 nothing in `MainWindow.xaml` binds it — `ChannelViewModel.IsAutoMixActive` *and* `IsDucking` are
 raised 30x/second and consumed by no view. So either the LED was lost in an earlier UI edit (a
@@ -673,10 +676,11 @@ mid-recording.
 
 ## UI nice-to-haves
 
-### 💡 Unify the "Mic clarity" readout to naturalness
-The per-input gear popup's clarity bar still shows the old **crest** metric, but selection now uses
-**flux-cv** naturalness. Switch the readout to flux-cv so what the operator sees matches what drives
-the choice.
+### ❌ Unify the "Mic clarity" readout to naturalness — MOOT 2026-09-21
+
+The crest-derived clarity readout was removed: crest fails as a proximity cue through DSP (finding 1)
+and on a DSP-free mic is dominated by handling transients, so it was neither used for selection nor
+worth showing. Nothing to unify.
 
 ### 💡 Operator overrides
 Per output: pin a mic always-on, or exclude a known-bad mic from the competition — a manual escape
@@ -698,9 +702,17 @@ improve quality more than any selection algorithm can.
 
 ## Recently shipped (context)
 
-Single-instance guard · build-stamped log banner · live JSON state endpoint (`--state`) · file
-logging flag (`--log`) · per-bus A/B LEDs + dynamic route tooltips · wider outputs · reference-guided
-"Match lapel" · reference-free "Prefer natural" · quality-weighted Share (loud-bad mic ducks) ·
-multiplicative natural hysteresis (bounce fix) · gains/cv/winner logging · desktop shortcut →
-latest build with diagnostics on · cross-buffer flux-CV windowing (live CV unfrozen, now on the
-offline scale).
+**2026-09-20/21:** the operator panel became the only mixer window · route guard · session records,
+decision track and always-on recording with retention · Checks window with alert fixes that act ·
+serial-derived device identity · hermetic replay fixtures (`--preset`) · CI running the tests · the
+nine bugs and the Anker-era dead code from the 2026-09-21 review.
+
+**Earlier:** single-instance guard · build-stamped log banner · live JSON state endpoint (`--state`)
+· file logging flag (`--log`) · per-bus A/B LEDs + dynamic route tooltips · wider outputs ·
+gains/winner logging · desktop shortcut → latest build with diagnostics on · cross-buffer flux-CV
+windowing (live CV unfrozen, now on the offline scale).
+
+Removed 2026-09-20/21 and recorded here so nobody rebuilds them: Share and its strength slider,
+"Stable hand-off" (now unconditional), reference-guided "Match lapel", reference-free "Prefer
+natural", quality-weighted Share, the per-channel delay stage and clap test, and the crest-derived
+"Mic clarity" readout.

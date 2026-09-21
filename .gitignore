@@ -44,3 +44,8 @@ tools/scene.png
 # Python
 __pycache__/
 *.pyc
+
+# Build artifacts from tools/build-readme.mjs. The .md is the source; nothing in CI regenerates
+# these, so committing them meant a stale HTML shipped alongside an edited Markdown.
+README.html
+RODE-PRO-RIG.html

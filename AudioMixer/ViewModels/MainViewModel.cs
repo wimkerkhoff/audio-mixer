@@ -532,11 +532,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     // Evaluated at ~1 Hz rather than on every meter tick: the alert set is stable on that timescale,
     // and re-raising a collection 30x/second would churn the UI for nothing.
-    // The Bluetooth rule and its remediation text are written for the Anker speakerphones, which had
-    // to run over their Soundsync dongles. On a rig without them the advice is wrong — and the rule
-    // matches on a bare "Headset" substring, so any endpoint named that way trips it. Filtering by Id
-    // here rather than gating HealthMonitor keeps that pure evaluator (and its tests) untouched, and
-    // makes the Settings checkbox real: it was bound to the UI and read by nothing.
+    // Not every rig cares: a wired-only rig never sees it, and a deliberate Bluetooth monitor is a
+    // choice, not a fault. Filtering by Id here rather than gating HealthMonitor keeps that pure
+    // evaluator (and its tests) untouched, and makes the Settings checkbox real — it was bound to the
+    // UI and read by nothing.
     private bool IsAlertWanted(HealthAlert alert) =>
         _warnOnBluetoothMics || !alert.Id.EndsWith(".bluetooth", StringComparison.Ordinal);
 
