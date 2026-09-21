@@ -60,7 +60,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string RecordIcon => _recording ? "■" : "●";
     public string RecordTooltip => _recording
         ? "Stop recording"
-        : "Record everything — every microphone to its own file, and every bus";
+        : "Record every microphone to its own file, and every bus";
 
     private const string VbCableUrl = "https://vb-audio.com/Cable/";
     private const string DocsUrl = "https://github.com/wimkerkhoff/audio-mixer";

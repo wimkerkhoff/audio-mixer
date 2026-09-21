@@ -97,8 +97,8 @@ public static class DeviceIdentity
     /// <summary>Plain-language, for the Diagnostics devices table.</summary>
     public static string Describe(IdentityKind kind) => kind switch
     {
-        IdentityKind.Serial => "serial — follows the device between ports",
-        IdentityKind.PortDerived => "port — a different USB port looks like a new device",
+        IdentityKind.Serial => "serial",
+        IdentityKind.PortDerived => "port",
         IdentityKind.Fixed => "built in",
         IdentityKind.Virtual => "virtual",
         _ => "unknown",

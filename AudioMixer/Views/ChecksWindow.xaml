@@ -1,7 +1,7 @@
 ﻿<Window x:Class="AudioMixer.Views.ChecksWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AudioMixer — Checks"
+        Title="Checks - AudioMixer"
         Height="420" Width="430"
         MinHeight="240" MinWidth="360"
         Background="#16161C" Foreground="#E4E7EF"

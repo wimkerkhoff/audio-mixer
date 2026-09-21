@@ -212,7 +212,10 @@ public sealed class OutputViewModel : ViewModelBase
         _bus = bus;
         _autoMix = autoMix;
         _onDeviceChanged = onDeviceChanged;
-        _customLabel = index switch { 0 => "A — Headset", 1 => "B — Zoom", _ => $"{Tag(index)} — Output" };
+        // Just the role: TaggedLabel already prepends the bus letter, so a default carrying its own
+        // letter rendered as "A: A — Headset" on a fresh install. Only visible with no preset, which
+        // is why it survived — a dev machine always has one.
+        _customLabel = index switch { 0 => "Headset", 1 => "Zoom", _ => "Output" };
         AvailableDevices = new ObservableCollection<AudioDeviceInfo>(availableDevices);
         _bus.Volume = _volumePercent / 100f;
     }

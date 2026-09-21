@@ -1,7 +1,7 @@
 ﻿<Window x:Class="AudioMixer.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AudioMixer — Settings"
+        Title="Settings - AudioMixer"
         Background="#1B1B20"
         Width="560" Height="460"
         MinWidth="440" MinHeight="320"
@@ -172,7 +172,7 @@
                     <CheckBox IsChecked="{Binding HideVoicemeeterOutputs}" Margin="0,8,0,0"
                               Content="Hide VoiceMeeter from output lists"/>
                     <TextBlock Style="{StaticResource Cap}"
-                               Text="VoiceMeeter installs about ten render endpoints, which buries the two you need. VB-CABLE is left visible: routing a bus into it is the path into Zoom."/>
+                               Text="VoiceMeeter installs about ten render endpoints, burying the two you need. VB-CABLE is left visible: routing a bus into it is the path into Zoom."/>
                     <CheckBox IsChecked="{Binding WarnOnBluetoothMics}" Margin="0,8,0,0"
                               Content="Warn when a microphone is on Bluetooth"/>
                     <TextBlock Style="{StaticResource Cap}"
