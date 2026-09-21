@@ -133,6 +133,19 @@ public sealed class ChannelViewModel : ViewModelBase
     public static double TargetBandStart => FractionFor(TargetDb - TargetHalfWidthDb);
     public static double TargetBandWidth => FractionFor(TargetDb + TargetHalfWidthDb) - TargetBandStart;
 
+    /// <summary>Settled medians plus how far speech is from target — the number that makes it actionable.</summary>
+    public string CalibrationText
+    {
+        get
+        {
+            var cal = _channel.SnapshotCalibration();
+            if (float.IsNaN(cal.SpeechDb)) return "speech —   floor —";
+            double off = cal.SpeechDb - TargetDb;
+            string floor = float.IsNaN(cal.FloorDb) ? "—" : $"{cal.FloorDb:F0}";
+            return $"speech {cal.SpeechDb,4:F0}  floor {floor,4}  {off:+0;-0;0} dB";
+        }
+    }
+
     public double BandStart => TargetBandStart;
     public double BandWidth => TargetBandWidth;
 
@@ -342,6 +355,7 @@ public sealed class ChannelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(IsAutoMixActive));
         RaisePropertyChanged(nameof(RowState));
         RaisePropertyChanged(nameof(MeterFraction));
+        RaisePropertyChanged(nameof(CalibrationText));
         foreach (var r in Routes) r.RefreshLed();
         RaisePropertyChanged(nameof(HasClarity));
         RaisePropertyChanged(nameof(ClarityBar));

@@ -1,6 +1,7 @@
 ﻿<Window x:Class="AudioMixer.Views.DiagnosticsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctrl="clr-namespace:AudioMixer.Controls"
         Title="AudioMixer — Diagnostics"
         Background="#1B1B20"
         Width="880" Height="440"
@@ -29,7 +30,9 @@
         </Style>
     </Window.Resources>
 
-    <DockPanel Margin="8">
+    <TabControl Background="#16161C" BorderThickness="0">
+        <TabItem Header="Why this mic?">
+            <DockPanel Margin="8">
         <Grid DockPanel.Dock="Bottom" Margin="0,6,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -128,5 +131,77 @@
                 </ItemsControl>
             </ScrollViewer>
         </Grid>
-    </DockPanel>
+            </DockPanel>
+        </TabItem>
+
+        <TabItem Header="Session">
+            <DockPanel Margin="8">
+                <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Text="Accumulated since this launch and written to Documents\AudioMixer\sessions every couple of minutes, whether or not recording was armed. Kept 90 days."/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="SessionPanel"/>
+                </ScrollViewer>
+            </DockPanel>
+        </TabItem>
+
+        <TabItem Header="Calibration">
+            <DockPanel Margin="8">
+                <Grid DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource Cap}" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Text="Speech should sit in the band. These medians are what every absolute threshold in the automixer is fitted against, so a mic far outside it makes the selector unstable — not just quiet. Cumulative: reset after ANY transmitter gain change."/>
+                    <Button Grid.Column="1" Content="Reset calibration" Margin="8,0,0,0" Padding="8,3"
+                            Command="{Binding ResetCalibrationCommand}"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Channels}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="#22222A" BorderBrush="#3A3A42" BorderThickness="1"
+                                    CornerRadius="4" Padding="8,6" Margin="0,0,0,4">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="90"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding CustomLabel}" Foreground="#E8E8EE"
+                                               FontSize="12" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <ctrl:VuMeter Grid.Column="1" Height="13" Margin="6,0"
+                                                  VerticalAlignment="Center" Orientation="Horizontal"
+                                                  ShowTargetBand="True"
+                                                  PeakDb="{Binding PostPeakDb}" HoldDb="{Binding PostPeakHoldDb}"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource Cell}"
+                                               Text="{Binding CalibrationText}"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </TabItem>
+
+        <TabItem Header="Devices">
+            <DockPanel Margin="8">
+                <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Text="Bus is the Windows device-enumerator name, not a guess from the friendly name — BTHENUM is the only value that means Bluetooth. Endpoint gain is keyed to the endpoint, so it resets when a receiver moves to another USB port."/>
+                <DataGrid x:Name="DeviceGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                          Background="#16161C" RowBackground="#1E1E24" AlternatingRowBackground="#22222A"
+                          Foreground="#D8D8DE" BorderThickness="0" GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#2A2A32" HeadersVisibility="Column" FontSize="11">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="*"/>
+                        <DataGridTextColumn Header="Bus" Binding="{Binding Bus}" Width="Auto"/>
+                        <DataGridTextColumn Header="Gain" Binding="{Binding Gain}" Width="Auto"/>
+                        <DataGridTextColumn Header="Bound to" Binding="{Binding BoundTo}" Width="Auto"/>
+                        <DataGridTextColumn Header="Side" Binding="{Binding Side}" Width="Auto"/>
+                        <DataGridTextColumn Header="State" Binding="{Binding State}" Width="Auto"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </TabItem>
+    </TabControl>
 </Window>

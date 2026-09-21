@@ -206,6 +206,61 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// from an empty list, and these also teach what the app is watching — "no idle priority mic
     /// armed" is a hazard nobody would think to look for.
     /// </summary>
+    // --- Diagnostics: Session and Devices tabs ---------------------------------------------------
+
+    /// <summary>
+    /// The session so far, built on demand. Live for the running service; the same shape that gets
+    /// written to disk, so the tab reads a finished record and a running one identically.
+    /// </summary>
+    public SessionSummary? SessionSnapshot => _session?.BuildSummary();
+
+    /// <summary>Saved records, newest first. Empty until a service has run for a minute.</summary>
+    public IReadOnlyList<SessionFile> PastSessions => new SessionStore().List();
+
+    public sealed record DeviceRow(
+        string Endpoint, string Bus, string Gain, string BoundTo, string Side, string State);
+
+    /// <summary>
+    /// Every capture endpoint with the facts that decide whether it will still be here next week:
+    /// the bus type (BTHENUM is the only value that means Bluetooth) and whether a strip holds it.
+    /// </summary>
+    public IReadOnlyList<DeviceRow> DeviceRows()
+    {
+        var rows = new List<DeviceRow>();
+        foreach (var d in _allInputDevices)
+        {
+            var holder = Channels.FirstOrDefault(c => c.SelectedDevice?.Id == d.Id);
+            string state = holder == null ? "free"
+                : Environment.TickCount64 - _engine.Inputs[holder.Index].LastDataTicks > 2000 ? "no signal"
+                : "capturing";
+            rows.Add(new DeviceRow(
+                d.FriendlyName,
+                d.Bus ?? "—",
+                GainTextFor(d),
+                holder == null ? "—" : (string.IsNullOrWhiteSpace(holder.CustomLabel) ? holder.Label : holder.CustomLabel),
+                holder?.Source.ToString() ?? "—",
+                state));
+        }
+        foreach (var o in Outputs.Where(o => o.SelectedDevice != null))
+        {
+            rows.Add(new DeviceRow(o.SelectedDevice!.FriendlyName, o.SelectedDevice.Bus ?? "—", "—",
+                $"Bus {OutputViewModel.Tag(o.Index)} out", "—", "playing"));
+        }
+        return rows;
+    }
+
+    private static string GainTextFor(AudioDeviceInfo d)
+    {
+        // Endpoint gain is keyed to the endpoint, so it resets on a port change — worth showing
+        // precisely because it is invisible everywhere else and has bitten this rig twice.
+        try
+        {
+            using var dev = d.Resolve();
+            return dev == null ? "—" : $"{dev.AudioEndpointVolume.MasterVolumeLevel:F1} dB";
+        }
+        catch { return "—"; }
+    }
+
     public IReadOnlyList<string> PassingChecks()
     {
         var ids = Alerts.Select(a => a.Id).ToHashSet();
