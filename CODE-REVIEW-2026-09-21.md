@@ -98,14 +98,6 @@ Keep as-is: `live_wav.py`, `comb_test.py`, `find_singing.py`, `singing_vs_speech
 
 ## 3. Project hygiene
 
-- [ ] `<Version>1.0.0</Version>` is hardcoded; the release workflow never passes
-      `-p:Version=${GITHUB_REF_NAME#v}`, so a `v1.2.0` tag ships an assembly reporting 1.0.0.
-- [ ] `TreatWarningsAsErrors` not set in any project; no `Directory.Build.props`, so the four tools
-      projects each pin NAudio separately and are not in the `.sln`, so nothing ever builds them.
-- [ ] Tests: `PresetMapperTests.EveryChannelFieldWrittenHereHasAnAllowlistEntry` checks a hand-typed
-      list of six names (omits `Role`, `SelectedDevice`, `Routes`) — reflect over `ChannelPreset`
-      instead; `DecisionTrackTests.SamplingIsThrottledToTenHertz…` is wall-clock based
-      (`Task.Delay(140)`) and will flake on a loaded runner.
 - [ ] Untested pure logic worth a test: `DiagnosticRow.Build` state precedence,
       `OutputViewModel.RefreshVerdict` (the three `winner = -1` causes), `DeviceList.Sync`, the
       `HealthMonitor` `.stalecal` rule, `SessionRecorder.Tick` >5 s gap rule, the

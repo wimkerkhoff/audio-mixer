@@ -27,7 +27,10 @@ if (all.Length == 0) { Console.WriteLine($"No diag-input*.wav in {dir}"); return
 var rx = new Regex(@"diag-input(\d+)-(\d{8}-\d{6})\.wav$", RegexOptions.IgnoreCase);
 var parsed = all.Select(p => { var m = rx.Match(Path.GetFileName(p)); return (path: p, idx: m.Success ? int.Parse(m.Groups[1].Value) : -1, stamp: m.Success ? m.Groups[2].Value : ""); })
                 .Where(x => x.idx > 0).ToList();
-string stamp = args.Length > 1 ? args[1] : parsed.Max(x => x.stamp);
+// Max() on an empty sequence of strings returns null, and the next line would then match nothing
+// and report "0 files" instead of saying the folder was empty.
+string stamp = args.Length > 1 ? args[1] : parsed.Max(x => x.stamp) ?? "";
+if (stamp.Length == 0) { Console.WriteLine($"No diag-input*.wav in {dir}"); return; }
 var sess = parsed.Where(x => x.stamp == stamp).OrderBy(x => x.idx).ToList();
 Console.WriteLine($"Session {stamp} — {sess.Count} files from {dir}\n");
 

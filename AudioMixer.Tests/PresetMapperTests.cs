@@ -1,4 +1,5 @@
 using AudioMixer.Audio;
+using AudioMixer.Models;
 using AudioMixer.Services;
 
 namespace AudioMixer.Tests;
@@ -195,21 +196,54 @@ public class PresetMapperTests
         Assert.Equal(new[] { "mic0", "mic1", "mic2" }, p.Channels.Select(c => c.CustomLabel));
     }
 
-    /// <summary>The autosave allowlist exists to mirror this mapper. If a property is persisted here
-    /// but missing from the allowlist, changing it never triggers a save — the failure that loses a
-    /// whole session's settings to a kill rather than a clean exit.</summary>
+    /// <summary>
+    /// The autosave allowlist exists to mirror this mapper: if a property is written here but missing
+    /// from the allowlist, changing it never triggers a save — the failure that loses a whole
+    /// session's settings to a kill rather than a clean exit.
+    ///
+    /// Reflected over ChannelPreset rather than hand-listed. The hand-written version checked six
+    /// names and silently omitted Role, the device fields and Routes, which is exactly the kind of
+    /// omission it exists to catch.
+    /// </summary>
     [Fact]
-    public void EveryChannelFieldWrittenHereHasAnAllowlistEntry()
+    public void EveryChannelFieldWrittenHereHasAWayToTriggerASave()
     {
-        foreach (var name in new[]
-                 {
-                     nameof(ViewModels.ChannelViewModel.CustomLabel),
-                     nameof(ViewModels.ChannelViewModel.VolumePercent),
-                     nameof(ViewModels.ChannelViewModel.Muted),
-                     nameof(ViewModels.ChannelViewModel.IsPriority),
-                     nameof(ViewModels.ChannelViewModel.Source),
-                     nameof(ViewModels.ChannelViewModel.HighPassHz),
-                 })
-            Assert.True(PersistedProperties.Contains(name), $"{name} is saved but would not trigger a save");
+        // preset field -> the ChannelViewModel property that feeds it. Device and Routes are the two
+        // that do not share a name: routing is raised per RouteToggleViewModel, and the device
+        // fields come from SelectedDevice.
+        var byName = new Dictionary<string, string>
+        {
+            [nameof(ChannelPreset.Priority)] = nameof(ViewModels.ChannelViewModel.IsPriority),
+            [nameof(ChannelPreset.DeviceId)] = nameof(ViewModels.ChannelViewModel.SelectedDevice),
+            [nameof(ChannelPreset.DeviceName)] = nameof(ViewModels.ChannelViewModel.SelectedDevice),
+            [nameof(ChannelPreset.DeviceKey)] = nameof(ViewModels.ChannelViewModel.SelectedDevice),
+            [nameof(ChannelPreset.Routes)] = nameof(ViewModels.RouteToggleViewModel.IsOn),
+        };
+
+        var missing = new List<string>();
+        foreach (var field in typeof(ChannelPreset).GetProperties())
+        {
+            var vmName = byName.TryGetValue(field.Name, out var mapped) ? mapped : field.Name;
+            if (!PersistedProperties.Contains(vmName)) missing.Add($"{field.Name} (looked for '{vmName}')");
+        }
+
+        Assert.True(missing.Count == 0,
+            "saved by PresetMapper but nothing in the allowlist triggers a save: " + string.Join(", ", missing));
+    }
+
+    /// <summary>The reverse: the allowlist must not name something that no longer exists, or the
+    /// mapping above would silently pass by looking up a stale name.</summary>
+    [Fact]
+    public void EveryAllowlistedNameIsARealViewModelProperty()
+    {
+        var known = typeof(ViewModels.ChannelViewModel).GetProperties().Select(p => p.Name)
+            .Concat(typeof(ViewModels.OutputViewModel).GetProperties().Select(p => p.Name))
+            .Concat(typeof(ViewModels.RouteToggleViewModel).GetProperties().Select(p => p.Name))
+            .Concat(typeof(ViewModels.MainViewModel).GetProperties().Select(p => p.Name))
+            .ToHashSet();
+
+        var unknown = PersistedProperties.Names.Where(n => !known.Contains(n)).ToList();
+
+        Assert.True(unknown.Count == 0, "allowlisted but no such property: " + string.Join(", ", unknown));
     }
 }

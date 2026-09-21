@@ -7,7 +7,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <!-- Stamp the git short-SHA into AssemblyInformationalVersion (e.g. "1.0.0+a1b2c3d") so the log
@@ -23,7 +22,7 @@
   </Target>
 
   <ItemGroup>
-    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="NAudio" Version="$(NAudioVersion)" />
   </ItemGroup>
 
   <!-- The capture conversion chain can only be exercised from a test by feeding it a buffer, and an

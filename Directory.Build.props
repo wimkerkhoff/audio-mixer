@@ -1,0 +1,35 @@
+<Project>
+
+  <!--
+    Shared build settings. Added 2026-09-21 because the four tools projects each pinned NAudio
+    separately and none of them was in the solution, so nothing ever built them — an offline analyser
+    could be broken for months and CI would never notice.
+  -->
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      Warnings are errors in CI only. Locally a warning should not stop you mid-debug (an unused
+      local while you are bisecting something is not a defect), but nothing warned-about should ever
+      reach main: this repo has already shipped a crash that a clean build did not reveal.
+    -->
+    <TreatWarningsAsErrors Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</TreatWarningsAsErrors>
+
+    <!--
+      One place for the NAudio version, so the app and the four offline tools cannot drift apart and
+      measure different behaviour than the app exhibits.
+    -->
+    <NAudioVersion>2.2.1</NAudioVersion>
+
+    <!--
+      Stamped by the release workflow from the tag (-p:Version=1.2.0). A hardcoded 1.0.0 meant a
+      v1.2.0 tag shipped an assembly reporting 1.0.0, and the log banner exists precisely so a log
+      identifies which build produced it.
+    -->
+    <Version Condition="'$(Version)' == ''">1.0.0</Version>
+  </PropertyGroup>
+
+</Project>

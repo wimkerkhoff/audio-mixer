@@ -99,21 +99,37 @@ public class DecisionTrackTests : IDisposable
     /// <summary>
     /// Sampled from the 30 Hz meter tick but throttled to 10 Hz — the automixer's hold is 200 ms, so
     /// 100 ms cannot miss a hand-off, and it keeps an hour at ~2 MB against ~5 GB of audio.
+    ///
+    /// Asserts only the property that is actually deterministic: a burst of calls within one window
+    /// writes ONE row. The earlier version slept 140 ms and asserted a row count, which is a race on
+    /// a loaded CI runner — and CI now exists, so it would have started flaking.
     /// </summary>
     [Fact]
-    public async Task SamplingIsThrottledToTenHertzHoweverOftenItIsCalled()
+    public void ABurstOfMeterTicksWritesASingleRow()
     {
         var path = Path_("decisions.csv");
         using (var t = new DecisionTrack(path, Mics, Buses))
         {
             for (int i = 0; i < 30; i++) Sample(t);      // a second's worth of meter ticks, instantly
-            await Task.Delay(140);
-            for (int i = 0; i < 30; i++) Sample(t);
         }
 
-        // Header plus one row per 100 ms window actually crossed — not 60.
-        var lines = Lines(path);
-        Assert.InRange(lines.Length, 3, 4);
+        Assert.Equal(2, Lines(path).Length);             // header + exactly one row
+    }
+
+    /// <summary>The throttle is a real interval, not "once ever": once the window has passed another
+    /// row is written. Generous bounds on purpose — this is the half that touches the clock.</summary>
+    [Fact]
+    public async Task AfterTheWindowHasPassedSamplingResumes()
+    {
+        var path = Path_("decisions.csv");
+        using (var t = new DecisionTrack(path, Mics, Buses))
+        {
+            Sample(t);
+            await Task.Delay(1000 / DecisionTrack.SampleHz + 60);
+            Sample(t);
+        }
+
+        Assert.Equal(3, Lines(path).Length);             // header + two rows
     }
 
     [Fact]

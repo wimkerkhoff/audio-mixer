@@ -70,7 +70,7 @@ public sealed class VuMeter : Control
     // brush or pen allocated here is allocated hundreds of times a second and then collected. Freezing
     // also lets WPF skip the change-tracking it does on a mutable Freezable and use them across
     // threads. None of these depend on instance state, so they are static.
-    private static readonly Brush Background = Frozen(new SolidColorBrush(Color.FromRgb(20, 20, 24)));
+    private static readonly Brush TroughBrush = Frozen(new SolidColorBrush(Color.FromRgb(20, 20, 24)));
     private static readonly Brush BandFill = Frozen(new SolidColorBrush(Color.FromArgb(56, 79, 163, 236)));
     private static readonly Pen BandEdge =
         Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(150, 79, 163, 236))), 1));
@@ -89,7 +89,7 @@ public sealed class VuMeter : Control
         var size = RenderSize;
         if (size.Width <= 0 || size.Height <= 0) return;
 
-        dc.DrawRectangle(Background, null, new Rect(0, 0, size.Width, size.Height));
+        dc.DrawRectangle(TroughBrush, null, new Rect(0, 0, size.Width, size.Height));
 
         double peak = Math.Clamp(PeakDb, MinDb, MaxDb);
         double hold = Math.Clamp(HoldDb, MinDb, MaxDb);

@@ -21,10 +21,18 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # The tag IS the version. Without this a v1.2.0 tag shipped an assembly reporting 1.0.0, which
+      # defeats the log banner whose whole job is identifying which build produced a log.
+      - name: Read version from the tag
+        id: ver
+        shell: pwsh
+        run: echo "value=$('${{ github.ref_name }}'.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+
       - name: Publish self-contained single-file exe
         run: >
           dotnet publish AudioMixer/AudioMixer.csproj
           -c Release
+          -p:Version=${{ steps.ver.outputs.value }}
           -r win-x64
           --self-contained true
           -p:PublishSingleFile=true
@@ -38,6 +46,7 @@ jobs:
         run: >
           dotnet publish AudioMixer/AudioMixer.csproj
           -c Release
+          -p:Version=${{ steps.ver.outputs.value }}
           -r win-x64
           --self-contained false
           -p:PublishSingleFile=true
