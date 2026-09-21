@@ -756,6 +756,11 @@ later judgment.
   looked damning — but post-prime the same bus still reads 0 ms in **3.1%** of samples with **zero**
   underruns over 65 s. The depth ratio between two buses is a drift signal, nothing more. Only
   `under=[]` distinguishes a hole from normal oscillation, which is the entire reason it exists.
+- **Per-channel delay and the clap test were removed 2026-09-20.** Both came from Anker-era delay
+  compensation, which the automixer superseded: Gate hard-mutes every non-leader, so only one mic's
+  copy of a voice reaches the bus and there is nothing left to time-align. `DelayAnalyzer`, the delay
+  slider and `Detect Delays` are gone. The finding below is kept because it is about *measurement*,
+  not the feature, and the same trap waits for anyone who tries to time a signal path by clapping.
 - **The route-to-output clap test does NOT measure device latency.** A channel's position in the mixed
   output is `transport_latency + standing backlog in its per-output BufferedWaveProvider`. That backlog
   is set nondeterministically at startup (a fast device accumulates a *larger* backlog before the bus

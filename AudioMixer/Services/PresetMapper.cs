@@ -35,7 +35,6 @@ public static class PresetMapper
                 DeviceName = c.SelectedDevice?.FriendlyName ?? c.DesiredDeviceName,
                 VolumePercent = c.VolumePercent,
                 Muted = c.Muted,
-                DelayMs = c.DelayMs,
                 Priority = c.IsPriority,
                 Routes = c.Routes.Select(r => r.IsOn).ToArray(),
                 Role = (int)c.Role,

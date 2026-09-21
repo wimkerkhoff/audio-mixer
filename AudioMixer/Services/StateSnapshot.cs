@@ -46,7 +46,6 @@ public static class StateSnapshot
                 routes = ch.Routes.Select(r => r.IsOn).ToArray(),
                 muted = ch.Muted,
                 volumePercent = Math.Round(ch.VolumePercent, 0),
-                delayMs = ch.DelayMs,
                 isPriority = ch.IsPriority,
                 isDucking = input.IsDucking,
                 isAutoMixActive = input.IsAutoMixActive,

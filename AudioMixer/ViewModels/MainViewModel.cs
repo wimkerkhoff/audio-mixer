@@ -32,7 +32,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public OutputViewModel[] Outputs { get; }
 
     public RelayCommand RefreshDevicesCommand { get; }
-    public RelayCommand DetectDelaysCommand { get; }
     public RelayCommand RecordInputsCommand { get; }
     public RelayCommand ResyncAudioCommand { get; }
     public RelayCommand DownloadVbCableCommand { get; }
@@ -155,7 +154,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         RefreshDevicesCommand = new RelayCommand(RefreshDevices);
-        DetectDelaysCommand = new RelayCommand(StartDelayDetection);
         RecordInputsCommand = new RelayCommand(ToggleInputDiagRecording);
         ResyncAudioCommand = new RelayCommand(ResyncAudio);
         DownloadVbCableCommand = new RelayCommand(OpenVbCableDownload);
@@ -1126,7 +1124,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Channels[i].SelectedDevice = match;
                 Channels[i].VolumePercent = cp.VolumePercent;
                 Channels[i].Muted = cp.Muted;
-                Channels[i].DelayMs = cp.DelayMs;
                 Channels[i].IsPriority = cp.Priority;
                 // Presets written before scenes existed have no Role, and 0 (Room) is indistinguishable
                 // from "not set" — migrate those from the priority flag, which is what marked the lapel.
@@ -1185,7 +1182,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void ToggleInputDiagRecording()
     {
-        if (_delayDetectionInProgress) { StatusText = "Busy with delay detection — try again in a moment."; return; }
 
         string folder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -1219,113 +1215,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             StatusText = $"Recording {active.Length} inputs — narrate which mic is closest as people talk.";
         });
     }
-
-    private bool _delayDetectionInProgress;
-
-    private async void StartDelayDetection()
-    {
-        if (_delayDetectionInProgress) return;
-        var active = Channels.Where(c => c.SelectedDevice != null).ToArray();
-        if (active.Length < 2)
-        {
-            MessageBox.Show("Need at least 2 inputs with a device selected.", "Detect Delays",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var confirm = MessageBox.Show(
-            "This will record all selected inputs for 4 seconds.\n\n" +
-            "When you click OK, make ONE sharp sound (a clap is ideal) that all microphones can hear at the same instant.\n\n" +
-            "Ready?",
-            "Detect Delays", MessageBoxButton.OKCancel, MessageBoxImage.Information);
-        if (confirm != MessageBoxResult.OK) return;
-
-        _delayDetectionInProgress = true;
-        try
-        {
-            string folder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "AudioMixer", "analysis");
-            Directory.CreateDirectory(folder);
-            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-
-            var recordings = new List<(int Index, string Path)>();
-            foreach (var ch in active)
-            {
-                string path = Path.Combine(folder, $"input{ch.Index + 1}-{stamp}.wav");
-                _engine.Inputs[ch.Index].StartAnalysisRecording(path);
-                recordings.Add((ch.Index, path));
-            }
-
-            StatusText = "Recording 4 seconds — clap now!";
-            await Task.Delay(TimeSpan.FromSeconds(4));
-
-            foreach (var ch in active)
-            {
-                _engine.Inputs[ch.Index].StopAnalysisRecording();
-            }
-
-            StatusText = "Analyzing...";
-            var result = DelayAnalyzer.Analyze(recordings);
-            ShowAnalysisResult(result);
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Delay detection failed: {ex.Message}";
-            MessageBox.Show(ex.ToString(), "Detect Delays — error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            _delayDetectionInProgress = false;
-        }
-    }
-
-    private void ShowAnalysisResult(DelayAnalyzer.AnalysisOutcome outcome)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("Arrival offsets via onset cross-correlation (relative to the earliest input):");
-        sb.AppendLine();
-        foreach (var r in outcome.Inputs)
-        {
-            string label = $"Input {r.InputIndex + 1}";
-            if (double.IsNaN(r.FirstTransientMs))
-            {
-                sb.AppendLine($"  {label}: no clear transient (peak {r.PeakAmplitude:F3})");
-            }
-            else
-            {
-                sb.AppendLine($"  {label}: arrived at {r.FirstTransientMs,7:F1} ms   →   suggested delay: {r.SuggestedDelayMs} ms   (corr {r.Confidence:F2})");
-            }
-        }
-        if (outcome.Warning != null)
-        {
-            sb.AppendLine();
-            sb.AppendLine("Warnings:");
-            sb.AppendLine(outcome.Warning);
-        }
-        sb.AppendLine();
-        sb.AppendLine("Apply the suggested delays?");
-        sb.AppendLine("(This aligns all inputs to the latest one. The latest input gets 0 ms.)");
-
-        var btn = MessageBox.Show(sb.ToString(), "Delay Analysis", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (btn == MessageBoxResult.Yes)
-        {
-            foreach (var r in outcome.Inputs)
-            {
-                if (double.IsNaN(r.FirstTransientMs)) continue;
-                if (r.InputIndex >= 0 && r.InputIndex < Channels.Count)
-                {
-                    Channels[r.InputIndex].DelayMs = Math.Clamp(r.SuggestedDelayMs, 0, 1000);
-                }
-            }
-            StatusText = "Suggested delays applied.";
-        }
-        else
-        {
-            StatusText = "Delay detection complete (not applied).";
-        }
-    }
-
     public void Dispose()
     {
         _stateServer?.Dispose();

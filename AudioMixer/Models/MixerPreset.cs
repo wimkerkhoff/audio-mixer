@@ -30,7 +30,6 @@ public sealed class ChannelPreset
     public string? DeviceName { get; set; }
     public float VolumePercent { get; set; } = 75f;
     public bool Muted { get; set; }
-    public int DelayMs { get; set; }
     public bool Priority { get; set; }
     public bool[] Routes { get; set; } = Array.Empty<bool>();
 

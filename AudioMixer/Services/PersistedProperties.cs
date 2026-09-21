@@ -23,7 +23,6 @@ public static class PersistedProperties
         nameof(ChannelViewModel.SelectedDevice),
         nameof(ChannelViewModel.VolumePercent),
         nameof(ChannelViewModel.Muted),
-        nameof(ChannelViewModel.DelayMs),
         nameof(ChannelViewModel.IsPriority),
         nameof(ChannelViewModel.Role),
         nameof(ChannelViewModel.Source),
