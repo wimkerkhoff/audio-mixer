@@ -890,6 +890,20 @@ later judgment.
   matches an **allowlist** (`PersistedProperties`) mirroring exactly what `PresetMapper` writes. Keep
   it that way — a new display property must never be able to break saving by omission.
 
+- **`preset.json` is written by replace, not in place, and keeps a `.bak`.** `File.WriteAllText`
+  truncates the existing file before it writes a byte, so the window in which a kill destroys the
+  rig's entire configuration was the whole duration of every autosave — and this app gets force-killed
+  often enough to matter (the same reason session records checkpoint rather than writing only on
+  exit). A torn preset is *indistinguishable from never having saved one*: every channel comes up with
+  no device, which on a Sunday morning means remapping the rig by hand. `PresetStore.Save` now writes
+  `preset.json.tmp` and calls `File.Replace`, which swaps atomically and keeps the outgoing file as
+  `preset.json.bak` in the same call; `Load` falls back to the backup when the main file will not
+  parse, so the worst case is one autosave stale. Replace is not supported on some roaming/redirected
+  `%APPDATA%` shares, so an `IOException` degrades to an overwriting `Move` — still better than
+  truncate-in-place. The constructor also takes an optional path now, which is the only reason this is
+  testable at all: it was hardcoded to `%APPDATA%`, so any test would have clobbered the operator's
+  real preset.
+
 - **A WPF trigger's `Value` is parsed as a STRING, so comparing it against a boolean binding is
   unreliable** — the trigger silently never fires and every button renders unselected with no error
   anywhere. Bind selection state to `Tag` as an `"on"`/`"off"` **string** and use a `DataTrigger` on
