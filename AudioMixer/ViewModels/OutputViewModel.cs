@@ -15,11 +15,22 @@ public sealed class OutputViewModel : ViewModelBase
     // Output buses are named by letter (A, B, …) everywhere the user sees them.
     public static string Tag(int index) => ((char)('A' + index)).ToString();
 
+    /// <summary>"A: OBS/Zoom". The bus letter is what routing is spoken in, so it leads.</summary>
+    public string TaggedLabel => $"{Tag(Index)}: {CustomLabel}";
+
+    /// <summary>Which device this bus is playing to — the answer to "where does B actually go?".</summary>
+    public string DeviceTooltip => SelectedDevice == null
+        ? $"Bus {Tag(Index)} has no output device selected."
+        : $"Bus {Tag(Index)} plays to {SelectedDevice.FriendlyName}";
+
     private string _customLabel = "";
     public string CustomLabel
     {
         get => _customLabel;
-        set => SetField(ref _customLabel, value ?? "");
+        set
+        {
+            if (SetField(ref _customLabel, value ?? "")) RaisePropertyChanged(nameof(TaggedLabel));
+        }
     }
 
     public ObservableCollection<AudioDeviceInfo> AvailableDevices { get; }
@@ -32,6 +43,7 @@ public sealed class OutputViewModel : ViewModelBase
         {
             if (SetField(ref _selectedDevice, value))
             {
+                RaisePropertyChanged(nameof(DeviceTooltip));
                 _onDeviceChanged(Index, value);
             }
         }

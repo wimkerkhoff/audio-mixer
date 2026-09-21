@@ -52,8 +52,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string StatusText
     {
         get => _statusText;
-        set => SetField(ref _statusText, value);
+        set
+        {
+            if (!SetField(ref _statusText, value)) return;
+            // Transient for the operator panel. A status line that permanently reads "Output B:
+            // Speakers (Lync USB Headset)" is a startup confirmation nobody asked for occupying the
+            // one place a real message — a refused route, a mic that dropped — has to appear.
+            // Advanced keeps the persistent line; the panel only shows what was just said.
+            _statusShown = true;
+            RaisePropertyChanged(nameof(TransientStatus));
+            RaisePropertyChanged(nameof(HasTransientStatus));
+            _statusFade.Stop();
+            _statusFade.Start();
+        }
     }
+
+    private bool _statusShown;
+    private readonly DispatcherTimer _statusFade = new(DispatcherPriority.Background)
+    {
+        Interval = TimeSpan.FromSeconds(6),
+    };
+
+    public string TransientStatus => _statusShown ? _statusText : "";
+    public bool HasTransientStatus => _statusShown && !string.IsNullOrWhiteSpace(_statusText);
 
     public int[] InputCountOptions { get; } = Enumerable.Range(
         AudioEngine.MinInputCount, AudioEngine.MaxInputCount - AudioEngine.MinInputCount + 1).ToArray();
@@ -141,6 +162,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         DismissVbCablePromptCommand = new RelayCommand(DismissVbCablePrompt);
         OpenDocumentationCommand = new RelayCommand(() => OpenUrl(DocsUrl));
         ResetCalibrationCommand = new RelayCommand(ResetCalibration);
+
+        _statusFade.Tick += (_, _) =>
+        {
+            _statusFade.Stop();
+            _statusShown = false;
+            RaisePropertyChanged(nameof(TransientStatus));
+            RaisePropertyChanged(nameof(HasTransientStatus));
+        };
 
         UpdateVbCableStatus();
 

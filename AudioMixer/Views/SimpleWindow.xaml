@@ -81,16 +81,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="MuteBtn" TargetType="ToggleButton" BasedOn="{StaticResource BusBtn}">
-            <Style.Triggers>
-                <Trigger Property="IsChecked" Value="True">
-                    <Setter Property="Foreground" Value="White"/>
-                    <Setter Property="Background" Value="#C8352B"/>
-                    <Setter Property="BorderBrush" Value="#E2564D"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="#26262C"/>
             <Setter Property="BorderBrush" Value="#3A3A42"/>
@@ -140,6 +130,38 @@
         <Style x:Key="SmallBtn" TargetType="Button" BasedOn="{StaticResource SceneBtn}">
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="Padding" Value="6,3"/>
+        </Style>
+
+        <!-- Segoe MDL2 Assets glyphs. The icon itself carries the state (speaker vs speaker-with-slash,
+             outline pin vs filled pin), so neither control depends on colour alone to be readable. -->
+        <Style x:Key="MuteBtn" TargetType="ToggleButton" BasedOn="{StaticResource BusBtn}">
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Content" Value="&#xE767;"/>
+            <Setter Property="Foreground" Value="#9AA0AE"/>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Content" Value="&#xE74F;"/>
+                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Background" Value="#C8352B"/>
+                    <Setter Property="BorderBrush" Value="#E2564D"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PinBtn" TargetType="ToggleButton" BasedOn="{StaticResource BusBtn}">
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Content" Value="&#xE718;"/>
+            <Setter Property="Foreground" Value="#9AA0AE"/>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Content" Value="&#xE840;"/>
+                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Background" Value="#2F6FB5"/>
+                    <Setter Property="BorderBrush" Value="#3E8BD8"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="ToolBtn" TargetType="Button" BasedOn="{StaticResource SmallBtn}">
@@ -197,9 +219,9 @@
                         FontSize="10" Margin="0,0,3,0" Click="Checks_Click"
                         ToolTip="Checks — what needs attention"
                         Style="{StaticResource ChecksBtn}" Tag="{Binding AlertBadgeState}"/>
-                <ToggleButton x:Name="PinButton" Content="Pin" Width="30" Height="20" FontSize="10"
-                              Foreground="#C8C8D2" Background="#2C2C34" BorderBrush="#3E3E48"
+                <ToggleButton x:Name="PinButton" Width="24" Height="20"
                               ToolTip="Keep this panel above other windows"
+                              Style="{StaticResource PinBtn}"
                               Checked="Pin_Changed" Unchecked="Pin_Changed"/>
             </StackPanel>
         </Grid>
@@ -233,55 +255,6 @@
                 </UniformGrid>
             </StackPanel>
         </Border>
-
-        <!-- On-air cards: is audio actually flowing? -->
-        <ItemsControl ItemsSource="{Binding Outputs}" Margin="0,0,0,6">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,4">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding CustomLabel}"
-                                       Foreground="#D8D8DE" FontSize="12"/>
-                            <Border Grid.Row="0" Grid.Column="1" CornerRadius="3" Padding="5,1" Margin="4,0">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#2F6F3E"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding OnAirState}" Value="MUTED">
-                                                <Setter Property="Background" Value="#8B1E26"/>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding OnAirState}" Value="OFF AIR">
-                                                <Setter Property="Background" Value="#44484F"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <TextBlock Text="{Binding OnAirState}" Foreground="White" FontSize="9"/>
-                            </Border>
-                            <ToggleButton Grid.Row="0" Grid.Column="2" Content="M" Width="20" Height="18"
-                                          FontSize="9" Foreground="#D8D8DE" Background="#2C2C34"
-                                          BorderBrush="#3E3E48" ToolTip="Mute this output"
-                                          IsChecked="{Binding Muted}"/>
-
-                            <ctrl:VuMeter Grid.Row="1" Grid.ColumnSpan="3" Height="7" Margin="0,4,0,0"
-                                          PeakDb="{Binding OutputPeakDb}"
-                                          HoldDb="{Binding OutputPeakHoldDb}"
-                                          Orientation="Horizontal"/>
-                        </Grid>
-                    </Border>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
 
         <!-- Channel rows: what a physical desk shows, at a width that fits beside OBS and Zoom.
              Width is constant no matter how many mics; it grows downward, which is the direction a
@@ -326,8 +299,8 @@
                                                FontFamily="Consolas" FontSize="10" Foreground="#9A9AA6"
                                                VerticalAlignment="Center" TextAlignment="Right"/>
 
-                                    <ToggleButton Grid.Column="3" Content="M" Width="18" Height="16"
-                                                  FontSize="9" Margin="3,0,1,0"
+                                    <ToggleButton Grid.Column="3" Width="18" Height="16"
+                                                  Margin="3,0,1,0"
                                                   IsChecked="{Binding Muted, Mode=TwoWay}"
                                                   ToolTip="Mute this microphone"
                                                   Style="{StaticResource MuteBtn}"/>
@@ -361,6 +334,64 @@
             </StackPanel>
         </Border>
 
-        <TextBlock Text="{Binding StatusText}" Style="{StaticResource Cap}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
+        <!-- On air, BELOW the mics: signal flows mics -> buses, so the panel reads the same way. Each
+             card leads with its bus letter, because routing is spoken as A and B; the device it
+             plays to is on the card's tooltip rather than taking a line. -->
+        <ItemsControl ItemsSource="{Binding Outputs}" Margin="0,0,0,6">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,4"
+                            ToolTip="{Binding DeviceTooltip}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding TaggedLabel}"
+                                       Foreground="#D8D8DE" FontSize="12"/>
+                            <Border Grid.Row="0" Grid.Column="1" CornerRadius="3" Padding="5,1" Margin="4,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#2F6F3E"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding OnAirState}" Value="MUTED">
+                                                <Setter Property="Background" Value="#8B1E26"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding OnAirState}" Value="OFF AIR">
+                                                <Setter Property="Background" Value="#44484F"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding OnAirState}" Foreground="White" FontSize="9"/>
+                            </Border>
+                            <ToggleButton Grid.Row="0" Grid.Column="2" Width="20" Height="18"
+                                          ToolTip="Mute this output"
+                                          IsChecked="{Binding Muted}"
+                                          Style="{StaticResource MuteBtn}"/>
+
+                            <ctrl:VuMeter Grid.Row="1" Grid.ColumnSpan="3" Height="7" Margin="0,4,0,0"
+                                          PeakDb="{Binding OutputPeakDb}"
+                                          HoldDb="{Binding OutputPeakHoldDb}"
+                                          Orientation="Horizontal"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+
+        <!-- Only what was just said, and only for a few seconds. A permanent line reading "Output B:
+             Speakers (...)" is a startup confirmation occupying the one place a refused route or a
+             dropped mic has to appear. -->
+        <TextBlock Text="{Binding TransientStatus}" Style="{StaticResource Cap}" Margin="0,6,0,0"
+                   TextWrapping="Wrap"
+                   Visibility="{Binding HasTransientStatus, Converter={StaticResource BoolToVis}}"/>
     </StackPanel>
 </Window>
