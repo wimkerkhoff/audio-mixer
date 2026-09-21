@@ -42,10 +42,24 @@ public sealed class OutputBus : IDisposable
     public PeakMeter OutputPeak => _tap?.Meter ?? _placeholderMeter;
     private readonly PeakMeter _placeholderMeter = new();
 
+    private MixRecorder? _recorder;
+
+    /// <summary>
+    /// Held on the BUS, like <see cref="Leveler"/>, because Start builds a fresh tap every time and a
+    /// recorder that lived only on the tap was dropped by every restart — a device change, a strip
+    /// count change, Resync, starting replay. The file stayed open and the UI still said "recording"
+    /// while no further samples were written, and since the per-mic WAVs and the decisions CSV kept
+    /// going the loss was invisible until someone opened the mix afterwards.
+    /// </summary>
     public MixRecorder? Recorder
     {
-        get => _tap?.Recorder;
-        set { if (_tap != null) _tap.Recorder = value; }
+        get => _recorder;
+        set
+        {
+            _recorder = value;
+            var t = _tap;
+            if (t != null) t.Recorder = value;
+        }
     }
 
     public void Start(AudioDeviceInfo deviceInfo, IEnumerable<ISampleProvider> inputs)
@@ -63,7 +77,7 @@ public sealed class OutputBus : IDisposable
         // Leveler BEFORE the tap, so the meter and the per-output recording show what actually went
         // out; Volume stays after it as a pure device trim.
         var leveler = new BusLeveler(mixer, Leveler);
-        var tap = new TapSampleProvider(leveler);
+        var tap = new TapSampleProvider(leveler) { Recorder = _recorder };
         var volume = new VolumeSampleProvider(tap) { Volume = _volume };
         AudioLog.Write($"  leveler enabled={Leveler.Enabled} strength={Leveler.Strength} " +
                        $"thr={Leveler.ThresholdDb} ratio={Leveler.Ratio} maxGain={Leveler.MaxGainDb} " +
@@ -102,6 +116,18 @@ public sealed class OutputBus : IDisposable
                 AudioLog.Write($"OutputBus playback STOPPED with error: {e.Exception}");
             else
                 AudioLog.Write($"OutputBus playback stopped (no error)");
+
+            // PeakMeter has no decay, so without this the tap keeps its last peak forever and the
+            // health snapshot goes on seeing a bus that is "producing sound" — a dead bus stayed
+            // invisible to Checks. Clearing _output also makes IsPlaying tell the truth, which is
+            // what the new health rule reads. Device *removal* was already covered by DeviceWatcher;
+            // this is the stopped-stream-on-a-present-device case (format renegotiation, another app
+            // taking the endpoint, a USB headset changing rate).
+            lock (_lock)
+            {
+                _tap?.Meter.Reset();
+                _output = null;
+            }
         };
         output.Play();
         AudioLog.Write($"  Play() called; PlaybackState={output.PlaybackState}");

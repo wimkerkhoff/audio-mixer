@@ -17,6 +17,14 @@ public sealed class OutputViewModel : ViewModelBase
     /// <summary>"A: OBS/Zoom". The bus letter is what routing is spoken in, so it leads.</summary>
     public string TaggedLabel => $"{Tag(Index)}: {CustomLabel}";
 
+    /// <summary>
+    /// Whether the WASAPI stream is actually running. A stopped stream on a device that is still
+    /// present (format renegotiation, another app taking the endpoint, a USB headset changing rate)
+    /// looks identical to a healthy bus everywhere else: the meter has no decay, so it holds its last
+    /// peak and the silent-bus rule never fires.
+    /// </summary>
+    public bool IsPlaying => _bus.IsPlaying;
+
     /// <summary>Which device this bus is playing to — the answer to "where does B actually go?".</summary>
     public string DeviceTooltip => SelectedDevice == null
         ? $"Bus {Tag(Index)} has no output device selected."

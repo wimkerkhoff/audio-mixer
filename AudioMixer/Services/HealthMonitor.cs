@@ -69,7 +69,9 @@ public sealed record OutputHealth(
     bool Muted,
     double PeakDb,
     double SecondsSinceSound,
-    float VolumePercent = 100f);
+    float VolumePercent = 100f,
+    /// <summary>Defaults true so a caller that cannot tell is not reported as broken.</summary>
+    bool Playing = true);
 
 public sealed record HealthSnapshot(
     Scene? Scene,
@@ -129,6 +131,18 @@ public static class HealthMonitor
                 alerts.Add(new HealthAlert($"out{o.Index}.nodevice", AlertSeverity.Critical,
                     $"{o.Label}: no output device selected — nothing is reaching it.",
                     "Open Settings", FixKind.OpenSettings, o.Index));
+                continue;
+            }
+            // Checked BEFORE the silent rule, because a stopped stream is the cause and "silent for
+            // 30s" would merely be its symptom — and the symptom does not fire anyway: PeakMeter has
+            // no decay, so a dead bus keeps reporting its last peak forever. Device *removal* is
+            // already covered by the no-device rule above; this is the stream dying under a device
+            // that is still there.
+            if (!o.Playing)
+            {
+                alerts.Add(new HealthAlert($"out{o.Index}.stopped", AlertSeverity.Critical,
+                    $"{o.Label} has stopped playing — the device is still there but the stream died.",
+                    "Resync", FixKind.Resync, o.Index));
                 continue;
             }
             if (o.Muted)

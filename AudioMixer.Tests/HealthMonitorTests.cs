@@ -284,4 +284,67 @@ public class HealthMonitorTests
 
         Assert.False(Has(a, ".split"));
     }
+
+    // --- a bus whose stream died under a device that is still present ---------------------------
+
+    /// <summary>
+    /// The failure this closes: PeakMeter has no decay, so when WasapiOut stops on error the tap keeps
+    /// its last peak forever and the health snapshot goes on seeing a bus that is "producing sound".
+    /// Nothing in Checks ever mentioned it. Device *removal* was already covered; a stopped stream on
+    /// a present device (format renegotiation, another app grabbing the endpoint, a USB headset
+    /// changing rate) was not.
+    /// </summary>
+    [Fact]
+    public void ABusWhoseStreamHasStoppedIsCritical()
+    {
+        var alerts = HealthMonitor.Evaluate(new HealthSnapshot(
+            null,
+            new[] { Mic(0) },
+            new[] { Bus(0), Bus(1) with { Playing = false } },
+            IsReplaying: false));
+
+        var a = Assert.Single(alerts, x => x.Id == "out1.stopped");
+        Assert.Equal(AlertSeverity.Critical, a.Severity);
+        Assert.Equal(FixKind.Resync, a.Fix);
+        Assert.Equal(1, a.Target);
+    }
+
+    /// <summary>Reported once, as the cause — not also as its symptom.</summary>
+    [Fact]
+    public void AStoppedBusDoesNotAlsoRaiseTheMutedOrSilentRules()
+    {
+        var alerts = HealthMonitor.Evaluate(new HealthSnapshot(
+            null,
+            new[] { Mic(0, levelDb: -10) },
+            new[] { Bus(0), Bus(1) with { Playing = false, Muted = true, SecondsSinceSound = 600 } },
+            IsReplaying: false));
+
+        Assert.Contains(alerts, x => x.Id == "out1.stopped");
+        Assert.DoesNotContain(alerts, x => x.Id == "out1.muted");
+        Assert.DoesNotContain(alerts, x => x.Id == "out1.silent");
+    }
+
+    /// <summary>A bus with no device is already reported as such; saying "stopped" too would be
+    /// noise, and the snapshot deliberately reports Playing=true when there is nothing to play.</summary>
+    [Fact]
+    public void ABusWithNoDeviceIsNotAlsoReportedAsStopped()
+    {
+        var alerts = HealthMonitor.Evaluate(new HealthSnapshot(
+            null,
+            new[] { Mic(0) },
+            new[] { Bus(0), Bus(1) with { HasDevice = false } },
+            IsReplaying: false));
+
+        Assert.Contains(alerts, x => x.Id == "out1.nodevice");
+        Assert.DoesNotContain(alerts, x => x.Id == "out1.stopped");
+    }
+
+    [Fact]
+    public void AHealthyPlayingBusRaisesNothing()
+    {
+        var alerts = HealthMonitor.Evaluate(new HealthSnapshot(
+            null, new[] { Mic(0) }, new[] { Bus(0), Bus(1) }, IsReplaying: false));
+
+        Assert.DoesNotContain(alerts, x => x.Id.EndsWith(".stopped"));
+    }
 }

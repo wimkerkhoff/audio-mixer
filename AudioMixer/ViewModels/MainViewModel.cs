@@ -621,7 +621,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.Muted,
                 vm.OutputPeakDb,
                 (now - _lastOutputSound[o]) / 1000.0,
-                vm.VolumePercent));
+                vm.VolumePercent,
+                vm.SelectedDevice == null || vm.IsPlaying));
         }
 
         return new HealthSnapshot(Scenes.Current, channels, outputs, IsReplaying);

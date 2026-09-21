@@ -41,7 +41,7 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
         for (int i = 0; i < DefaultInputCount; i++) Inputs[i] = new InputChannel(OutputCount);
         Outputs = new OutputBus[OutputCount];
         for (int o = 0; o < OutputCount; o++) Outputs[o] = new OutputBus();
-        _autoMixTimer = new Timer(AutoMixTick, null, 10, 10);
+        _autoMixTimer = new Timer(AutoMixTick, WallClock, 10, 10);
         _watchdogTimer = new Timer(WatchdogTick, null, 1000, 500);
     }
 
@@ -51,12 +51,20 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
 
     private bool _autoMixErrorLogged;
 
+    /// <summary>
+    /// Identifies the wall-clock timer's own callbacks. Both callers used to pass null, so the guard
+    /// below ("is this the timer?") could never be true and the timer never stood down: replay ran at
+    /// ~200 ticks/s instead of 100, halving HandoffHoldTicks and PriorityHoldTicks and quietly
+    /// breaking the deterministic, speed-independent replay the golden baselines assume.
+    /// </summary>
+    private static readonly object WallClock = new();
+
     private void AutoMixTick(object? state)
     {
         // While replaying, the rig drives the tick from the audio clock (see ReplayRig.Pumped) so the
         // selector is deterministic and speed-independent. Letting the wall-clock timer also fire
         // would double-tick and halve every hold.
-        if (Volatile.Read(ref _replayDrivesAutoMix) != 0 && state != null) return;
+        if (Volatile.Read(ref _replayDrivesAutoMix) != 0 && ReferenceEquals(state, WallClock)) return;
 
         var inputs = Inputs; // single atomic reference read; safe vs SetInputCount's array swap
         try { _autoMix.Tick(inputs); }
