@@ -96,6 +96,9 @@ public sealed class SessionRecorder : IDisposable
         }
     }
 
+    /// <summary>Records something the operator changed.</summary>
+    public void Action(string what) => _aggregator.Action(DateTime.Now.ToString("HH:mm:ss"), what);
+
     private static string Kind(string id)
     {
         int dot = id.LastIndexOf('.');

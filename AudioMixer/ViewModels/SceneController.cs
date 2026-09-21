@@ -94,8 +94,12 @@ public sealed class SceneController : ViewModelBase
     /// </summary>
     public bool IsApplying { get; private set; }
 
+    /// <summary>Set by MainViewModel so a scene change lands in the session record as one line.</summary>
+    public Action<string>? OnOperatorAction { get; set; }
+
     public void Apply(Scene scene)
     {
+        OnOperatorAction?.Invoke($"scene {scene}");
         IsApplying = true;
         try
         {

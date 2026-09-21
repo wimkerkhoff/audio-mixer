@@ -219,6 +219,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (!_isReplaying)
         {
             _session = new SessionRecorder(_engine, Channels, Outputs) { Config = BuildSessionConfig };
+            Scenes.OnOperatorAction = what => _session?.Action(what);
         }
         _meterTimer.Tick += (_, _) =>
         {
@@ -624,6 +625,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         foreach (var input in _engine.Inputs) input.ResetCalibration();
         StatusText = "Calibration histograms cleared.";
+        _session?.Action("calibration reset");
     }
 
     public void RefreshDiagnostics()
@@ -1015,6 +1017,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _engine.RestartInputs();
         _engine.RestartOutputs();
         StatusText = "Audio resynced (inputs + outputs).";
+        _session?.Action("resync");
     });
 
     private static void RunOnUi(Action action)
@@ -1098,12 +1101,62 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (_suppressAutosave) return;
         if (!PersistedProperties.Contains(e.PropertyName)) return;
 
-        // A hand-edit in Advanced invalidates the active scene, so Simple mode stops claiming one.
-        // Guarded, because applying a scene writes these same properties.
-        if (Scenes is { IsApplying: false }) Scenes.MarkCustomised();
+        // A hand-edit invalidates the active scene, so Simple mode stops claiming one. Guarded,
+        // because applying a scene writes these same properties.
+        if (Scenes is { IsApplying: false })
+        {
+            Scenes.MarkCustomised();
+            // Only hand edits are logged as operator actions. A scene writes every channel and output
+            // at once, so logging those would bury the one deliberate change in twenty derived ones —
+            // the scene itself is logged instead, where it is applied.
+            _session?.Action(DescribeChange(sender, e.PropertyName));
+        }
 
         _autosaveTimer.Stop();
         _autosaveTimer.Start();
+    }
+
+    /// <summary>
+    /// A change in the operator's words, not the view model's. "Rode L off bus B" is something you can
+    /// line up against the audio; "IsOn changed" is not.
+    /// </summary>
+    private string DescribeChange(object? sender, string? property) => sender switch
+    {
+        RouteToggleViewModel r when property == nameof(RouteToggleViewModel.IsOn) =>
+            $"{NameOf(r)} {(r.IsOn ? "routed to" : "removed from")} bus {r.ShortLabel}",
+        ChannelViewModel c => property switch
+        {
+            nameof(ChannelViewModel.Muted) => $"{Label(c)} {(c.Muted ? "muted" : "unmuted")}",
+            nameof(ChannelViewModel.VolumePercent) => $"{Label(c)} level {c.VolumePercent:F0}%",
+            nameof(ChannelViewModel.SelectedDevice) =>
+                $"{Label(c)} set to {c.SelectedDevice?.FriendlyName ?? "(none)"}",
+            nameof(ChannelViewModel.Source) => $"{Label(c)} side {c.Source}",
+            nameof(ChannelViewModel.IsPriority) => $"{Label(c)} priority {(c.IsPriority ? "on" : "off")}",
+            nameof(ChannelViewModel.HighPassHz) => $"low-cut {c.HighPassHz} Hz",
+            _ => "",
+        },
+        OutputViewModel o => property switch
+        {
+            nameof(OutputViewModel.Muted) => $"bus {OutputViewModel.Tag(o.Index)} {(o.Muted ? "muted" : "unmuted")}",
+            nameof(OutputViewModel.VolumePercent) => $"bus {OutputViewModel.Tag(o.Index)} volume {o.VolumePercent:F0}%",
+            nameof(OutputViewModel.AutoMixModeIndex) =>
+                $"bus {OutputViewModel.Tag(o.Index)} automix {o.AutoMixModeOptions[Math.Clamp(o.AutoMixModeIndex, 0, o.AutoMixModeOptions.Length - 1)]}",
+            nameof(OutputViewModel.LevelerEnabled) =>
+                $"bus {OutputViewModel.Tag(o.Index)} leveler {(o.LevelerEnabled ? "on" : "off")}",
+            nameof(OutputViewModel.LevelerStrength) =>
+                $"bus {OutputViewModel.Tag(o.Index)} leveler {o.LevelerStrength}",
+            _ => "",
+        },
+        _ => "",
+    };
+
+    private static string Label(ChannelViewModel c) =>
+        string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel;
+
+    private string NameOf(RouteToggleViewModel r)
+    {
+        var owner = Channels.FirstOrDefault(c => c.Routes.Contains(r));
+        return owner == null ? "a mic" : Label(owner);
     }
 
     private void SavePreset()
@@ -1292,6 +1345,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
             _recording = true;
             _recordingStarted = DateTime.Now;
+            _session?.Action("recording started");
             RaiseRecordingState();
             StatusText = $"Recording {inputs.Length} mics and {outputs.Length} buses.";
         });

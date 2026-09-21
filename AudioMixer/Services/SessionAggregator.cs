@@ -72,9 +72,20 @@ public sealed record SessionSummary
 
     /// <summary>Plain-language notes, generated as thresholds are crossed. Ordered by time.</summary>
     public IReadOnlyList<SessionEvent> Events { get; init; } = Array.Empty<SessionEvent>();
+
+    /// <summary>What the operator changed, in order. Empty on a hands-off service, which is the goal.</summary>
+    public IReadOnlyList<OperatorAction> Actions { get; init; } = Array.Empty<OperatorAction>();
 }
 
 public sealed record SessionEvent(string TimeOfDay, string Kind, AlertSeverity Severity, string Message);
+
+/// <summary>
+/// Something the operator did, and when. Distinct from a SessionEvent, which is something the app
+/// noticed — the difference matters when reading a session back, because "the mix got worse at 10:14"
+/// has a very different meaning depending on whether 10:14 is when a mic died or when somebody
+/// switched a bus off.
+/// </summary>
+public sealed record OperatorAction(string TimeOfDay, string What);
 
 /// <summary>
 /// Accumulates what a session DID, as distinct from what the mixer is doing right now.
@@ -102,6 +113,11 @@ public sealed class SessionAggregator
 
     private readonly List<SessionEvent> _events = new();
     private readonly HashSet<string> _raised = new();
+    private readonly List<OperatorAction> _actions = new();
+
+    /// <summary>A dragged slider can raise hundreds of changes; past this the session was hand-flown
+    /// and the exact count stops being the interesting part.</summary>
+    public const int MaxActions = 400;
 
     private long _elapsedMs;
 
@@ -169,6 +185,17 @@ public sealed class SessionAggregator
         _events.Add(new SessionEvent(timeOfDay, kind, severity, message));
     }
 
+    /// <summary>
+    /// Records an operator change. Consecutive identical descriptions collapse, because dragging a
+    /// level slider raises one per step and "level 80%" fifty times says nothing "level 80%" does not.
+    /// </summary>
+    public void Action(string timeOfDay, string what)
+    {
+        if (string.IsNullOrWhiteSpace(what) || _actions.Count >= MaxActions) return;
+        if (_actions.Count > 0 && _actions[^1].What == what) return;
+        _actions.Add(new OperatorAction(timeOfDay, what));
+    }
+
     public SessionSummary Build(
         string stamp, DateTime startedUtc, string? scene,
         IReadOnlyList<InputSummary> inputSeed, IReadOnlyList<OutputSummary> outputSeed,
@@ -208,6 +235,7 @@ public sealed class SessionAggregator
             Inputs = inputs,
             Outputs = outputs,
             Events = _events.ToList(),
+            Actions = _actions.ToList(),
         };
     }
 }
