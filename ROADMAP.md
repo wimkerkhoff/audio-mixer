@@ -9,7 +9,7 @@ Status key: 🔲 planned · 🔬 needs live data / validation · 🛠 doable now
 
 ## Operator experience
 
-### 🔲 Build queue as of 2026-09-20 — decided, specified, not yet built
+### 🛠 Build queue as of 2026-09-20 — mostly built, three items open
 
 Everything below was settled with the operator this session. Mockups:
 [operator panel](https://claude.ai/code/artifact/8bb734fe-35a1-4723-b88d-9f30592e555b) ·
@@ -77,6 +77,31 @@ three silent-clipping incidents (the leveler row, the 10-input width, `UniformGr
 
 **11 · Strip-count discoverability.** The 1-10 picker exists in the Advanced toolbar and was never
 found. Label it, and mirror it into Settings beside the other persisted options.
+
+**Built 2026-09-20** (1, 2, 3, 5, 7, 10, 11 complete; 4 and 6 partly; 8 and 9 open):
+
+- `RouteGuard` + the channel-row operator panel with the target band, bus column and clickable A/B.
+- `SessionAggregator` / `SessionStore` / `SessionRecorder` — continuous aggregates, checkpointed every
+  two minutes and written on every service, pruned at 90 days.
+- Five new health rules: level off target, output at zero volume, routed strip with no device, a
+  receiver shared by two strips with neither set to a side; clipping is counted in `InputChannel`.
+- The Checks window, opening itself only when something is wrong, showing passing checks too.
+- Diagnostics gained Session, Calibration and Devices tabs.
+- Advanced is resizable and vertically scrollable; the strip-count picker is labelled and mirrored
+  into Settings.
+- `DeviceResolver` now refuses ambiguous name matches instead of binding an arbitrary twin.
+
+**Still open, and why:**
+
+- **The soundcheck** (part of 4). The walked "speak into each mic" flow that verifies level *and*
+  confirms which strip a transmitter landed on. It is the only preflight check that needs a human,
+  the only one that would have caught 2026-09-20 before the meeting, and it doubles as the identify
+  flow below. Not started.
+- **Actions are still labels** (6). The Checks window shows each alert's suggested fix as text; none
+  of them is a button that does the thing. Moving the banner into its own window did not change that.
+- **Device identity on live hardware** (8a, 8c, 9). `tools/device-identity.ps1` exists and the PnP
+  evidence says Rode receivers carry serials, but the RX was in its charging case all day so this is
+  still unconfirmed. The identify flow and per-serial endpoint gain both wait on it.
 
 **Risk to weigh against all of the above:** 15 commits shipped this session — device resolution,
 routing, output buffers, health rules — against 173 unit tests and **no working end-to-end gate**.
