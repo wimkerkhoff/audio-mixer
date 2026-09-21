@@ -753,6 +753,23 @@ later judgment.
 
 ### Measurement & recording
 
+- **Recording is always on, and the disk arithmetic is why it has three bounds rather than one.** A
+  single stream at the internal format (48 kHz stereo float32) is **1.29 GB/hour**; five mics and two
+  buses is **~9 GB/hour**, so a two-hour service is ~18 GB and four weeks at two services a week is
+  **~144 GB** — more than the free space on this machine. Age alone would therefore prune about a week
+  *after* the disk filled. So: recording stops itself at **2 hours** (somebody forgetting to close the
+  app must not mean a recording that runs till the disk is full), files expire at **28 days**, and
+  `RecordingRetention` additionally deletes **oldest-first whenever free space drops under 20 GB**,
+  refuses to start under 15 GB and stops an in-flight recording under 8 GB — the stop floor being
+  lower than the start floor on purpose, so a session already running is given every chance to finish.
+  Session records are never swept: they are tens of kilobytes and are what you still want once the
+  audio is gone.
+  **The obvious halving is mono inputs** — after the side split a Left/Right strip carries ONE
+  transmitter duplicated to both channels (measured: L/R correlation exactly 1.0000 within a diag WAV),
+  so recording those as mono is lossless and halves the input files. Not done yet; a `Stereo` strip on a
+  genuinely stereo device must stay stereo.
+
+
 - **Automix gain is applied AFTER the meter/analysis taps** (`InputPeak`/`PostPeak`/analysis recorder
   all run before the per-output routing push). So VU meters and clap-test recordings show the
   *pre-automix* post-fader level — a channel can read hot while the automixer ducks its contribution.

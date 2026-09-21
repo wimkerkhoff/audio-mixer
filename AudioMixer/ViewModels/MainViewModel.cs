@@ -42,6 +42,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private static string RecordingRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AudioMixer");
 
+    /// <summary>
+    /// Recording stops itself after this long. Somebody forgetting to close the app must not mean a
+    /// recording that runs until the disk is full — which, at ~9 GB/hour for this rig, is the same
+    /// evening.
+    /// </summary>
+    public static readonly TimeSpan MaxRecordingLength = TimeSpan.FromHours(2);
+
+    private readonly RecordingRetention _retention = new(
+        Path.Combine(RecordingRoot, "analysis"), Path.Combine(RecordingRoot, "recordings"));
+
+    private DateTime _recordingStarted;
     private bool _recording;
     public bool IsRecording => _recording;
     public string RecordIcon => _recording ? "■" : "●";
@@ -210,10 +221,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             foreach (var op in Outputs) op.RefreshMeters();
             _diagnostics.Tick();
             _session?.Tick();
+            CheckRecordingLimits();
             RefreshHealth();
             if (_isReplaying) RaisePropertyChanged(nameof(ReplayPositionText));
         };
         _meterTimer.Start();
+
+        // Records by default. The service nobody prepared for is the one worth having, which is the
+        // same argument as the session record — except audio is four orders of magnitude bigger, so it
+        // comes with a length cap and a disk guard rather than only an age rule. Delayed so devices
+        // have bound: starting at construction would record whichever strips happened to be ready.
+        if (!_isReplaying)
+        {
+            var autoRecord = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromSeconds(12),
+            };
+            autoRecord.Tick += (_, _) =>
+            {
+                autoRecord.Stop();
+                if (!_recording) ToggleRecording();
+            };
+            autoRecord.Start();
+        }
 
         TryLoadInitialPreset();
         StartReplayIfRequested();
@@ -1177,6 +1207,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         if (_recording) { StopRecording(); return; }
 
+        // Old recordings first, so a start is not refused for space that is about to be freed.
+        _retention.Prune();
+        if (!_retention.HasRoomToStart())
+        {
+            StatusText = $"Not enough disk space to record " +
+                         $"({RecordingRetention.FreeGb(RecordingRoot):F0} GB free).";
+            return;
+        }
+
         var inputs = Channels.Where(c => c.SelectedDevice != null).ToArray();
         var outputs = Outputs.Where(o => o.SelectedDevice != null).ToArray();
         if (inputs.Length == 0 && outputs.Length == 0)
@@ -1211,6 +1250,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
 
             _recording = true;
+            _recordingStarted = DateTime.Now;
             RaiseRecordingState();
             StatusText = $"Recording {inputs.Length} mics and {outputs.Length} buses.";
         });
@@ -1229,6 +1269,30 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
         RaiseRecordingState();
         StatusText = $"Recording saved to {RecordingRoot}";
+    }
+
+    /// <summary>
+    /// Ends a recording that has run too long or is about to fill the disk. Both exist because this
+    /// records unattended: the failure being guarded against is nobody being there to notice.
+    /// </summary>
+    private void CheckRecordingLimits()
+    {
+        if (!_recording) return;
+
+        if (DateTime.Now - _recordingStarted >= MaxRecordingLength)
+        {
+            StopRecording();
+            StatusText = $"Recording stopped automatically after {MaxRecordingLength.TotalHours:F0} hours.";
+            AudioLog.Write("Recording stopped: reached the maximum length.");
+            return;
+        }
+
+        if (_retention.MustStopNow())
+        {
+            StopRecording();
+            StatusText = "Recording stopped — the disk is nearly full.";
+            AudioLog.Write("Recording stopped: free space below the floor.");
+        }
     }
 
     private void RaiseRecordingState()
