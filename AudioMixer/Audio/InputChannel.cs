@@ -240,12 +240,44 @@ public sealed class InputChannel : IDisposable
     public string? AnalysisRecordingPath => _analysisRecorder?.CurrentPath;
     public bool IsAnalysisRecording => _analysisRecorder?.IsRecording == true;
 
+    /// <summary>
+    /// Captures this mic, pre-fader and pre-filter, for offline analysis.
+    ///
+    /// Written MONO when this strip takes one side of a split receiver, because then both channels
+    /// already carry the same transmitter — the side split duplicates it, measured at an L/R sample
+    /// correlation of exactly 1.0000 — so the second channel is a verbatim copy costing half the file.
+    /// A Stereo strip on a genuinely stereo device keeps both channels, where they can differ.
+    /// </summary>
     public void StartAnalysisRecording(string path)
     {
         StopAnalysisRecording();
+        bool mono = (ChannelSource)Volatile.Read(ref _source) != ChannelSource.Stereo;
+        Volatile.Write(ref _analysisMono, mono ? 1 : 0);
+
         var recorder = new MixRecorder();
-        recorder.Start(path, WaveFormat.CreateIeeeFloatWaveFormat(InternalSampleRate, InternalChannels));
+        recorder.Start(path, WaveFormat.CreateIeeeFloatWaveFormat(InternalSampleRate, mono ? 1 : InternalChannels));
         _analysisRecorder = recorder;
+    }
+
+    private int _analysisMono;
+    private float[]? _monoScratch;
+
+    // Takes the left of each interleaved pair: after the side split both hold the same transmitter.
+    private void WriteAnalysis(float[] buffer, int count)
+    {
+        var rec = _analysisRecorder;
+        if (rec == null) return;
+
+        if (Volatile.Read(ref _analysisMono) == 0)
+        {
+            rec.WriteSamples(buffer, 0, count);
+            return;
+        }
+
+        int frames = count / InternalChannels;
+        if (_monoScratch == null || _monoScratch.Length < frames) _monoScratch = new float[frames];
+        for (int f = 0; f < frames; f++) _monoScratch[f] = buffer[f * InternalChannels];
+        rec.WriteSamples(_monoScratch, 0, frames);
     }
 
     public void StopAnalysisRecording()
@@ -707,7 +739,7 @@ public sealed class InputChannel : IDisposable
             InputPeak.Observe(rented, read);
             CountClipping(rented, read);
 
-            _analysisRecorder?.WriteSamples(rented, 0, read);
+            WriteAnalysis(rented, read);
 
             // After the analysis tap on purpose: "record all inputs" must stay an unprocessed capture,
             // or every offline tool would be measuring our own filter instead of the mic.

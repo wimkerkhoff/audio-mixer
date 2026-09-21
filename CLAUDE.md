@@ -755,19 +755,26 @@ later judgment.
 
 - **Recording is always on, and the disk arithmetic is why it has three bounds rather than one.** A
   single stream at the internal format (48 kHz stereo float32) is **1.29 GB/hour**; five mics and two
-  buses is **~9 GB/hour**, so a two-hour service is ~18 GB and four weeks at two services a week is
-  **~144 GB** — more than the free space on this machine. Age alone would therefore prune about a week
-  *after* the disk filled. So: recording stops itself at **2 hours** (somebody forgetting to close the
+  buses is **~9 GB/hour**, so a capped hour is ~9 GB (~6 GB once split strips go mono) and four
+  weeks at two services a week is ~50-70 GB against ~129 GB free. Age alone would therefore prune about a week
+  *after* the disk filled. So: recording stops itself at **1 hour** (somebody forgetting to close the
   app must not mean a recording that runs till the disk is full), files expire at **28 days**, and
   `RecordingRetention` additionally deletes **oldest-first whenever free space drops under 20 GB**,
   refuses to start under 15 GB and stops an in-flight recording under 8 GB — the stop floor being
   lower than the start floor on purpose, so a session already running is given every chance to finish.
   Session records are never swept: they are tens of kilobytes and are what you still want once the
   audio is gone.
-  **The obvious halving is mono inputs** — after the side split a Left/Right strip carries ONE
-  transmitter duplicated to both channels (measured: L/R correlation exactly 1.0000 within a diag WAV),
-  so recording those as mono is lossless and halves the input files. Not done yet; a `Stereo` strip on a
-  genuinely stereo device must stay stereo.
+  **Split strips record MONO** — after the side split a Left/Right strip carries one transmitter
+  duplicated to both channels (L/R correlation measured at exactly 1.0000), so the second channel is a
+  verbatim copy and the file halves losslessly. A `Stereo` strip on a genuinely stereo device keeps
+  both. Verified: a split pair writes 1-channel files at half the size of the stereo strips beside them.
+- **`decisions-<stamp>.csv` sits beside every capture, and is the only thing that can answer "should
+  it have picked a different mic".** The diag WAVs are tapped BEFORE the automix gain and before the
+  bus, so they show what each mic heard and nothing about what was done with it; the mix shows a
+  choice was wrong but never what the alternative sounded like at that instant. The CSV carries one
+  row per 100 ms — leader per bus, plus each mic's level and applied gain — sharing the recording's
+  stamp so it lines up sample-wise. 10 Hz is deliberate: the automixer's hold is 200 ms, so this
+  cannot miss a hand-off, and an hour costs ~2 MB against gigabytes of audio.
 
 
 - **Automix gain is applied AFTER the meter/analysis taps** (`InputPeak`/`PostPeak`/analysis recorder

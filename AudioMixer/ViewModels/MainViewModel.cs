@@ -44,16 +44,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// Recording stops itself after this long. Somebody forgetting to close the app must not mean a
-    /// recording that runs until the disk is full — which, at ~9 GB/hour for this rig, is the same
-    /// evening.
+    /// recording that runs until the disk is full, and an hour is comfortably longer than the window
+    /// anyone actually reviews afterwards — the point of the capture is to check the selector's
+    /// choices, the leveler and clipping, not to archive the service.
     /// </summary>
-    public static readonly TimeSpan MaxRecordingLength = TimeSpan.FromHours(2);
+    public static readonly TimeSpan MaxRecordingLength = TimeSpan.FromHours(1);
 
     private readonly RecordingRetention _retention = new(
         Path.Combine(RecordingRoot, "analysis"), Path.Combine(RecordingRoot, "recordings"));
 
     private DateTime _recordingStarted;
     private bool _recording;
+    private DecisionTrack? _decisions;
     public bool IsRecording => _recording;
     public string RecordIcon => _recording ? "■" : "●";
     public string RecordTooltip => _recording
@@ -222,6 +224,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _diagnostics.Tick();
             _session?.Tick();
             CheckRecordingLimits();
+            _decisions?.Sample(
+                o => _engine.AutoMixActiveInput(o),
+                i => Channels[i].PostPeakDb,
+                (i, o) => _engine.Inputs[i].GetAutoMixGain(o));
             RefreshHealth();
             if (_isReplaying) RaisePropertyChanged(nameof(ReplayPositionText));
         };
@@ -1239,6 +1245,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 _engine.Inputs[ch.Index].StartAnalysisRecording(
                     Path.Combine(mics, $"diag-input{ch.Index + 1}-{stamp}.wav"));
             }
+
+            // Shares the stamp so an offline tool can line the selector's choices up against the audio
+            // it was choosing between. Every channel, not just the recorded ones, so an unbound strip
+            // still shows as a column rather than shifting the ones after it.
+            _decisions = new DecisionTrack(
+                Path.Combine(mics, $"decisions-{stamp}.csv"),
+                Channels.Select(c => string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel).ToList(),
+                Outputs.Select(o => OutputViewModel.Tag(o.Index)).ToList());
             foreach (var ovm in outputs)
             {
                 var bus = _engine.Outputs[ovm.Index];
@@ -1261,6 +1275,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (!_recording) return;
         _recording = false;
         foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
+        _decisions?.Dispose();
+        _decisions = null;
         for (int o = 0; o < Outputs.Length; o++)
         {
             _engine.Outputs[o].Recorder = null;
