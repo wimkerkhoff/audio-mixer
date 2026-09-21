@@ -8,7 +8,6 @@ public sealed class OutputViewModel : ViewModelBase
     private readonly OutputBus _bus;
     private readonly IAutoMixControl _autoMix;
     private readonly Action<int, AudioDeviceInfo?> _onDeviceChanged;
-    private readonly Action<int> _onToggleRecord;
 
     public int Index { get; }
 
@@ -125,20 +124,14 @@ public sealed class OutputViewModel : ViewModelBase
         SelectionVerdict = $"{mode}: {Name(winner)} winning on level (+3 dB){holdText}";
     }
 
-    public RelayCommand ToggleRecordCommand { get; }
-
     private bool _isRecording;
     public bool IsRecording => _isRecording;
-    public string RecordIcon => _isRecording ? "■" : "●";
-    public string RecordTooltip => _isRecording ? "Stop recording this output" : "Record this output to WAV";
 
     public void SetRecording(bool value)
     {
         if (_isRecording == value) return;
         _isRecording = value;
         RaisePropertyChanged(nameof(IsRecording));
-        RaisePropertyChanged(nameof(RecordIcon));
-        RaisePropertyChanged(nameof(RecordTooltip));
     }
 
     public string[] AutoMixModeOptions { get; } = { "Off", "Gate" };
@@ -177,18 +170,15 @@ public sealed class OutputViewModel : ViewModelBase
         OutputBus bus,
         IAutoMixControl autoMix,
         IEnumerable<AudioDeviceInfo> availableDevices,
-        Action<int, AudioDeviceInfo?> onDeviceChanged,
-        Action<int> onToggleRecord)
+        Action<int, AudioDeviceInfo?> onDeviceChanged)
     {
         Index = index;
         _bus = bus;
         _autoMix = autoMix;
         _onDeviceChanged = onDeviceChanged;
-        _onToggleRecord = onToggleRecord;
         _customLabel = index switch { 0 => "A — Headset", 1 => "B — Zoom", _ => $"{Tag(index)} — Output" };
         AvailableDevices = new ObservableCollection<AudioDeviceInfo>(availableDevices);
         _bus.Volume = _volumePercent / 100f;
-        ToggleRecordCommand = new RelayCommand(() => _onToggleRecord(Index));
     }
 
     // --- Bus leveler ---------------------------------------------------------------------------

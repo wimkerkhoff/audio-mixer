@@ -47,14 +47,10 @@ public class PersistedPropertiesTests
     private sealed class StubAutoMix : IAutoMixControl
     {
         public void SetAutoMixMode(int output, AutoMixMode mode) { }
-        public void SetAutoMixStrength(int output, float strength) { }
-        public void SetAutoMixStableHandoff(int output, bool on) { }
-        public void SetAutoMixReferenceGuided(int output, bool on) { }
-        public void SetAutoMixPreferNatural(int output, bool on) { }
     }
 
     private static OutputViewModel MakeOutput(OutputBus bus) =>
-        new(0, bus, new StubAutoMix(), Array.Empty<AudioDeviceInfo>(), (_, _) => { }, _ => { });
+        new(0, bus, new StubAutoMix(), Array.Empty<AudioDeviceInfo>(), (_, _) => { });
 
     [Fact]
     public void OutputMeterTick_RaisesNothingThatTriggersAutosave()

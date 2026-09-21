@@ -32,12 +32,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public OutputViewModel[] Outputs { get; }
 
     public RelayCommand RefreshDevicesCommand { get; }
-    public RelayCommand RecordInputsCommand { get; }
+    public RelayCommand RecordCommand { get; }
     public RelayCommand ResyncAudioCommand { get; }
     public RelayCommand DownloadVbCableCommand { get; }
     public RelayCommand DismissVbCablePromptCommand { get; }
     public RelayCommand OpenDocumentationCommand { get; }
     public RelayCommand ResetCalibrationCommand { get; }
+
+    private static string RecordingRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AudioMixer");
+
+    private bool _recording;
+    public bool IsRecording => _recording;
+    public string RecordIcon => _recording ? "■" : "●";
+    public string RecordTooltip => _recording
+        ? "Stop recording"
+        : "Record everything — every microphone to its own file, and every bus";
 
     private const string VbCableUrl = "https://vb-audio.com/Cable/";
     private const string DocsUrl = "https://github.com/wimkerkhoff/audio-mixer";
@@ -149,12 +159,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _recorders[o] = new MixRecorder();
             Outputs[o] = new OutputViewModel(
                 o, _engine.Outputs[o], _engine, _allOutputDevices,
-                (idx, dev) => SetOutputDevice(idx, dev),
-                ToggleRecord);
+                (idx, dev) => SetOutputDevice(idx, dev));
         }
 
         RefreshDevicesCommand = new RelayCommand(RefreshDevices);
-        RecordInputsCommand = new RelayCommand(ToggleInputDiagRecording);
+        RecordCommand = new RelayCommand(ToggleRecording);
         ResyncAudioCommand = new RelayCommand(ResyncAudio);
         DownloadVbCableCommand = new RelayCommand(OpenVbCableDownload);
         DismissVbCablePromptCommand = new RelayCommand(DismissVbCablePrompt);
@@ -318,7 +327,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         set
         {
             // Exclusive by construction: one channel becomes the lapel, every other becomes a room mic.
-            for (int i = 0; i < Channels.Count; i++) Channels[i].IsLapel = (i == value - 1);
+            // Priority IS the lapel now (operator, 2026-09-20: only one mic is ever priority). Role
+            // and priority were two controls for one idea, and the separate checkbox was the one that
+            // could be left armed on an unused mic — the documented hazard where a bumped lapel
+            // silently ducks every room mic off the stream. Scenes still clear priority where they
+            // must: Prayer mutes and de-prioritises the lapel outright.
+            for (int i = 0; i < Channels.Count; i++)
+            {
+                bool isLapel = i == value - 1;
+                Channels[i].IsLapel = isLapel;
+                Channels[i].IsPriority = isLapel;
+            }
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(LapelOptions));
         }
@@ -1009,35 +1028,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         QueueAutosave();
     }
 
-    private void ToggleRecord(int index)
-    {
-        if (index < 0 || index >= Outputs.Length) return;
-        var ovm = Outputs[index];
-        var bus = _engine.Outputs[index];
-        var recorder = _recorders[index];
-
-        if (ovm.IsRecording)
-        {
-            bus.Recorder = null;
-            recorder.Stop();
-            ovm.SetRecording(false);
-            StatusText = $"Recording stopped. Saved to: {recorder.CurrentPath}";
-            return;
-        }
-
-        string folder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "AudioMixer", "recordings");
-        string path = Path.Combine(folder, $"mix-{OutputViewModel.Tag(index)}-{DateTime.Now:yyyyMMdd-HHmmss}.wav");
-        RunGuarded("Record", () =>
-        {
-            recorder.Start(path, bus.InternalFormat);
-            bus.Recorder = recorder;
-            ovm.SetRecording(true);
-            StatusText = $"Recording {ovm.CustomLabel} → {Path.GetFileName(path)}";
-        });
-    }
-
     // The allowlist lives in Services.PersistedProperties so the "meter tick must never trigger
     // autosave" invariant can be unit-tested; see the comment there for why this is an allowlist.
     private void OnSettingChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -1174,55 +1164,87 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // Diagnostic: records every selected input to its own WAV via the pre-automix analysis tap (the
     // same tap "Detect Delays" uses), so the captured per-mic feeds show what the automixer's
     // selection is actually deciding on — the mix recorder is post-automix and useless for this.
-    private bool _inputDiagRecording;
-    public string InputDiagRecordIcon => _inputDiagRecording ? "■" : "●";
-    public string InputDiagRecordTooltip => _inputDiagRecording
-        ? "Stop recording inputs"
-        : "Record all inputs to separate WAVs (diagnostic — raw pre-automix per-mic feeds)";
 
-    private void ToggleInputDiagRecording()
+    /// <summary>
+    /// One button records EVERYTHING: every bound input to its own file, and every live bus.
+    ///
+    /// Per-input and per-output record buttons were separate until 2026-09-20, which meant the
+    /// combination you actually want when something sounds wrong — the raw mics AND the mix they
+    /// produced, from the same moment — took three deliberate clicks and was usually remembered
+    /// afterwards. One stamp ties the whole set together so an offline replay lines up.
+    /// </summary>
+    private void ToggleRecording()
     {
+        if (_recording) { StopRecording(); return; }
 
-        string folder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "AudioMixer", "analysis");
-
-        if (_inputDiagRecording)
+        var inputs = Channels.Where(c => c.SelectedDevice != null).ToArray();
+        var outputs = Outputs.Where(o => o.SelectedDevice != null).ToArray();
+        if (inputs.Length == 0 && outputs.Length == 0)
         {
-            foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
-            _inputDiagRecording = false;
-            RaisePropertyChanged(nameof(InputDiagRecordIcon));
-            RaisePropertyChanged(nameof(InputDiagRecordTooltip));
-            StatusText = $"Input recordings saved to {folder}";
+            StatusText = "Nothing to record — no microphone or output device is selected.";
             return;
         }
 
-        var active = Channels.Where(c => c.SelectedDevice != null).ToArray();
-        if (active.Length == 0) { StatusText = "No inputs with a device selected to record."; return; }
-
-        RunGuarded("Input recording", () =>
+        RunGuarded("Record", () =>
         {
-            Directory.CreateDirectory(folder);
             string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            foreach (var ch in active)
+            // The per-mic captures keep living under analysis/: every offline tool globs for
+            // diag-input*.wav there, and the replay rig loads a session by that stamp.
+            string mics = Path.Combine(RecordingRoot, "analysis");
+            string mixes = Path.Combine(RecordingRoot, "recordings");
+            Directory.CreateDirectory(mics);
+            Directory.CreateDirectory(mixes);
+
+            foreach (var ch in inputs)
             {
-                string path = Path.Combine(folder, $"diag-input{ch.Index + 1}-{stamp}.wav");
-                _engine.Inputs[ch.Index].StartAnalysisRecording(path);
+                _engine.Inputs[ch.Index].StartAnalysisRecording(
+                    Path.Combine(mics, $"diag-input{ch.Index + 1}-{stamp}.wav"));
             }
-            _inputDiagRecording = true;
-            RaisePropertyChanged(nameof(InputDiagRecordIcon));
-            RaisePropertyChanged(nameof(InputDiagRecordTooltip));
-            StatusText = $"Recording {active.Length} inputs — narrate which mic is closest as people talk.";
+            foreach (var ovm in outputs)
+            {
+                var bus = _engine.Outputs[ovm.Index];
+                var rec = _recorders[ovm.Index];
+                rec.Start(Path.Combine(mixes, $"mix-{OutputViewModel.Tag(ovm.Index)}-{stamp}.wav"),
+                          bus.InternalFormat);
+                bus.Recorder = rec;
+                ovm.SetRecording(true);
+            }
+
+            _recording = true;
+            RaiseRecordingState();
+            StatusText = $"Recording {inputs.Length} mics and {outputs.Length} buses.";
         });
     }
+
+    private void StopRecording()
+    {
+        if (!_recording) return;
+        _recording = false;
+        foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
+        for (int o = 0; o < Outputs.Length; o++)
+        {
+            _engine.Outputs[o].Recorder = null;
+            _recorders[o].Stop();
+            Outputs[o].SetRecording(false);
+        }
+        RaiseRecordingState();
+        StatusText = $"Recording saved to {RecordingRoot}";
+    }
+
+    private void RaiseRecordingState()
+    {
+        RaisePropertyChanged(nameof(IsRecording));
+        RaisePropertyChanged(nameof(RecordIcon));
+        RaisePropertyChanged(nameof(RecordTooltip));
+    }
+
     public void Dispose()
     {
         _stateServer?.Dispose();
         _deviceWatcher.Dispose();
         _meterTimer.Stop();
         _autosaveTimer.Stop();
-        if (_inputDiagRecording)
-            foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
+        StopRecording();
         SavePreset();
         _session?.Dispose();
         foreach (var r in _recorders) r?.Dispose();

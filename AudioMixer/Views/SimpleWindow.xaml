@@ -265,10 +265,10 @@
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE713;" Click="Settings_Click"
                         ToolTip="Settings"/>
                 <Rectangle Width="1" Fill="#3A3A44" Margin="3,3"/>
-                <Button Style="{StaticResource ToolBtn}" Content="{Binding InputDiagRecordIcon}"
+                <Button Style="{StaticResource ToolBtn}" Content="{Binding RecordIcon}"
                         FontFamily="Segoe UI" Foreground="#E2564D"
-                        ToolTip="{Binding InputDiagRecordTooltip}"
-                        Command="{Binding RecordInputsCommand}"/>
+                        ToolTip="{Binding RecordTooltip}"
+                        Command="{Binding RecordCommand}"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE897;" Click="Help_Click"
                         ToolTip="Help — open the documentation"/>
             </StackPanel>

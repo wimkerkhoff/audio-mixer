@@ -254,12 +254,12 @@ fixed 2026-07-26 (`ComputeFlux` accumulates → `ComputeFluxWindow` runs the FFT
 **Priority mics** (`IsPriority`, per-input gear popup). A priority mic (the presenter's lapel) is
 always full level and out of the competition, and while *active* (`PriorityActiveRms`, ~−40 dBFS) it
 ducks the room mics — otherwise that voice reaches the bus via both the clean lapel and a delayed
-room mic and comb-filters. The ENGINE still allows multiple priority mics (pastor + worship
-leader) — do NOT restrict that; note they don't duck *each other*, so two priority mics hearing one
-source will double. Settings' lapel picker became a single dropdown on 2026-09-20 (operator: only
-one input is ever the lapel on this rig), but that sets `Role` — what scenes read, and what must
-survive Prayer clearing the priority flag — not `IsPriority`, which the Advanced gear popup still
-sets per channel. **Hazard:** an unused-but-open priority lapel that crosses −40 dBFS (bumped,
+room mic and comb-filters. **Exactly one mic is priority, and it is the lapel** (operator, 2026-09-20). Role
+and priority were two controls for one idea; picking the lapel in Settings now sets both, exclusively.
+Scenes still clear priority where they must — Prayer mutes and de-prioritises it outright — so `Role`
+stays the durable property and `IsPriority` the runtime one. The engine has no hard limit, but nothing
+in the UI can arm a second priority mic, which also retires the hazard of one left armed on an unused
+strip. Two priority mics hearing one source would still double, since they do not duck each other. **Hazard:** an unused-but-open priority lapel that crosses −40 dBFS (bumped,
 drift) silently ducks every room mic off the stream. Unroute/clear the flag when not in use.
 
 **Priority hangover** (`PriorityHoldTicks` ~1.2 s, `PriorityBreakInRms` ~−50 dBFS). The duck used to

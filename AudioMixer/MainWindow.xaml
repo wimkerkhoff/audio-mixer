@@ -261,9 +261,7 @@
                 <Button Style="{StaticResource IconBtn}" Content="&#xE72C;" ToolTip="Refresh devices" Command="{Binding RefreshDevicesCommand}"/>
                 <Button Style="{StaticResource IconBtn}" Content="&#xE895;" ToolTip="Resync audio: restart inputs &amp; outputs (recovers a stalled mic or creeping delay)" Command="{Binding ResyncAudioCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
-                <Button Style="{StaticResource RecordBtn}" FontFamily="Segoe UI" FontSize="12"
-                        Content="{Binding InputDiagRecordIcon}" ToolTip="{Binding InputDiagRecordTooltip}"
-                        Command="{Binding RecordInputsCommand}"/>
+                        Command="{Binding RecordCommand}"/>
                 <Rectangle Width="1" Fill="#3A3A42" Margin="3,2"/>
                 <Button Style="{StaticResource IconBtn}" Content="&#xE9D9;"
                         ToolTip="Diagnostics — ranked &quot;why this mic?&quot; table, gain calibration, Reset calibration"
@@ -397,10 +395,6 @@
                                                     </StackPanel>
                                                     <TextBlock Style="{StaticResource PopupHelp}"
                                                                Text="A two-transmitter receiver in Split mode puts one mic on each side of ONE device. Bind it to two inputs, one Left and one Right, to give the auto-mixer two mics it can choose between. Greyed out on a mono device."/>
-                                                    <CheckBox Margin="0,10,0,0" IsChecked="{Binding IsPriority}"
-                                                              Foreground="#E8E8EF" FontSize="11"
-                                                              Content="Priority mic (always on, ducks others while speaking)"
-                                                              ToolTip="Always full level and out of the competition; while this mic is speaking it ducks the other (room) mics — e.g. a presenter's lapel"/>
                                                     <Border Height="1" Background="#3A3A42" Margin="0,10,0,6"/>
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
@@ -535,10 +529,6 @@
                                     <TextBox Grid.Column="0" Style="{StaticResource EditableLabel}"
                                              Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}"
                                              MaxLength="20"/>
-                                    <Button Grid.Column="1" Style="{StaticResource RecordBtn}"
-                                            FontFamily="Segoe UI" FontSize="12"
-                                            Content="{Binding RecordIcon}" ToolTip="{Binding RecordTooltip}"
-                                            Command="{Binding ToggleRecordCommand}" VerticalAlignment="Center"/>
                                 </Grid>
                                 <Grid Grid.Row="1">
                                     <ToggleButton x:Name="OutDevBtn" Style="{StaticResource DeviceSelBtn}"
