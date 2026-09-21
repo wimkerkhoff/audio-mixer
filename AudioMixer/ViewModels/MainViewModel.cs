@@ -319,7 +319,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         LowCutHz = _lowCutHz,
         Lapel = Channels.FirstOrDefault(c => c.IsLapel)?.CustomLabel,
         Inputs = Channels.Select(c =>
-            $"{(string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel)} | " +
+            $"{(c.DisplayName)} | " +
             $"{c.SelectedDevice?.FriendlyName ?? "(none)"} | {c.Source} | " +
             $"routes {string.Join("", c.Routes.Select((r, i) => r.IsOn ? OutputViewModel.Tag(i) : "-"))}" +
             (c.Muted ? " | muted" : "") + (c.IsPriority ? " | priority" : "") +
@@ -356,7 +356,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 d.Bus ?? "—",
                 DeviceIdentity.Describe(DeviceIdentity.Classify(d.ContainerId, d.Bus)),
                 GainTextFor(d),
-                holder == null ? "—" : (string.IsNullOrWhiteSpace(holder.CustomLabel) ? holder.Label : holder.CustomLabel),
+                holder == null ? "—" : (holder.DisplayName),
                 holder?.Source.ToString() ?? "—",
                 state));
         }
@@ -396,7 +396,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public IReadOnlyList<string> LapelOptions =>
         new[] { "(none)" }.Concat(Channels.Select(c =>
-            string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel)).ToList();
+            c.DisplayName)).ToList();
 
     public int LapelIndex
     {
@@ -536,6 +536,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // choice, not a fault. Filtering by Id here rather than gating HealthMonitor keeps that pure
     // evaluator (and its tests) untouched, and makes the Settings checkbox real — it was bound to the
     // UI and read by nothing.
+    /// <summary>Persisted, but not part of the mixer's state: changing one must not invalidate the
+    /// scene or be logged as an operator action.</summary>
+    private static bool IsCosmetic(string? property) =>
+        property == nameof(ChannelViewModel.CustomLabel)
+        || property == nameof(OutputViewModel.CustomLabel);
+
     private bool IsAlertWanted(HealthAlert alert) =>
         _warnOnBluetoothMics || !alert.Id.EndsWith(".bluetooth", StringComparison.Ordinal);
 
@@ -586,7 +592,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             var cal = input.SnapshotCalibration();
             channels.Add(new ChannelHealth(
                 i,
-                string.IsNullOrWhiteSpace(vm.CustomLabel) ? $"Input {i + 1}" : vm.CustomLabel,
+                vm.DisplayName,
                 vm.Role,
                 vm.SelectedDevice?.FriendlyName,
                 vm.Routes.Any(r => r.IsOn),
@@ -609,7 +615,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (vm.OutputPeakDb > -80) _lastOutputSound[o] = now;
             outputs.Add(new OutputHealth(
                 o,
-                string.IsNullOrWhiteSpace(vm.CustomLabel) ? OutputViewModel.Tag(o) : vm.CustomLabel,
+                vm.DisplayName,
                 vm.SelectedDevice != null,
                 vm.Muted,
                 vm.OutputPeakDb,
@@ -912,7 +918,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private List<ChannelRouting> RoutingSnapshot() =>
         Channels.Select(c => new ChannelRouting(
             c.Index,
-            string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel,
+            c.DisplayName,
             c.Routes.Select(r => r.IsOn).ToArray(),
             c.Muted,
             c.SelectedDevice != null,
@@ -1253,6 +1259,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (e.PropertyName == nameof(ChannelViewModel.CustomLabel))
             RaisePropertyChanged(nameof(LapelOptions));
 
+        // A rename is cosmetic: it changes a label, not what is on the stream. It still has to save,
+        // but it must not clear the active scene — and with UpdateSourceTrigger=PropertyChanged on the
+        // Settings text box it fired once per KEYSTROKE, so typing a new name silently dropped the
+        // scene pill letter by letter.
+        if (IsCosmetic(e.PropertyName))
+        {
+            _autosaveTimer.Stop();
+            _autosaveTimer.Start();
+            return;
+        }
+
         // A veto raises the same notification a real change does, so that the control snaps back —
         // but the value behind it is unchanged, and everything below reads the value. Logging it
         // recorded the OPPOSITE action ("LAPEL unmuted" when a mute was refused), cleared the scene
@@ -1310,7 +1327,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     };
 
     private static string Label(ChannelViewModel c) =>
-        string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel;
+        c.DisplayName;
 
     private string NameOf(RouteToggleViewModel r)
     {
@@ -1495,7 +1512,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // still shows as a column rather than shifting the ones after it.
             _decisions = new DecisionTrack(
                 Path.Combine(mics, $"decisions-{stamp}.csv"),
-                Channels.Select(c => string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel).ToList(),
+                Channels.Select(c => c.DisplayName).ToList(),
                 Outputs.Select(o => OutputViewModel.Tag(o.Index)).ToList());
             foreach (var ovm in outputs)
             {

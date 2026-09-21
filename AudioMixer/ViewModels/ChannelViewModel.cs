@@ -320,6 +320,13 @@ public sealed class ChannelViewModel : ViewModelBase
 
     // Simple-mode mic dots. Raised from RefreshMeters, so neither may ever be a persisted property
     // (see PersistedProperties) — that is what the allowlist test guards.
+    /// <summary>
+    /// What to call this strip in a log, a record or a table — the operator's name if they gave one,
+    /// otherwise the positional fallback. Written out nine times across three files before this
+    /// existed, which is nine chances for one of them to drift.
+    /// </summary>
+    public string DisplayName => string.IsNullOrWhiteSpace(CustomLabel) ? Label : CustomLabel;
+
     public bool HasDevice => SelectedDevice != null;
     public bool IsRoutedAnywhere => Routes.Any(r => r.IsOn);
 

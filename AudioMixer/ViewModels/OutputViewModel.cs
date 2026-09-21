@@ -17,6 +17,9 @@ public sealed class OutputViewModel : ViewModelBase
     /// <summary>"A: OBS/Zoom". The bus letter is what routing is spoken in, so it leads.</summary>
     public string TaggedLabel => $"{Tag(Index)}: {CustomLabel}";
 
+    /// <summary>As ChannelViewModel.DisplayName: the operator's name, or the bus letter.</summary>
+    public string DisplayName => string.IsNullOrWhiteSpace(CustomLabel) ? Tag(Index) : CustomLabel;
+
     /// <summary>
     /// Whether the WASAPI stream is actually running. A stopped stream on a device that is still
     /// present (format renegotiation, another app taking the endpoint, a USB headset changing rate)

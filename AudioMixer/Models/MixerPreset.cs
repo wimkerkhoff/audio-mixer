@@ -4,6 +4,18 @@ namespace AudioMixer.Models;
 
 public sealed class MixerPreset
 {
+    /// <summary>
+    /// Bumped whenever a stored value changes MEANING rather than shape. There was no version until
+    /// 2026-09-21, and it was already needed twice: AutoMixMode 1 meant Share and now means Gate, and
+    /// Role == 0 is indistinguishable from "not set". Both were migrated by guessing from other
+    /// fields, which works once and stops working the moment two such changes overlap.
+    ///
+    /// 0 = anything written before the field existed. Readers must treat absent as 0, not as current.
+    /// </summary>
+    public const int CurrentVersion = 1;
+
+    public int Version { get; set; }
+
     public string Name { get; set; } = "Default";
     public ChannelPreset[] Channels { get; set; } = Array.Empty<ChannelPreset>();
     public OutputPreset[] Outputs { get; set; } = Array.Empty<OutputPreset>();

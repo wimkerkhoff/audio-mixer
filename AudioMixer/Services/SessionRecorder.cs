@@ -116,7 +116,7 @@ public sealed class SessionRecorder : IDisposable
             inputs.Add(new InputSummary
             {
                 Index = i,
-                Label = string.IsNullOrWhiteSpace(vm.CustomLabel) ? $"Input {i + 1}" : vm.CustomLabel,
+                Label = vm.DisplayName,
                 DeviceName = vm.SelectedDevice?.FriendlyName,
                 SpeechDb = cal.SpeechDb,
                 FloorDb = cal.FloorDb,

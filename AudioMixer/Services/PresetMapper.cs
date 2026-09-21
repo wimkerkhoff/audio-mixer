@@ -21,6 +21,7 @@ public static class PresetMapper
         new()
         {
             Name = "Default",
+            Version = MixerPreset.CurrentVersion,
             VbCablePromptDismissed = options.VbCablePromptDismissed,
             HideVirtualInputs = options.HideVirtualInputs,
             HideVoicemeeterOutputs = options.HideVoicemeeterOutputs,

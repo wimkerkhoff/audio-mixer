@@ -8,19 +8,6 @@ Line numbers are against `b8c8aae` and will drift as you edit — search for the
 
 ---
 
-## 1. Confirmed bugs
-
-Each of these was traced through the code end to end. Ordered by how badly it hurts a live service.
-
-### 1.10 Medium — reported by the review, not independently re-traced
-
-- [ ] Renaming a mic clears the scene keystroke by keystroke: `SettingsWindow.xaml:65`
-      `UpdateSourceTrigger=PropertyChanged` + `CustomLabel` in `PersistedProperties` →
-      `MarkCustomised`. `LapelOptions` is also not re-raised on rename.
-- [ ] `preset.json` has no schema version; `AutoMixMode` `1` now means Gate and used to mean Share,
-      `Role == 0` is ambiguous. Add `Version`.
----
-
 ## 2. Anker-era leftovers
 
 ### 2.2 Wired, speakerphone-only — remove with a stated risk
@@ -73,10 +60,6 @@ Update:
       (`:855-1058`, where 1.6 lands), recording (`:1279-1399`, where 1.1/1.5/1.9 land), alerts
       (`:520-611`), and a `PresetApplier` mirroring `PresetMapper` so the round-trip is testable.
       The VB-CABLE / window-sizing block can simply go (2.1).
-- [ ] Duplicated: `string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel` appears nine
-      times across `MainViewModel`, `DiagnosticRow`, `SessionRecorder` — one `DisplayName` on
-      `ChannelViewModel`.
-
 ---
 
 ## Suggested order

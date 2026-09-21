@@ -1,3 +1,4 @@
+using AudioMixer.Services;
 using System.Text.Json;
 using AudioMixer.Audio;
 using AudioMixer.Models;
@@ -90,5 +91,30 @@ public class AppOptionsPresetTests
             """{ "Name": "Default", "Channels": [] }""")!;
 
         Assert.Null(back.LowCutHz);
+    }
+
+    /// <summary>
+    /// A preset written before the version field existed reads as 0, not as current. Treating absent
+    /// as current is how a migration silently skips the presets it exists for.
+    /// </summary>
+    [Fact]
+    public void AVersionlessPresetReadsAsZero()
+    {
+        var back = JsonSerializer.Deserialize<MixerPreset>(
+            """{ "Name": "Default", "Channels": [] }""")!;
+
+        Assert.Equal(0, back.Version);
+        Assert.NotEqual(0, MixerPreset.CurrentVersion);
+    }
+
+    [Fact]
+    public void APresetWrittenNowCarriesTheCurrentVersion()
+    {
+        using var f = new VmFixture();
+
+        var p = PresetMapper.FromViewModels(f.Channels, f.Outputs, new PresetMapper.AppOptions(
+            false, false, false, false, 80));
+
+        Assert.Equal(MixerPreset.CurrentVersion, p.Version);
     }
 }
