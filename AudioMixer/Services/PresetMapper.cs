@@ -12,7 +12,8 @@ public static class PresetMapper
         bool VbCablePromptDismissed,
         bool HideVirtualInputs,
         bool HideVoicemeeterOutputs,
-        bool WarnOnBluetoothMics);
+        bool WarnOnBluetoothMics,
+        int LowCutHz);
 
     public static MixerPreset FromViewModels(
         IEnumerable<ChannelViewModel> channels, IEnumerable<OutputViewModel> outputs,
@@ -24,6 +25,7 @@ public static class PresetMapper
             HideVirtualInputs = options.HideVirtualInputs,
             HideVoicemeeterOutputs = options.HideVoicemeeterOutputs,
             WarnOnBluetoothMics = options.WarnOnBluetoothMics,
+            LowCutHz = options.LowCutHz,
             Channels = channels.Select(c => new ChannelPreset
             {
                 CustomLabel = c.CustomLabel,

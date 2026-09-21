@@ -12,6 +12,15 @@ public sealed class MixerPreset
     public bool HideVirtualInputs { get; set; }
     public bool HideVoicemeeterOutputs { get; set; }
     public bool WarnOnBluetoothMics { get; set; } = true;
+
+    /// <summary>
+    /// One low-cut for every microphone. It was per-input until 2026-09-20, but the differences that
+    /// accumulated there were accidental rather than chosen, and every mic on this rig is a voice in
+    /// the same room with the same HVAC floor. 0 = off. The one case that would justify per-input
+    /// again is a mic on an instrument, where an organ pedal or piano low octave lives in the band
+    /// this removes.
+    /// </summary>
+    public int LowCutHz { get; set; } = 80;
 }
 
 public sealed class ChannelPreset

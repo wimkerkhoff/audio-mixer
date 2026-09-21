@@ -134,6 +134,44 @@
 
         <!-- Segoe MDL2 Assets glyphs. The icon itself carries the state (speaker vs speaker-with-slash,
              outline pin vs filled pin), so neither control depends on colour alone to be readable. -->
+        <!-- Its OWN template rather than a trigger bolted onto BusBtn: mute and pin share that base,
+             and their DataContext has no IsOn, so the bindings failed on every one of them. A WPF
+             binding failure is silent, which is exactly why it shipped. -->
+        <Style x:Key="RouteBtn" TargetType="ToggleButton" BasedOn="{StaticResource BusBtn}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#2F6FB5"/>
+                                <Setter TargetName="b" Property="BorderBrush" Value="#3E8BD8"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <!-- Routed AND currently chosen by the automixer: the mic this bus is
+                                 hearing right now. Per-output, because with Gate a different mic can
+                                 be live on A than on B and one light on the row cannot say which. -->
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#2E9E63"/>
+                                <Setter TargetName="b" Property="BorderBrush" Value="#5BE49B"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="b" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect Color="#3FBF7F" BlurRadius="7"
+                                                          ShadowDepth="0" Opacity="0.9"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="MuteBtn" TargetType="ToggleButton" BasedOn="{StaticResource BusBtn}">
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
             <Setter Property="FontSize" Value="10"/>
@@ -160,6 +198,21 @@
                     <Setter Property="Foreground" Value="White"/>
                     <Setter Property="Background" Value="#2F6FB5"/>
                     <Setter Property="BorderBrush" Value="#3E8BD8"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="LevelSlider" TargetType="Slider">
+            <Setter Property="Foreground" Value="#4FA3EC"/>
+            <Setter Property="Background" Value="#15151B"/>
+            <Setter Property="IsSnapToTickEnabled" Value="True"/>
+            <Setter Property="TickFrequency" Value="5"/>
+            <Setter Property="SmallChange" Value="5"/>
+            <Setter Property="LargeChange" Value="10"/>
+            <Setter Property="Opacity" Value="0.65"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="1"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -280,6 +333,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Style="{StaticResource MicRow}" Tag="{Binding RowState}" Margin="0,0,0,2">
+                                <StackPanel>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="54"/>
@@ -322,11 +376,20 @@
                                                               FontSize="9" Margin="1,0,0,0"
                                                               IsChecked="{Binding IsOn, Mode=TwoWay}"
                                                               ToolTip="{Binding Tooltip}"
-                                                              Style="{StaticResource BusBtn}"/>
+                                                              Style="{StaticResource RouteBtn}"/>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </Grid>
+
+                                <!-- Attenuation only: the fader is percent/100 clamped at 1, so full
+                                     is the normal setting and this exists for the one mic that is too
+                                     loud, not for balancing. -->
+                                <Slider Minimum="0" Maximum="100" Height="14" Margin="56,1,20,0"
+                                        Value="{Binding VolumePercent, Mode=TwoWay}"
+                                        ToolTip="{Binding VolumeText}"
+                                        Style="{StaticResource LevelSlider}"/>
+                                </StackPanel>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

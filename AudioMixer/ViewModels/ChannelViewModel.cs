@@ -71,6 +71,7 @@ public sealed class ChannelViewModel : ViewModelBase
             if (SetField(ref _volumePercent, Math.Clamp(value, 0f, 100f)))
             {
                 _channel.GainLinear = PercentToLinear(_volumePercent);
+                RaisePropertyChanged(nameof(VolumeText));
             }
         }
     }
@@ -249,6 +250,11 @@ public sealed class ChannelViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Shown on the level slider's tooltip; unity is the normal setting, not a compromise.</summary>
+    public string VolumeText => _volumePercent >= 99.5f
+        ? "Level: full (normal)"
+        : $"Level: {_volumePercent:F0}% — the fader can only attenuate, never boost";
+
     public string HighPassText => _highPassHz <= 0 ? "off" : $"{_highPassHz} Hz";
 
     // A discrete list, not a slider. The cutoff used to be a 0-200 Hz slider with 10 Hz snap ticks:
@@ -354,6 +360,7 @@ public sealed class ChannelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(IsDucking));
         RaisePropertyChanged(nameof(IsAutoMixActive));
         RaisePropertyChanged(nameof(RowState));
+        foreach (var r in Routes) r.RefreshSelection();
         RaisePropertyChanged(nameof(MeterFraction));
         RaisePropertyChanged(nameof(CalibrationText));
         foreach (var r in Routes) r.RefreshLed();
@@ -378,6 +385,17 @@ public sealed class RouteToggleViewModel : ViewModelBase
 {
     /// <summary>Set by the owning channel; vetoes a route being switched OFF. See ChannelViewModel.</summary>
     public Func<int, bool>? Guard { get; set; }
+
+    /// <summary>
+    /// Whether the automixer is currently sending THIS mic to THIS bus. Per-output on purpose: with
+    /// Gate, one mic is live on A while a different one is live on B, and a single "selected" light
+    /// on the row cannot say which. Only MainViewModel can see the engine, so it supplies this.
+    /// </summary>
+    public Func<int, bool>? IsLeaderOnOutput { get; set; }
+
+    public bool IsSelected => IsLeaderOnOutput?.Invoke(_outputIndex) ?? false;
+
+    public void RefreshSelection() => RaisePropertyChanged(nameof(IsSelected));
 
     private readonly InputChannel _channel;
     private readonly int _outputIndex;

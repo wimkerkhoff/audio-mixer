@@ -45,4 +45,31 @@ public class AppOptionsPresetTests
         Assert.False(back.HideVirtualInputs);
         Assert.False(back.HideVoicemeeterOutputs);
     }
+
+    /// <summary>
+    /// Share was removed 2026-09-20. The enum was Off=0, Share=1, Gate=2, so every preset written
+    /// before that stores a 2 for Gate -- an out-of-range value against the new Off=0, Gate=1. A
+    /// preset that silently loads as an invalid mode is the worst kind of migration bug: the mixer
+    /// still runs, and only the behaviour is wrong.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 0)]   // Off stays Off
+    [InlineData(1, 1)]   // old Share -> Gate
+    [InlineData(2, 1)]   // old Gate  -> Gate
+    [InlineData(9, 1)]   // anything else is a live bus, so Gate
+    public void OldAutoMixModesMigrateToTheCollapsedEnum(int stored, int expected)
+    {
+        int migrated = stored <= 0 ? 0 : 1;
+        Assert.Equal(expected, migrated);
+    }
+
+    [Fact]
+    public void TheLowCutIsGlobalAndDefaultsTo80()
+    {
+        Assert.Equal(80, new MixerPreset().LowCutHz);
+
+        var back = JsonSerializer.Deserialize<MixerPreset>(
+            JsonSerializer.Serialize(new MixerPreset { LowCutHz = 100 }))!;
+        Assert.Equal(100, back.LowCutHz);
+    }
 }

@@ -60,6 +60,15 @@
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,12"
                                Text="How many input strips the mixer shows, 1 to 10. Also in the Advanced toolbar — mirrored here because that is where it was looked for and not found."/>
 
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock Text="Low-cut" Style="{StaticResource Cap}" VerticalAlignment="Center"
+                                   Margin="0,0,8,0"/>
+                        <ComboBox ItemsSource="{Binding LowCutOptions}"
+                                  SelectedIndex="{Binding LowCutIndex, Mode=TwoWay}" Width="72"/>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,12"
+                               Text="Applies to every microphone. Removes rumble, HVAC and handling below the cutoff, and sits under congregational singing, whose fundamentals start around 98 Hz. A fixed band, never a gate — it cannot punch holes in sustained material. 80 Hz is right unless a microphone is on an instrument."/>
+
                     <TextBlock Text="Device pickers" Style="{StaticResource Head}"/>
                     <CheckBox IsChecked="{Binding HideVirtualInputs}"
                               Content="Hide virtual devices (VB-CABLE, VoiceMeeter) from input lists"/>

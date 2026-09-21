@@ -141,7 +141,7 @@ public sealed class OutputViewModel : ViewModelBase
         RaisePropertyChanged(nameof(RecordTooltip));
     }
 
-    public string[] AutoMixModeOptions { get; } = { "Off", "Share", "Gate" };
+    public string[] AutoMixModeOptions { get; } = { "Off", "Gate" };
 
     private int _autoMixModeIndex;
     public int AutoMixModeIndex

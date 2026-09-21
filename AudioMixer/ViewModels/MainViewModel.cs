@@ -386,6 +386,34 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         set { if (SetField(ref _hideVoicemeeterOutputs, value)) { RebuildAvailableDevices(); QueueAutosave(); } }
     }
 
+    /// <summary>
+    /// The low-cut, for all microphones at once. Per-input was a distinction nobody was actually
+    /// using: the values that had accumulated across the strips were accidental, and every mic here
+    /// is a voice in one room with one HVAC floor. 80 Hz removes rumble and handling while sitting
+    /// below congregational singing, whose fundamentals start around 98 Hz — and it is a fixed band,
+    /// not a gate, so unlike the speakerphones it cannot punch holes in sustained material.
+    /// </summary>
+    public int[] LowCutOptions { get; } = ChannelViewModel.HighPassOptions;
+
+    private int _lowCutHz = 80;
+    public int LowCutHz
+    {
+        get => _lowCutHz;
+        set
+        {
+            if (!SetField(ref _lowCutHz, value)) return;
+            foreach (var c in Channels) c.HighPassHz = value;
+            RaisePropertyChanged(nameof(LowCutIndex));
+            QueueAutosave();
+        }
+    }
+
+    public int LowCutIndex
+    {
+        get => Math.Max(0, ChannelViewModel.HighPassIndexOf(_lowCutHz));
+        set { if (value >= 0 && value < LowCutOptions.Length) LowCutHz = LowCutOptions[value]; }
+    }
+
     private bool _warnOnBluetoothMics = true;
     public bool WarnOnBluetoothMics
     {
@@ -672,6 +700,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             int output = o;
             ch.Routes[o].Guard = _ => Allow(
                 Services.RouteGuard.CheckUnroute(RoutingSnapshot(), ch.Index, output));
+            ch.Routes[o].IsLeaderOnOutput = out_ => _engine.AutoMixActiveInput(out_) == ch.Index;
         }
     }
 
@@ -1033,7 +1062,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (Audio.Replay.ReplayOptions.Current?.SuppressAutosave == true) return;
 
         var preset = PresetMapper.FromViewModels(Channels, Outputs, new PresetMapper.AppOptions(
-            _vbCablePromptDismissed, _hideVirtualInputs, _hideVoicemeeterOutputs, _warnOnBluetoothMics));
+            _vbCablePromptDismissed, _hideVirtualInputs, _hideVoicemeeterOutputs, _warnOnBluetoothMics,
+            _lowCutHz));
         RunGuarded("Save", () =>
         {
             _presetStore.Save(preset);
@@ -1061,9 +1091,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _hideVirtualInputs = preset.HideVirtualInputs;
             _hideVoicemeeterOutputs = preset.HideVoicemeeterOutputs;
             _warnOnBluetoothMics = preset.WarnOnBluetoothMics;
+            // Older presets have no global value; take the first channel's, which is what the operator
+            // was actually hearing, rather than silently imposing the default on a working rig.
+            _lowCutHz = preset.LowCutHz > 0 || preset.Channels.Length == 0
+                ? preset.LowCutHz
+                : preset.Channels[0].HighPassHz;
             RaisePropertyChanged(nameof(HideVirtualInputs));
             RaisePropertyChanged(nameof(HideVoicemeeterOutputs));
             RaisePropertyChanged(nameof(WarnOnBluetoothMics));
+            RaisePropertyChanged(nameof(LowCutHz));
+            RaisePropertyChanged(nameof(LowCutIndex));
 
             int desired = Math.Clamp(preset.Channels.Length, AudioEngine.MinInputCount, AudioEngine.MaxInputCount);
             if (preset.Channels.Length > 0 && desired != Channels.Count)
@@ -1083,7 +1120,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 // current side/cutoff, so setting them afterwards would open the capture wrong and
                 // immediately rebuild it.
                 Channels[i].Source = (ChannelSource)Math.Clamp(cp.Source, 0, 2);
-                Channels[i].HighPassHz = cp.HighPassHz;
+                Channels[i].HighPassHz = _lowCutHz;   // one low-cut for every mic
                 var match = DeviceResolver.Resolve(
                     _allInputDevices, cp.DeviceId, cp.DeviceName, usedInputIds, Channels[i].Source);
                 Channels[i].SelectedDevice = match;
@@ -1108,7 +1145,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 if (!string.IsNullOrEmpty(op.CustomLabel)) Outputs[o].CustomLabel = op.CustomLabel;
                 var match = DeviceResolver.Resolve(_allOutputDevices, op.DeviceId, op.DeviceName, usedOutputIds);
                 Outputs[o].SelectedDevice = match;
-                Outputs[o].AutoMixModeIndex = Math.Clamp(op.AutoMixMode, 0, 2);
+                // Migrate presets written before Share was removed: the enum was Off=0, Share=1,
+                // Gate=2, so a saved 2 is out of range now and a saved 1 meant Share. Both become
+                // Gate — Share's job was follow-the-talker, and Gate is what every scene forced.
+                Outputs[o].AutoMixModeIndex =
+                    op.AutoMixMode <= 0 ? (int)AutoMixMode.Off : (int)AutoMixMode.Gate;
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
 
                 // Strength first (it rewrites threshold/ratio/cap), then the individual values, so a
