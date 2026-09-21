@@ -75,15 +75,66 @@ public sealed class ChannelViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Asked before a change that could take audio off a bus. Set by MainViewModel, which is the only
+    /// thing that can see the sibling channels a routing decision depends on. Returning false vetoes
+    /// the change and the control snaps back. Null in unit contexts, where nothing is vetoed.
+    /// </summary>
+    public Func<int, bool>? MuteGuard { get; set; }
+    public Func<int, int, bool>? RouteGuard { get; set; }
+
     private bool _muted;
     public bool Muted
     {
         get => _muted;
         set
         {
+            // Only muting can uncover a bus; unmuting always adds. Asking on both would mean a refusal
+            // could trap the channel in the muted state it was refused out of.
+            if (value && !_muted && MuteGuard != null && !MuteGuard(Index))
+            {
+                RaisePropertyChanged();
+                return;
+            }
             if (SetField(ref _muted, value)) _channel.Muted = value;
         }
     }
+
+    // --- operator-panel display -----------------------------------------------------------------
+
+    /// <summary>
+    /// What the row's state stripe says, as a string because a WPF trigger Value is parsed as one —
+    /// comparing it against anything else fails silently (see the DataTrigger gotcha).
+    /// </summary>
+    public string RowState
+    {
+        get
+        {
+            if (SelectedDevice == null || !IsRoutedAnywhere || Muted) return "off";
+            if ((Environment.TickCount64 - _channel.LastDataTicks) > 2000) return "dead";
+            return IsAutoMixActive ? "live" : "open";
+        }
+    }
+
+    /// <summary>Meter scale: -60 dBFS at the left, 0 at the right.</summary>
+    public const double MeterFloorDb = -60;
+
+    /// <summary>Where speech should sit, and how wide the "right" zone is on that scale.</summary>
+    public const double TargetDb = -24;
+    public const double TargetHalfWidthDb = 6;
+
+    public static double FractionFor(double db) =>
+        Math.Clamp((db - MeterFloorDb) / -MeterFloorDb, 0, 1);
+
+    /// <summary>0..1 across the meter, from the post-fader peak the operator is actually sending.</summary>
+    public double MeterFraction => FractionFor(PostPeakDb);
+
+    /// <summary>Left edge and width of the target band, as fractions of the meter.</summary>
+    public static double TargetBandStart => FractionFor(TargetDb - TargetHalfWidthDb);
+    public static double TargetBandWidth => FractionFor(TargetDb + TargetHalfWidthDb) - TargetBandStart;
+
+    public double BandStart => TargetBandStart;
+    public double BandWidth => TargetBandWidth;
 
     private int _delayMs;
     public int DelayMs
@@ -289,6 +340,8 @@ public sealed class ChannelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(PostPeakHoldDb));
         RaisePropertyChanged(nameof(IsDucking));
         RaisePropertyChanged(nameof(IsAutoMixActive));
+        RaisePropertyChanged(nameof(RowState));
+        RaisePropertyChanged(nameof(MeterFraction));
         foreach (var r in Routes) r.RefreshLed();
         RaisePropertyChanged(nameof(HasClarity));
         RaisePropertyChanged(nameof(ClarityBar));
@@ -309,6 +362,9 @@ public sealed class ChannelViewModel : ViewModelBase
 
 public sealed class RouteToggleViewModel : ViewModelBase
 {
+    /// <summary>Set by the owning channel; vetoes a route being switched OFF. See ChannelViewModel.</summary>
+    public Func<int, bool>? Guard { get; set; }
+
     private readonly InputChannel _channel;
     private readonly int _outputIndex;
 
@@ -358,6 +414,13 @@ public sealed class RouteToggleViewModel : ViewModelBase
         get => _channel.GetRoute(_outputIndex);
         set
         {
+            // Only switching OFF can uncover a bus. Switching on always adds, and asking there could
+            // refuse a change that was about to make things better.
+            if (!value && IsOn && Guard != null && !Guard(_outputIndex))
+            {
+                RaisePropertyChanged();
+                return;
+            }
             _channel.SetRoute(_outputIndex, value);
             RaisePropertyChanged();
         }

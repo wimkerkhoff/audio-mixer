@@ -57,6 +57,39 @@ public class XamlResourceTests
             + "A key defined in another window is not in scope and throws XamlParseException during layout.");
     }
 
+    /// <summary>
+    /// A StaticResource must be DEFINED BEFORE IT IS USED in the same dictionary — WPF resolves them
+    /// in document order, so a style that BasedOn's one declared further down throws exactly like a
+    /// missing key. Existence alone is not enough, which this test learned the hard way.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(XamlFiles))]
+    public void EveryStaticResourceIsDefinedBeforeItIsUsed(string relativePath)
+    {
+        string text = File.ReadAllText(Path.Combine(RepoRoot(), relativePath));
+
+        var definedAt = new Dictionary<string, int>();
+        foreach (Match m in Regex.Matches(text, @"x:Key=""([A-Za-z0-9_.]+)"""))
+            definedAt.TryAdd(m.Groups[1].Value, m.Index);
+
+        var tooEarly = new List<string>();
+        foreach (Match m in Reference.Matches(text))
+        {
+            var key = m.Groups[1].Value;
+            // Only same-dictionary ordering matters, and only for keys this file defines. A forward
+            // reference inside a DataTemplate applied later is fine; a BasedOn is not.
+            if (!definedAt.TryGetValue(key, out int at)) continue;
+            if (m.Index < at && text.LastIndexOf("BasedOn", m.Index, StringComparison.Ordinal)
+                > text.LastIndexOf('<', m.Index))
+            {
+                tooEarly.Add(key);
+            }
+        }
+
+        Assert.True(tooEarly.Count == 0,
+            $"{relativePath} uses {string.Join(", ", tooEarly.Distinct())} in a BasedOn before defining it.");
+    }
+
     /// <summary>The glob must never silently match nothing — a vacuous pass is worse than no test.</summary>
     [Fact]
     public void TheMarkupIsActuallyBeingChecked()

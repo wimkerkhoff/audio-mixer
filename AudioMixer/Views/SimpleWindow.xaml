@@ -30,6 +30,67 @@
             <Setter Property="FontSize" Value="10"/>
         </Style>
 
+        <!-- Row state stripe. Bound to a STRING because a WPF trigger Value is parsed as one, and
+             comparing it against anything else fails silently (see the DataTrigger gotcha). -->
+        <Style x:Key="MicRow" TargetType="Border">
+            <Setter Property="Background" Value="#22222A"/>
+            <Setter Property="BorderBrush" Value="#5A6274"/>
+            <Setter Property="BorderThickness" Value="3,0,0,0"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="5,4"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="live">
+                    <Setter Property="BorderBrush" Value="#3FBF7F"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="open">
+                    <Setter Property="BorderBrush" Value="#4FA3EC"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="dead">
+                    <Setter Property="BorderBrush" Value="#E2564D"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="off">
+                    <Setter Property="Opacity" Value="0.55"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BusBtn" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="#6B7386"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="#3A3A44"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#2F6FB5"/>
+                                <Setter TargetName="b" Property="BorderBrush" Value="#3E8BD8"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="MuteBtn" TargetType="ToggleButton" BasedOn="{StaticResource BusBtn}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Background" Value="#C8352B"/>
+                    <Setter Property="BorderBrush" Value="#E2564D"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="#26262C"/>
             <Setter Property="BorderBrush" Value="#3A3A42"/>
@@ -80,6 +141,22 @@
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="Padding" Value="6,3"/>
         </Style>
+
+        <!-- The only thing in the panel that says something is wrong, so it changes colour with the
+             worst severity rather than sitting quiet. -->
+        <Style x:Key="ChecksBtn" TargetType="Button" BasedOn="{StaticResource SmallBtn}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="warn">
+                    <Setter Property="Foreground" Value="#E0A33E"/>
+                    <Setter Property="BorderBrush" Value="#E0A33E"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="bad">
+                    <Setter Property="Foreground" Value="#FF8F86"/>
+                    <Setter Property="BorderBrush" Value="#E2564D"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
     </Window.Resources>
 
     <StackPanel Margin="8">
@@ -95,34 +172,18 @@
                 <TextBlock Text="{Binding Scenes.CurrentDescription}" Style="{StaticResource Cap}" TextWrapping="Wrap"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <!-- With no banner in the panel this badge is the ONLY thing that says something is
+                     wrong, so it carries the count and the worst severity, not just a glyph. -->
+                <Button x:Name="ChecksButton" Content="{Binding AlertBadgeText}" MinWidth="34" Height="20"
+                        FontSize="10" Margin="0,0,3,0" Click="Checks_Click"
+                        ToolTip="Checks — what needs attention"
+                        Style="{StaticResource ChecksBtn}" Tag="{Binding AlertBadgeState}"/>
                 <ToggleButton x:Name="PinButton" Content="Pin" Width="30" Height="20" FontSize="10"
                               Foreground="#C8C8D2" Background="#2C2C34" BorderBrush="#3E3E48"
                               ToolTip="Keep this panel above other windows"
                               Checked="Pin_Changed" Unchecked="Pin_Changed"/>
             </StackPanel>
         </Grid>
-
-        <!-- Health banner: the productised version of watching /state by hand -->
-        <Border CornerRadius="4" Padding="7,5" Margin="0,0,0,6"
-                Background="{Binding TopAlert.Severity, Converter={StaticResource SeverityBrush}}"
-                Visibility="{Binding HasAlert, Converter={StaticResource BoolToVis}}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding AlertSummary}" Foreground="White"
-                           FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="{Binding TopAlert.Action}" Foreground="#FFE9A8"
-                           FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"
-                           Visibility="{Binding TopAlert.Action, Converter={StaticResource NullToVis}}"/>
-                <Button Grid.Column="2" Content="✕" Width="18" Height="18" Margin="6,0,0,0"
-                        Style="{StaticResource SmallBtn}" Background="Transparent" BorderThickness="0"
-                        Foreground="White" ToolTip="Dismiss"
-                        Command="{Binding DismissAlertCommand}"/>
-            </Grid>
-        </Border>
 
         <!-- Scenes: the one control that matters -->
         <UniformGrid Rows="1" Columns="4" Margin="0,0,0,6">
@@ -199,34 +260,81 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <!-- Mic health: one dot per mic, click to jump into Advanced -->
+        <!-- Channel rows: what a physical desk shows, at a width that fits beside OBS and Zoom.
+             Width is constant no matter how many mics; it grows downward, which is the direction a
+             docked side panel has to spare. -->
         <Border Style="{StaticResource Card}" Margin="0,0,0,6">
             <StackPanel>
-                <TextBlock Text="MICS" Style="{StaticResource Cap}" Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,3">
+                    <TextBlock Text="MICROPHONES" Style="{StaticResource Cap}"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="A" Style="{StaticResource Cap}" Width="16" TextAlignment="Center"/>
+                        <TextBlock Text="B" Style="{StaticResource Cap}" Width="16" TextAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
                 <ItemsControl ItemsSource="{Binding Channels}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,10,3">
-                                <Ellipse Width="8" Height="8" VerticalAlignment="Center">
-                                    <Ellipse.Fill>
-                                        <MultiBinding Converter="{StaticResource MicDot}">
-                                            <Binding Path="HasDevice"/>
-                                            <Binding Path="IsRoutedAnywhere"/>
-                                            <Binding Path="Muted"/>
-                                            <Binding Path="InputPeakDb"/>
-                                            <Binding Path="IsDucking"/>
-                                        </MultiBinding>
-                                    </Ellipse.Fill>
-                                </Ellipse>
-                                <TextBlock Text="{Binding CustomLabel}" Foreground="#B8B8C2" FontSize="10"
-                                           Margin="4,0,0,0" VerticalAlignment="Center"/>
-                            </StackPanel>
+                            <Border Style="{StaticResource MicRow}" Tag="{Binding RowState}" Margin="0,0,0,2">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="54"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="28"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0" Text="{Binding CustomLabel}" FontSize="11"
+                                               FontWeight="SemiBold" Foreground="#D8D8E2"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                                    <!-- Target band drawn behind the level: "too quiet" becomes a shape
+                                         (bar short of the stripe), not a number nobody reads. -->
+                                    <ctrl:VuMeter Grid.Column="1" Height="9" Margin="4,0"
+                                                  VerticalAlignment="Center"
+                                                  Orientation="Horizontal" ShowTargetBand="True"
+                                                  PeakDb="{Binding PostPeakDb}"
+                                                  HoldDb="{Binding PostPeakHoldDb}"
+                                                  ToolTip="Level. The blue band is where speech should sit."/>
+
+                                    <TextBlock Grid.Column="2" Text="{Binding PostPeakDb, StringFormat={}{0:F0}}"
+                                               FontFamily="Consolas" FontSize="10" Foreground="#9A9AA6"
+                                               VerticalAlignment="Center" TextAlignment="Right"/>
+
+                                    <ToggleButton Grid.Column="3" Content="M" Width="18" Height="16"
+                                                  FontSize="9" Margin="3,0,1,0"
+                                                  IsChecked="{Binding Muted, Mode=TwoWay}"
+                                                  ToolTip="Mute this microphone"
+                                                  Style="{StaticResource MuteBtn}"/>
+
+                                    <ItemsControl Grid.Column="4" ItemsSource="{Binding Routes}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <ToggleButton Content="{Binding ShortLabel}" Width="16" Height="16"
+                                                              FontSize="9" Margin="1,0,0,0"
+                                                              IsChecked="{Binding IsOn, Mode=TwoWay}"
+                                                              ToolTip="{Binding Tooltip}"
+                                                              Style="{StaticResource BusBtn}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Grid>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <WrapPanel Margin="0,4,0,0">
+                    <TextBlock Text="▌live now" Foreground="#3FBF7F" FontSize="9" Margin="0,0,8,0"/>
+                    <TextBlock Text="▌open" Foreground="#4FA3EC" FontSize="9" Margin="0,0,8,0"/>
+                    <TextBlock Text="▌no signal" Foreground="#E2564D" FontSize="9" Margin="0,0,8,0"/>
+                    <TextBlock Text="▌off" Foreground="#5A6274" FontSize="9"/>
+                </WrapPanel>
             </StackPanel>
         </Border>
 

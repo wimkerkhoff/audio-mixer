@@ -15,6 +15,15 @@ public sealed class VuMeter : Control
         DependencyProperty.Register(nameof(HoldDb), typeof(double), typeof(VuMeter),
             new FrameworkPropertyMetadata(-120.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>
+    /// Draws the band where speech should sit. On 2026-09-20 a whole meeting ran ~22 dB under target
+    /// because level was a number in a window nobody had open; as a band it becomes a SHAPE — the bar
+    /// falls short of the stripe — which needs no understanding of decibels to read.
+    /// </summary>
+    public static readonly DependencyProperty ShowTargetBandProperty =
+        DependencyProperty.Register(nameof(ShowTargetBand), typeof(bool), typeof(VuMeter),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender));
+
     public static readonly DependencyProperty OrientationProperty =
         DependencyProperty.Register(nameof(Orientation), typeof(Orientation), typeof(VuMeter),
             new FrameworkPropertyMetadata(Orientation.Vertical, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -31,11 +40,21 @@ public sealed class VuMeter : Control
         set => SetValue(HoldDbProperty, value);
     }
 
+    public bool ShowTargetBand
+    {
+        get => (bool)GetValue(ShowTargetBandProperty);
+        set => SetValue(ShowTargetBandProperty, value);
+    }
+
     public Orientation Orientation
     {
         get => (Orientation)GetValue(OrientationProperty);
         set => SetValue(OrientationProperty, value);
     }
+
+    /// <summary>Matches ChannelViewModel.TargetDb / TargetHalfWidthDb — change them together.</summary>
+    private const double TargetDb = -24.0;
+    private const double TargetHalfWidthDb = 6.0;
 
     private const double MinDb = -60.0;
     private const double MaxDb = 0.0;
@@ -61,6 +80,9 @@ public sealed class VuMeter : Control
         double peakFrac = (peak - MinDb) / (MaxDb - MinDb);
         double holdFrac = (hold - MinDb) / (MaxDb - MinDb);
 
+        // Behind the level, so a bar reaching the band still shows it rather than hiding the goal.
+        if (ShowTargetBand) DrawTargetBand(dc, size);
+
         if (Orientation == Orientation.Vertical)
         {
             DrawVertical(dc, size, peakFrac, holdFrac);
@@ -68,6 +90,31 @@ public sealed class VuMeter : Control
         else
         {
             DrawHorizontal(dc, size, peakFrac, holdFrac);
+        }
+    }
+
+    private void DrawTargetBand(DrawingContext dc, Size size)
+    {
+        static double Frac(double db) => (Math.Clamp(db, MinDb, MaxDb) - MinDb) / (MaxDb - MinDb);
+        double lo = Frac(TargetDb - TargetHalfWidthDb);
+        double hi = Frac(TargetDb + TargetHalfWidthDb);
+
+        var fill = new SolidColorBrush(Color.FromArgb(56, 79, 163, 236));
+        var edge = new Pen(new SolidColorBrush(Color.FromArgb(150, 79, 163, 236)), 1);
+
+        if (Orientation == Orientation.Horizontal)
+        {
+            double x = size.Width * lo, w = size.Width * (hi - lo);
+            dc.DrawRectangle(fill, null, new Rect(x, 0, w, size.Height));
+            dc.DrawLine(edge, new Point(x, 0), new Point(x, size.Height));
+            dc.DrawLine(edge, new Point(x + w, 0), new Point(x + w, size.Height));
+        }
+        else
+        {
+            double y = size.Height * (1 - hi), h = size.Height * (hi - lo);
+            dc.DrawRectangle(fill, null, new Rect(0, y, size.Width, h));
+            dc.DrawLine(edge, new Point(0, y), new Point(size.Width, y));
+            dc.DrawLine(edge, new Point(0, y + h), new Point(size.Width, y + h));
         }
     }
 

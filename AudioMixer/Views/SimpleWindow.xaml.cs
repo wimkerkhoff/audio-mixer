@@ -20,6 +20,20 @@ public partial class SimpleWindow : Window
         InitializeComponent();
         DataContext = vm;
         Audio.AudioLog.Write($"Simple mode opened (scene={vm.Scenes.CurrentName}, {vm.Channels.Count} mics).");
+
+        // Opens itself once, shortly after startup, and only if something is actually wrong — so its
+        // appearance is the signal and a volunteer needs no interpretation. Delayed because devices
+        // and levels have not settled at construction time, and a check run too early cries wolf.
+        var settle = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = System.TimeSpan.FromSeconds(6),
+        };
+        settle.Tick += (_, _) =>
+        {
+            settle.Stop();
+            if (_vm.AlertCount > 0 && IsLoaded) Checks_Click(this, new RoutedEventArgs());
+        };
+        settle.Start();
     }
 
     /// <summary>The Advanced (full mixer) window, handed in so this panel can toggle it.</summary>
@@ -46,6 +60,11 @@ public partial class SimpleWindow : Window
         if (AdvancedWindow.WindowState == WindowState.Minimized) AdvancedWindow.WindowState = WindowState.Normal;
         AdvancedWindow.Activate();
     }
+
+    private ChecksWindow? _checks;
+
+    private void Checks_Click(object sender, RoutedEventArgs e) =>
+        Show(ref _checks, () => new ChecksWindow(_vm) { Owner = this });
 
     private void Diagnostics_Click(object sender, RoutedEventArgs e) =>
         Show(ref _diagnostics, () => new DiagnosticsWindow(_vm) { Owner = this });

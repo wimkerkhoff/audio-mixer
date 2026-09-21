@@ -1,0 +1,106 @@
+﻿<Window x:Class="AudioMixer.Views.ChecksWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AudioMixer — Checks"
+        Height="420" Width="430"
+        MinHeight="240" MinWidth="360"
+        Background="#16161C" Foreground="#E4E7EF"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        WindowStartupLocation="CenterOwner">
+
+    <!--
+      Everything that needs attention, in one dismissible window away from the operator panel.
+
+      Deliberately NOT blocking and NOT embedded (operator's call, 2026-09-20): an experienced
+      operator already knows what is going on and closes it in a second. It earns its keep for
+      everyone else by opening itself when something is wrong and staying shut when nothing is, so
+      its mere appearance carries the signal and needs no interpretation.
+
+      It is not only a pre-flight check. Warnings do not stop when the service starts — a mic dying
+      at 10:15 is a warning too, and with no banner in the panel this is the only place it can go.
+    -->
+    <Window.Resources>
+        <Style x:Key="Cap" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8A92A5"/>
+            <Setter Property="FontSize" Value="10"/>
+        </Style>
+        <Style x:Key="Btn" TargetType="Button">
+            <Setter Property="Background" Value="#242A35"/>
+            <Setter Property="Foreground" Value="#E4E7EF"/>
+            <Setter Property="BorderBrush" Value="#3A3A44"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+
+        <!-- Severity as a stripe, so what needs attention reads before any of it is read. -->
+        <Style x:Key="Check" TargetType="Border">
+            <Setter Property="Background" Value="#20242E"/>
+            <Setter Property="BorderThickness" Value="3,0,0,0"/>
+            <Setter Property="BorderBrush" Value="#3FBF7F"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="0,0,0,3"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Warning">
+                    <Setter Property="BorderBrush" Value="#E0A33E"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Critical">
+                    <Setter Property="BorderBrush" Value="#E2564D"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Grid>
+                <TextBlock Text="{Binding ChecksHeadline}" FontSize="15" FontWeight="SemiBold"/>
+                <TextBlock x:Name="CheckedAt" Style="{StaticResource Cap}" HorizontalAlignment="Right"
+                           VerticalAlignment="Center" FontFamily="Consolas"/>
+            </Grid>
+            <TextBlock Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Text="Nothing here stops you starting — close it and carry on if you already know. It stays live during the service, so a mic dropping out mid-meeting shows up here too."/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+            <Button Content="Check again" Style="{StaticResource Btn}" Margin="0,0,6,0" Click="Recheck_Click"/>
+            <Button Content="Close" Style="{StaticResource Btn}" Click="Close_Click"/>
+            <TextBlock Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="10,0,0,0"
+                       Text="recorded either way"/>
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <ItemsControl ItemsSource="{Binding Alerts}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource Check}" Tag="{Binding Severity}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="11.5"/>
+                                    <TextBlock Text="{Binding Action}" Style="{StaticResource Cap}"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Passing checks are shown too. For an operator who cannot diagnose, "both buses
+                     have a microphone" is reassurance available nowhere else, and it teaches what
+                     the app is actually watching. -->
+                <ItemsControl x:Name="PassList" Margin="0,2,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource Check}" Tag="Ok">
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="11.5"
+                                           Foreground="#B6B7C4"/>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

@@ -189,6 +189,66 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand DismissAlertCommand { get; private set; } = null!;
 
     public ObservableCollection<HealthAlert> Alerts { get; } = new();
+
+    /// <summary>
+    /// The panel carries no banner, so this badge is the only thing that says something is wrong —
+    /// it has to show how many and how bad, not merely that the window exists.
+    /// </summary>
+    public int AlertCount => Alerts.Count;
+
+    public string AlertBadgeState => Alerts.Count == 0 ? "clear"
+        : Alerts.Any(a => a.Severity == AlertSeverity.Critical) ? "bad" : "warn";
+
+    public string AlertBadgeText => Alerts.Count == 0 ? "checks" : $"◎ {Alerts.Count}";
+
+    /// <summary>
+    /// The checks that are FINE, stated plainly. An operator who cannot diagnose gets no reassurance
+    /// from an empty list, and these also teach what the app is watching — "no idle priority mic
+    /// armed" is a hazard nobody would think to look for.
+    /// </summary>
+    public IReadOnlyList<string> PassingChecks()
+    {
+        var ids = Alerts.Select(a => a.Id).ToHashSet();
+        var ok = new List<string>();
+
+        bool BusCovered(int o) => Channels.Any(c =>
+            c.SelectedDevice != null && !c.Muted && o < c.Routes.Length && c.Routes[o].IsOn);
+
+        if (!ids.Contains("inputs.none") && Outputs.Length > 0
+            && Enumerable.Range(0, Outputs.Length).All(BusCovered))
+        {
+            var counts = Enumerable.Range(0, Outputs.Length)
+                .Select(o => $"{OutputViewModel.Tag(o)}: {Channels.Count(c => c.SelectedDevice != null && !c.Muted && o < c.Routes.Length && c.Routes[o].IsOn)} mics");
+            ok.Add($"Both buses have a microphone.  {string.Join("  ·  ", counts)}");
+        }
+
+        if (!Outputs.Any(o => ids.Contains($"out{o.Index}.nodevice") || ids.Contains($"out{o.Index}.silent")))
+            ok.Add("Every output is playing.");
+
+        if (!Channels.Any(c => ids.Contains($"in{c.Index}.idlepriority")))
+            ok.Add("No idle priority mic armed. An open lapel nobody is using would duck the room off the stream.");
+
+        if (!Channels.Any(c => ids.Contains($"in{c.Index}.level")) && Channels.Any(c => c.SelectedDevice != null))
+            ok.Add("Microphone levels are in range.");
+
+        if (!Channels.Any(c => ids.Contains($"in{c.Index}.bluetooth")))
+            ok.Add("No microphone is on Bluetooth.");
+
+        return ok;
+    }
+
+    public string ChecksHeadline
+    {
+        get
+        {
+            int bad = Alerts.Count(a => a.Severity == AlertSeverity.Critical);
+            int warn = Alerts.Count - bad;
+            if (Alerts.Count == 0) return "Everything is ready";
+            if (bad == 0) return warn == 1 ? "1 warning" : $"{warn} warnings";
+            if (warn == 0) return bad == 1 ? "1 problem" : $"{bad} problems";
+            return $"{bad} problem{(bad == 1 ? "" : "s")}, {warn} warning{(warn == 1 ? "" : "s")}";
+        }
+    }
     private readonly HashSet<string> _dismissedAlerts = new();
 
     public HealthAlert? TopAlert => Alerts.Count > 0 ? Alerts[0] : null;
@@ -300,6 +360,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(TopAlert));
         RaisePropertyChanged(nameof(HasAlert));
         RaisePropertyChanged(nameof(AlertSummary));
+        RaisePropertyChanged(nameof(AlertCount));
+        RaisePropertyChanged(nameof(AlertBadgeState));
+        RaisePropertyChanged(nameof(AlertBadgeText));
+        RaisePropertyChanged(nameof(ChecksHeadline));
     }
 
     private HealthSnapshot BuildHealthSnapshot(long now)
@@ -511,7 +575,35 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ch.PropertyChanged += OnSettingChanged;
         foreach (var r in ch.Routes) r.PropertyChanged += OnSettingChanged;
         ch.AttachOutputs(Outputs);
+
+        // The operator panel can switch routes and mute directly, which is a path straight around the
+        // invariant SceneTransform's tests protect. Only this class can see the sibling channels the
+        // decision depends on, so the guard is wired from here.
+        ch.MuteGuard = i => Allow(Services.RouteGuard.CheckMute(RoutingSnapshot(), i));
+        ch.RouteGuard = (i, o) => Allow(Services.RouteGuard.CheckUnroute(RoutingSnapshot(), i, o));
+        for (int o = 0; o < ch.Routes.Length; o++)
+        {
+            int output = o;
+            ch.Routes[o].Guard = _ => Allow(
+                Services.RouteGuard.CheckUnroute(RoutingSnapshot(), ch.Index, output));
+        }
     }
+
+    private bool Allow(RouteVerdict verdict)
+    {
+        if (verdict.Allowed) return true;
+        StatusText = verdict.Reason!;
+        return false;
+    }
+
+    private List<ChannelRouting> RoutingSnapshot() =>
+        Channels.Select(c => new ChannelRouting(
+            c.Index,
+            string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel,
+            c.Routes.Select(r => r.IsOn).ToArray(),
+            c.Muted,
+            c.SelectedDevice != null,
+            Environment.TickCount64 - _engine.Inputs[c.Index].LastDataTicks > 2000)).ToList();
 
     private void DetachChannel(ChannelViewModel ch)
     {
