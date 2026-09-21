@@ -41,12 +41,32 @@ public sealed record OutputSummary
     public double NoWinnerPercent { get; init; }
 }
 
+/// <summary>
+/// How the rig was set up. Without it a saved session cannot be read: "12 hand-offs a minute" means
+/// one thing under Gate and another under Off, and "this mic never won" is expected if it was not
+/// routed. The golden baselines were unusable for exactly this reason — they ran against whatever
+/// preset happened to be on disk that day, so a diff meant "the preset moved" as often as "the code
+/// did".
+/// </summary>
+public sealed record SessionConfig
+{
+    public int LowCutHz { get; init; }
+    public string? Lapel { get; init; }
+
+    /// <summary>One line per strip: name, device, side, routing.</summary>
+    public IReadOnlyList<string> Inputs { get; init; } = Array.Empty<string>();
+
+    /// <summary>One line per bus: letter, device, automix mode, leveler state.</summary>
+    public IReadOnlyList<string> Outputs { get; init; } = Array.Empty<string>();
+}
+
 public sealed record SessionSummary
 {
     public string Stamp { get; init; } = "";
     public DateTime StartedUtc { get; init; }
     public double DurationMinutes { get; init; }
     public string? Scene { get; init; }
+    public SessionConfig Config { get; init; } = new();
     public IReadOnlyList<InputSummary> Inputs { get; init; } = Array.Empty<InputSummary>();
     public IReadOnlyList<OutputSummary> Outputs { get; init; } = Array.Empty<OutputSummary>();
 
@@ -151,7 +171,8 @@ public sealed class SessionAggregator
 
     public SessionSummary Build(
         string stamp, DateTime startedUtc, string? scene,
-        IReadOnlyList<InputSummary> inputSeed, IReadOnlyList<OutputSummary> outputSeed)
+        IReadOnlyList<InputSummary> inputSeed, IReadOnlyList<OutputSummary> outputSeed,
+        SessionConfig? config = null)
     {
         double minutes = _elapsedMs / 60000.0;
         double total = Math.Max(1, _elapsedMs);
@@ -183,6 +204,7 @@ public sealed class SessionAggregator
             StartedUtc = startedUtc,
             DurationMinutes = minutes,
             Scene = scene,
+            Config = config ?? new SessionConfig(),
             Inputs = inputs,
             Outputs = outputs,
             Events = _events.ToList(),

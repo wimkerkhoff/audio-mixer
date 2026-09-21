@@ -916,6 +916,24 @@ later judgment.
   `ImplicitUsings` for `System.IO` — add an explicit `using System.IO;` in any file using
   `Path`/`Directory`/`File`.
 
+## Reviewing a recorded session
+
+`.claude/skills/session-review` is the procedure: what to read, in what order, and the traps that have
+already produced wrong conclusions once. Invoke it rather than re-deriving the order — several of its
+steps exist because doing them out of order gives a confident wrong answer (analysing hand-offs before
+checking level being the expensive one).
+
+A session is one `<stamp>` across four artefacts: the per-mic `diag-input*.wav` (pre-fader,
+pre-low-cut), `decisions-*.csv` (10 Hz: scene, winner, leveler gain, per-mic level and applied gain),
+`mix-*.wav` (post-leveler), and `session-*.json` (aggregates, events, and the `Config` the whole thing
+has to be read against). **Start from the JSON** — without the config the numbers do not mean anything.
+
+Two standing goals frame every review. **The remote attendee on bus A is the only listener that
+matters**: a selector can follow its rules perfectly and still put a scratchy distant mic on the
+stream. And **autopilot** — every finding should be asked "could the app have prevented, corrected or
+at least reported this without anyone in the room noticing?", because a fault only a technical
+operator could catch is a design gap, not an operator error.
+
 ## Self-maintenance protocol
 
 **This file is intended to be self-optimizing. Claude should update it as the project evolves.**

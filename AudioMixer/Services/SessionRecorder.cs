@@ -35,6 +35,13 @@ public sealed class SessionRecorder : IDisposable
     /// <summary>The scene in force, set by the view model; recorded so a session can be read in context.</summary>
     public string? Scene { get; set; }
 
+    /// <summary>
+    /// How the rig is configured, sampled when the record is written. Supplied as a callback rather
+    /// than a value because it must reflect the END of the session: a routing change halfway through
+    /// is exactly the thing that explains an odd reading.
+    /// </summary>
+    public Func<SessionConfig>? Config { get; set; }
+
     /// <summary>Below this the session is a launch-and-close, not a service, and not worth a file.</summary>
     public const double MinimumMinutes = 1.0;
 
@@ -122,7 +129,7 @@ public sealed class SessionRecorder : IDisposable
                 ? OutputViewModel.Tag(o) : _outputs[o].CustomLabel,
         }).ToList();
 
-        return _aggregator.Build(Stamp, _startedLocal.ToUniversalTime(), Scene, inputs, outputs);
+        return _aggregator.Build(Stamp, _startedLocal.ToUniversalTime(), Scene, inputs, outputs, Config?.Invoke());
     }
 
     /// <summary>

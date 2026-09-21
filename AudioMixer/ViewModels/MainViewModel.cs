@@ -216,7 +216,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _diagnostics = new DiagnosticsLog(_engine, Channels, Outputs);
         // Not gated on AudioLog.Enabled, unlike the diagnostics log: the session that matters is the
         // one nobody thought to prepare for. Replay is excluded — it is a sandbox, not a service.
-        if (!_isReplaying) _session = new SessionRecorder(_engine, Channels, Outputs);
+        if (!_isReplaying)
+        {
+            _session = new SessionRecorder(_engine, Channels, Outputs) { Config = BuildSessionConfig };
+        }
         _meterTimer.Tick += (_, _) =>
         {
             foreach (var ch in Channels) ch.RefreshMeters();
@@ -227,7 +230,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _decisions?.Sample(
                 o => _engine.AutoMixActiveInput(o),
                 i => Channels[i].PostPeakDb,
-                (i, o) => _engine.Inputs[i].GetAutoMixGain(o));
+                (i, o) => _engine.Inputs[i].GetAutoMixGain(o),
+                o => Outputs[o].LevelerGainDb,
+                Scenes.Current?.ToString() ?? "Custom");
             RefreshHealth();
             if (_isReplaying) RaisePropertyChanged(nameof(ReplayPositionText));
         };
@@ -290,6 +295,28 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// written to disk, so the tab reads a finished record and a running one identically.
     /// </summary>
     public SessionSummary? SessionSnapshot => _session?.BuildSummary();
+
+    /// <summary>
+    /// The rig as configured, for the session record. Without it a saved session cannot be read:
+    /// "12 hand-offs a minute" means one thing under Gate and another under Off, and "this mic never
+    /// won" is expected if it was never routed.
+    /// </summary>
+    private SessionConfig BuildSessionConfig() => new()
+    {
+        LowCutHz = _lowCutHz,
+        Lapel = Channels.FirstOrDefault(c => c.IsLapel)?.CustomLabel,
+        Inputs = Channels.Select(c =>
+            $"{(string.IsNullOrWhiteSpace(c.CustomLabel) ? c.Label : c.CustomLabel)} | " +
+            $"{c.SelectedDevice?.FriendlyName ?? "(none)"} | {c.Source} | " +
+            $"routes {string.Join("", c.Routes.Select((r, i) => r.IsOn ? OutputViewModel.Tag(i) : "-"))}" +
+            (c.Muted ? " | muted" : "") + (c.IsPriority ? " | priority" : "") +
+            (c.VolumePercent < 99.5f ? $" | level {c.VolumePercent:F0}%" : "")).ToList(),
+        Outputs = Outputs.Select(o =>
+            $"{OutputViewModel.Tag(o.Index)} | {o.SelectedDevice?.FriendlyName ?? "(none)"} | " +
+            $"{o.AutoMixModeOptions[Math.Clamp(o.AutoMixModeIndex, 0, o.AutoMixModeOptions.Length - 1)]} | " +
+            $"leveler {(o.LevelerEnabled ? o.LevelerStrength.ToString() : "off")}" +
+            (o.VolumePercent < 99.5f ? $" | volume {o.VolumePercent:F0}%" : "")).ToList(),
+    };
 
     /// <summary>Saved records, newest first. Empty until a service has run for a minute.</summary>
     public IReadOnlyList<SessionFile> PastSessions => new SessionStore().List();

@@ -42,8 +42,11 @@ public sealed class DecisionTrack : IDisposable
             _writer = new StreamWriter(path, append: false, Encoding.UTF8);
             Path = path;
 
-            var header = new StringBuilder("ms");
+            var header = new StringBuilder("ms,scene");
             foreach (var o in outputNames) header.Append(",winner_").Append(Safe(o));
+            // Without this you can hear that the mix was levelled but not by how much, or whether the
+            // leveler was working at all — which is half of "did the leveler behave".
+            foreach (var o in outputNames) header.Append(",leveler_").Append(Safe(o));
             for (int i = 0; i < _inputs; i++)
             {
                 var n = Safe(inputNames[i]);
@@ -70,7 +73,9 @@ public sealed class DecisionTrack : IDisposable
     /// Called from the meter tick. <paramref name="levelDb"/> is the post-fader level the selector
     /// actually compares, and <paramref name="gain"/> the automix gain applied for (input, output).
     /// </summary>
-    public void Sample(Func<int, int> winner, Func<int, double> levelDb, Func<int, int, float> gain)
+    public void Sample(
+        Func<int, int> winner, Func<int, double> levelDb, Func<int, int, float> gain,
+        Func<int, float> levelerGainDb, string scene)
     {
         if (_writer == null) return;
         long now = _clock.ElapsedMilliseconds;
@@ -78,8 +83,10 @@ public sealed class DecisionTrack : IDisposable
         _lastWriteMs = now;
 
         var row = new StringBuilder();
-        row.Append(now);
+        row.Append(now).Append(',').Append(Safe(scene));
         for (int o = 0; o < _outputs; o++) row.Append(',').Append(winner(o));
+        for (int o = 0; o < _outputs; o++)
+            row.Append(',').Append(levelerGainDb(o).ToString("F1", CultureInfo.InvariantCulture));
         for (int i = 0; i < _inputs; i++)
         {
             row.Append(',').Append(levelDb(i).ToString("F1", CultureInfo.InvariantCulture));
