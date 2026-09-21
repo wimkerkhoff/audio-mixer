@@ -46,8 +46,6 @@ public static class PresetMapper
                 DeviceId = o.SelectedDevice?.Id,
                 DeviceName = o.SelectedDevice?.FriendlyName,
                 AutoMixMode = o.AutoMixModeIndex,
-                AutoMixStrength = o.StrengthPercent,
-                AutoMixStableHandoff = o.StableHandoff,
                 LevelerEnabled = o.LevelerEnabled,
                 LevelerStrength = (int)o.LevelerStrength,
                 LevelerThresholdDb = o.LevelerThresholdDb,
@@ -57,8 +55,6 @@ public static class PresetMapper
                 LevelerMaxGainDb = o.LevelerMaxGainDb,
                 LevelerIdleFloorDb = o.LevelerIdleFloorDb,
                 LimiterCeilingDb = o.LimiterCeilingDb,
-                AutoMixReferenceGuided = o.ReferenceGuided,
-                AutoMixPreferNatural = o.PreferNatural,
                 Volume = o.VolumePercent,
             }).ToArray(),
         };

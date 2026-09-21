@@ -30,10 +30,6 @@ public static class PersistedProperties
         nameof(ChannelViewModel.HighPassHz),
         nameof(RouteToggleViewModel.IsOn),
         nameof(OutputViewModel.AutoMixModeIndex),
-        nameof(OutputViewModel.StrengthPercent),
-        nameof(OutputViewModel.StableHandoff),
-        nameof(OutputViewModel.ReferenceGuided),
-        nameof(OutputViewModel.PreferNatural),
         // Leveler SETTINGS only. LevelerGainDb / LevelerGainText / LevelerLiftBar are raised 30x/s by
         // RefreshMeters — allowlisting one would restart the 500 ms debounce every 33 ms and autosave
         // would silently never fire.

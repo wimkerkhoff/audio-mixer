@@ -646,34 +646,7 @@
                                             </Border>
                                         </Popup>
                                     </Grid>
-                                    <CheckBox Margin="0,3,0,0" IsChecked="{Binding StableHandoff}" IsEnabled="{Binding AutoMixEnabled}"
-                                              Foreground="#CCC" FontSize="10"
-                                              ToolTip="Hold the selected mic with hysteresis so a brief louder moment on another mic can't steal it — stops a distant speakerphone's AGC pumping in a talker's pause from grabbing the mix. Off = pick the instantaneously loudest mic.">
-                                        <TextBlock Text="Stable hand-off" TextTrimming="CharacterEllipsis"/>
-                                    </CheckBox>
-                                    <CheckBox Margin="0,3,0,0" IsChecked="{Binding ReferenceGuided}" IsEnabled="{Binding AutoMixEnabled}"
-                                              Foreground="#CCC" FontSize="10"
-                                              ToolTip="Experimental: pick the room mic whose voice best matches the priority (lapel) mic instead of the loudest one — avoids a loud-but-bad speakerphone winning. Needs a priority mic that's hearing the talker; falls back to loudest when none is.">
-                                        <TextBlock Text="Match lapel" TextTrimming="CharacterEllipsis"/>
-                                    </CheckBox>
-                                    <CheckBox Margin="0,3,0,0" IsChecked="{Binding PreferNatural}" IsEnabled="{Binding AutoMixEnabled}"
-                                              Foreground="#CCC" FontSize="10"
-                                              ToolTip="Experimental (no lapel needed): among mics nearly as loud as the loudest, pick the most natural-sounding one (lowest spectral-flux instability) — avoids an over-processed/scratchy speakerphone. Works for talkers across the room. Lower priority than Match lapel.">
-                                        <TextBlock Text="Prefer natural" TextTrimming="CharacterEllipsis"/>
-                                    </CheckBox>
                                 </StackPanel>
-
-                                <Grid Grid.Row="5" Margin="0,3,0,0" IsEnabled="{Binding AutoMixEnabled}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource Lbl}" Text="Str" VerticalAlignment="Center"/>
-                                    <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                                            Value="{Binding StrengthPercent}"
-                                            Margin="3,0,0,0" VerticalAlignment="Center"
-                                            ToolTip="{Binding StrengthPercent, StringFormat={}{0:F0}% duck strength}"/>
-                                </Grid>
 
                                 <StackPanel Grid.Row="6" Margin="0,3,0,0">
                                     <TextBlock Style="{StaticResource Lbl}" Text="Leveler"/>

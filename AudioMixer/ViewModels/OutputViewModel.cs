@@ -119,14 +119,10 @@ public sealed class OutputViewModel : ViewModelBase
             return;
         }
 
-        string rule = Index < diag.ReferenceGuided.Length && diag.ReferenceGuided[Index] ? "match-lapel (corr +0.05)"
-            : Index < diag.PreferNatural.Length && diag.PreferNatural[Index] ? "prefer-natural (flux-cv x0.85)"
-            : "level (+3 dB)";
-
         int hold = Index < diag.WinnerHold.Length ? diag.WinnerHold[Index] : 0;
         string holdText = hold > 0 ? $", held {hold * 10} ms more" : "";
 
-        SelectionVerdict = $"{mode}: {Name(winner)} winning on {rule}{holdText}";
+        SelectionVerdict = $"{mode}: {Name(winner)} winning on level (+3 dB){holdText}";
     }
 
     public RelayCommand ToggleRecordCommand { get; }
@@ -166,56 +162,15 @@ public sealed class OutputViewModel : ViewModelBase
     public string CurrentAutoMixLabel =>
         AutoMixModeOptions[Math.Clamp(_autoMixModeIndex, 0, AutoMixModeOptions.Length - 1)];
 
-    private float _strengthPercent = 50f;
-    public float StrengthPercent
-    {
-        get => _strengthPercent;
-        set
-        {
-            if (SetField(ref _strengthPercent, value))
-                _autoMix.SetAutoMixStrength(Index, (float)(value / 100.0));
-        }
-    }
-
     // Stable hand-off: hold the selected mic with hysteresis so a brief louder moment on another mic
     // (e.g. a distant speakerphone's AGC pumping up in a talker's pause) can't steal the selection.
     // On by default. Off = legacy instantaneous-loudest selection.
-    private bool _stableHandoff = true;
-    public bool StableHandoff
-    {
-        get => _stableHandoff;
-        set
-        {
-            if (SetField(ref _stableHandoff, value))
-                _autoMix.SetAutoMixStableHandoff(Index, value);
-        }
-    }
 
     // Reference-guided selection: pick the room mic whose envelope best matches the priority/lapel mic
     // instead of the loudest. Experimental, off by default. Needs an active priority mic as reference.
-    private bool _referenceGuided;
-    public bool ReferenceGuided
-    {
-        get => _referenceGuided;
-        set
-        {
-            if (SetField(ref _referenceGuided, value))
-                _autoMix.SetAutoMixReferenceGuided(Index, value);
-        }
-    }
 
     // Reference-free: among mics within a level floor of the loudest, prefer the most natural (lowest
     // spectral-flux instability). Experimental, off by default. Lower precedence than Match lapel.
-    private bool _preferNatural;
-    public bool PreferNatural
-    {
-        get => _preferNatural;
-        set
-        {
-            if (SetField(ref _preferNatural, value))
-                _autoMix.SetAutoMixPreferNatural(Index, value);
-        }
-    }
 
     public OutputViewModel(
         int index,

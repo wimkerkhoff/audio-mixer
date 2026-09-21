@@ -211,6 +211,13 @@
                         ToolTip="Diagnostics — why this mic, session report, calibration, devices"/>
                 <Button Style="{StaticResource ToolBtn}" Content="&#xE713;" Click="Settings_Click"
                         ToolTip="Settings"/>
+                <Rectangle Width="1" Fill="#3A3A44" Margin="3,3"/>
+                <Button Style="{StaticResource ToolBtn}" Content="{Binding InputDiagRecordIcon}"
+                        FontFamily="Segoe UI" Foreground="#E2564D"
+                        ToolTip="{Binding InputDiagRecordTooltip}"
+                        Command="{Binding RecordInputsCommand}"/>
+                <Button Style="{StaticResource ToolBtn}" Content="&#xE897;" Click="Help_Click"
+                        ToolTip="Help — open the documentation"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <!-- With no banner in the panel this badge is the ONLY thing that says something is

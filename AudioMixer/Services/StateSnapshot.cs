@@ -5,7 +5,6 @@ using AudioMixer.ViewModels;
 namespace AudioMixer.Services;
 
 // Builds the full live JSON snapshot served by StateServer at /state. Deliberately exposes the
-// selector's *reasoning* (env / crest / refCorr / fluxCv / winner / reference) and not just the
 // visible mixer state — this is the fastest way to see why the automixer picked a mic without a GUI.
 public static class StateSnapshot
 {
@@ -42,7 +41,6 @@ public static class StateSnapshot
                 calBuffers = cal.TotalBuffers,
                 envDb = i < diag.Env.Length ? ToDb(diag.Env[i]) : (double?)null,
                 crest = i < diag.Crest.Length ? Math.Round(diag.Crest[i], 2) : (double?)null,
-                refCorr = i < diag.Corr.Length ? Math.Round(diag.Corr[i], 3) : (double?)null,
                 fluxCv = i < diag.Cv.Length ? Math.Round(diag.Cv[i], 3) : (double?)null,
                 clarity = ch.HasClarity ? Math.Round(ch.ClarityBar, 2) : (double?)null,
                 routes = ch.Routes.Select(r => r.IsOn).ToArray(),
@@ -69,10 +67,6 @@ public static class StateSnapshot
                 volumePercent = Math.Round(op.VolumePercent, 0),
                 recording = op.IsRecording,
                 mode = o < diag.Mode.Length ? diag.Mode[o].ToString() : "Off",
-                strengthPercent = Math.Round(op.StrengthPercent, 0),
-                stableHandoff = op.StableHandoff,
-                referenceGuided = op.ReferenceGuided,
-                preferNatural = op.PreferNatural,
                 levelerEnabled = op.LevelerEnabled,
                 levelerStrength = op.LevelerStrength.ToString(),
                 levelerGainDb = Math.Round(op.LevelerGainDb, 1),
@@ -91,7 +85,6 @@ public static class StateSnapshot
             ts = DateTime.Now.ToString("HH:mm:ss.fff"),
             inputCount,
             status,
-            referenceInput = diag.ReferenceInput,
             scene,
             alerts = alerts.Select(a => new { a.Id, severity = a.Severity.ToString(), a.Message }).ToArray(),
             replay = rig == null ? null : new

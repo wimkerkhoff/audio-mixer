@@ -46,10 +46,6 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
     }
 
     public void SetAutoMixMode(int output, AutoMixMode mode) => _autoMix.SetMode(output, mode);
-    public void SetAutoMixStrength(int output, float strength) => _autoMix.SetStrength(output, strength);
-    public void SetAutoMixStableHandoff(int output, bool on) => _autoMix.SetStableHandoff(output, on);
-    public void SetAutoMixReferenceGuided(int output, bool on) => _autoMix.SetReferenceGuided(output, on);
-    public void SetAutoMixPreferNatural(int output, bool on) => _autoMix.SetPreferNatural(output, on);
     public int AutoMixActiveInput(int output) => _autoMix.ActiveInput(output);
     public AutoMixDiag AutoMixSnapshot() => _autoMix.Snapshot(Inputs.Length);
 

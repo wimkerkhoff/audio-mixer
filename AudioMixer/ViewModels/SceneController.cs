@@ -119,9 +119,6 @@ public sealed class SceneController : ViewModelBase
         var outputs = _outputs.Select((o, i) => new OutputPlan(
             i,
             (AutoMixMode)o.AutoMixModeIndex,
-            o.PreferNatural,
-            o.ReferenceGuided,
-            o.StableHandoff,
             o.Muted)).ToArray();
 
         return new MixerPlan(channels, outputs);
@@ -142,9 +139,6 @@ public sealed class SceneController : ViewModelBase
         {
             if (op.Index >= _outputs.Count) continue;
             var o = _outputs[op.Index];
-            o.PreferNatural = op.PreferNatural;
-            o.ReferenceGuided = op.ReferenceGuided;
-            o.StableHandoff = op.StableHandoff;
             o.AutoMixModeIndex = (int)op.Mode;
             o.Muted = op.Muted;
         }

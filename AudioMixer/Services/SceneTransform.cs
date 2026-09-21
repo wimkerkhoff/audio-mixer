@@ -14,8 +14,7 @@ public sealed record ChannelPlan(int Index, ChannelRole Role, bool[] Routes, boo
 }
 
 /// <summary>Everything a scene may change on one output bus.</summary>
-public sealed record OutputPlan(
-    int Index, AutoMixMode Mode, bool PreferNatural, bool ReferenceGuided, bool StableHandoff, bool Muted);
+public sealed record OutputPlan(int Index, AutoMixMode Mode, bool Muted);
 
 public sealed record MixerPlan(ChannelPlan[] Channels, OutputPlan[] Outputs);
 
@@ -73,9 +72,6 @@ public static class SceneTransform
         return new MixerPlan(channels, c.Outputs.Select(o => o with
         {
             Mode = AutoMixMode.Gate,
-            PreferNatural = false,
-            ReferenceGuided = false,
-            StableHandoff = true,
             Muted = false,
         }).ToArray());
     }
@@ -92,9 +88,6 @@ public static class SceneTransform
         return new MixerPlan(channels, c.Outputs.Select(o => o with
         {
             Mode = AutoMixMode.Gate,
-            PreferNatural = false,
-            ReferenceGuided = false,
-            StableHandoff = true,
             Muted = false,
         }).ToArray());
     }
@@ -114,8 +107,6 @@ public static class SceneTransform
         {
             // Off, not Gate: singing has no single talker, so follow-the-talker has nothing to follow.
             Mode = AutoMixMode.Off,
-            PreferNatural = false,
-            ReferenceGuided = false,
             Muted = false,
         }).ToArray());
     }

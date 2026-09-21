@@ -12,7 +12,6 @@ public sealed class DiagnosticRow
     public required string Label { get; init; }
     public required string EnvDb { get; init; }
     public required string FluxCv { get; init; }
-    public required string Corr { get; init; }
     public required string GainA { get; init; }
     public required string GainB { get; init; }
     public required string State { get; init; }
@@ -69,7 +68,6 @@ public sealed class DiagnosticRow
             Label = string.IsNullOrWhiteSpace(ch.CustomLabel) ? $"in{index + 1}" : ch.CustomLabel,
             EnvDb = index < diag.Env.Length ? Db(diag.Env[index]) : "     —",
             FluxCv = index < diag.Cv.Length && diag.Cv[index] > 0 ? $"{diag.Cv[index]:F3}" : "—",
-            Corr = index < diag.Corr.Length && diag.Corr[index] != 0 ? $"{diag.Corr[index]:F3}" : "—",
             GainA = $"{input.GetAutoMixGain(0):F2}",
             GainB = outputCount > 1 ? $"{input.GetAutoMixGain(1):F2}" : "—",
             State = state,

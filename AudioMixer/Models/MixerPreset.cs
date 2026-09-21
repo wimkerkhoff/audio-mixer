@@ -44,10 +44,6 @@ public sealed class OutputPreset
     public string? DeviceId { get; set; }
     public string? DeviceName { get; set; }
     public int AutoMixMode { get; set; }              // 0 Off, 1 Share, 2 Gate
-    public float AutoMixStrength { get; set; } = 50f;  // percent
-    public bool AutoMixStableHandoff { get; set; } = true;  // hold+hysteresis stable closest-talker selection
-    public bool AutoMixReferenceGuided { get; set; }   // pick the room mic best matching the lapel reference
-    public bool AutoMixPreferNatural { get; set; }     // reference-free: prefer the most natural (stable) mic
     public float Volume { get; set; } = 100f;          // percent
 
     // Bus leveler. Property initialisers, not a constructor: System.Text.Json leaves them alone when

@@ -68,6 +68,8 @@ public partial class SimpleWindow : Window
     private void Resync_Click(object sender, RoutedEventArgs e) => _vm.ResyncAudioCommand.Execute(null);
     private void ResetCal_Click(object sender, RoutedEventArgs e) => _vm.ResetCalibrationCommand.Execute(null);
 
+    private void Help_Click(object sender, RoutedEventArgs e) => _vm.OpenDocumentationCommand.Execute(null);
+
     private void Checks_Click(object sender, RoutedEventArgs e) =>
         Show(ref _checks, () => new ChecksWindow(_vm) { Owner = this });
 

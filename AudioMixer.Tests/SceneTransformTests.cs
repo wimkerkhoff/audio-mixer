@@ -16,7 +16,7 @@ public class SceneTransformTests
     private static ChannelPlan Ch(int i, ChannelRole role, bool routed = true, bool muted = false, bool priority = false)
         => new(i, role, Enumerable.Repeat(routed, Outs).ToArray(), muted, priority);
 
-    private static OutputPlan Out(int i) => new(i, AutoMixMode.Share, true, true, false, false);
+    private static OutputPlan Out(int i) => new(i, AutoMixMode.Gate, false);
 
     /// <summary>A lapel plus four room mics — the real rig.</summary>
     private static MixerPlan Rig(bool withLapel = true)
@@ -69,9 +69,6 @@ public class SceneTransformTests
         Assert.All(r.Outputs, o =>
         {
             Assert.Equal(AutoMixMode.Gate, o.Mode);
-            Assert.False(o.PreferNatural);
-            Assert.False(o.ReferenceGuided);
-            Assert.True(o.StableHandoff);
             Assert.False(o.Muted);
         });
     }
@@ -125,7 +122,6 @@ public class SceneTransformTests
         Assert.All(r.Outputs, o =>
         {
             Assert.Equal(AutoMixMode.Off, o.Mode);
-            Assert.False(o.PreferNatural);
             Assert.False(o.Muted);
         });
     }

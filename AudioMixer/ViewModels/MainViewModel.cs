@@ -522,16 +522,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         var diag = _engine.AutoMixSnapshot();
 
-        // Rank by whatever the first output is actually deciding on, so "why isn't #2 winning" is
-        // answered by reading down the column that matters rather than guessing.
-        bool natural = Outputs.Length > 0 && Outputs[0].PreferNatural;
-        bool corr = Outputs.Length > 0 && Outputs[0].ReferenceGuided;
-
+        // Ranked by level, which is the only thing the selector decides on now — the correlation and
+        // flux-CV columns went with the selectors that used them.
         var order = Enumerable.Range(0, Channels.Count)
             .Where(i => Channels[i].HasDevice && !Channels[i].Muted && Channels[i].IsRoutedAnywhere)
-            .OrderByDescending(i => corr && i < diag.Corr.Length ? diag.Corr[i]
-                : natural && i < diag.Cv.Length && diag.Cv[i] > 0 ? -diag.Cv[i]
-                : i < diag.Env.Length ? diag.Env[i] : 0f)
+            .OrderByDescending(i => i < diag.Env.Length ? diag.Env[i] : 0f)
             .ToList();
 
         var rows = new List<DiagnosticRow>(Channels.Count);
@@ -1113,10 +1108,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 if (!string.IsNullOrEmpty(op.CustomLabel)) Outputs[o].CustomLabel = op.CustomLabel;
                 var match = DeviceResolver.Resolve(_allOutputDevices, op.DeviceId, op.DeviceName, usedOutputIds);
                 Outputs[o].SelectedDevice = match;
-                Outputs[o].StrengthPercent = Math.Clamp(op.AutoMixStrength, 0f, 100f);
-                Outputs[o].StableHandoff = op.AutoMixStableHandoff;
-                Outputs[o].ReferenceGuided = op.AutoMixReferenceGuided;
-                Outputs[o].PreferNatural = op.AutoMixPreferNatural;
                 Outputs[o].AutoMixModeIndex = Math.Clamp(op.AutoMixMode, 0, 2);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
 

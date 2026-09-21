@@ -195,9 +195,19 @@ decision logic is off the audio threads.
 
 | Mode | Gain rule | Use when |
 | --- | --- | --- |
-| Off | unity | — |
-| Share | Dugan-style gain-share `(score/max)^p`, non-leaders attenuated but never muted | conversational back-and-forth — gradual hand-off, no swallowed syllables |
-| Gate | winner-take-all (hard mute of non-leaders) | single presenter; turn-taking where Share's summing combs |
+| Off | unity | singing — no single talker for follow-the-talker to follow |
+| Gate | winner-take-all (hard mute of non-leaders) | everything else |
+
+**Share was removed 2026-09-20**, with the strength slider, "Stable hand-off", "Match lapel" and
+"Prefer natural". All four were Anker-era: Share attenuated non-leaders instead of muting them, so
+several mics hearing one voice still combed and strength could only make that quieter; no scene ever
+selected it. Match lapel and Prefer natural were built to reject a loud-but-bad speakerphone, which
+finding 6 says cannot happen on matched DSP-free transmitters — and finding 6b measured Prefer
+natural actively harmful there. Stable hand-off became unconditional: finding 6a calls the hysteresis
+exactly as necessary, so a switch that turned it off could only re-create "far mic wins". The priority
+duck and Gate's non-leader level are now fixed at a hard mute, which is what strength 100% did and the
+only setting this rig ever ran. Flux-CV is still computed and still worth reading — it rises on RF
+dropouts — it simply no longer selects.
 
 Gate's ~200 ms hold can clip the first syllable of a fast interjection. Share's strength slider only
 *attenuates* non-leaders — it can never remove comb echo, so Gate is the answer when several mics

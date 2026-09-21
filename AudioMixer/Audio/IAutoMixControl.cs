@@ -6,8 +6,4 @@ namespace AudioMixer.Audio;
 public interface IAutoMixControl
 {
     void SetAutoMixMode(int output, AutoMixMode mode);
-    void SetAutoMixStrength(int output, float strength);
-    void SetAutoMixStableHandoff(int output, bool on);
-    void SetAutoMixReferenceGuided(int output, bool on);
-    void SetAutoMixPreferNatural(int output, bool on);
 }
