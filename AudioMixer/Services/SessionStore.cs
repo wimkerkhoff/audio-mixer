@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace AudioMixer.Services;
 
@@ -24,7 +25,11 @@ public sealed class SessionStore
     /// <summary>Operator's choice, 2026-09-20: keep everything, prune at 90 days.</summary>
     public const int RetentionDays = 90;
 
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        Converters = { new NaNAsNullConverter() },
+    };
 
     public string Directory { get; }
 
@@ -98,5 +103,32 @@ public sealed class SessionStore
             try { File.Delete(f.Path); removed++; } catch { }
         }
         return removed;
+    }
+}
+
+/// <summary>
+/// Writes a non-finite float as null.
+///
+/// A calibration median is <c>NaN</c> until a mic has produced enough voiced audio, and
+/// System.Text.Json refuses to write NaN — so without this the ENTIRE record failed to save, caught
+/// only by the blanket catch in <see cref="SessionStore.Save"/> and reported only to the opt-in log.
+/// The sessions it lost were exactly the ones this class exists for: a mic that was never used, or a
+/// service too quiet to calibrate.
+///
+/// Null rather than the `NaN` literal `AllowNamedFloatingPointLiterals` would emit, because these
+/// files are read by the offline tooling and `NaN` is not valid JSON — jq rejects it. /state already
+/// maps NaN to null for the same reason, so the two agree.
+/// </summary>
+internal sealed class NaNAsNullConverter : JsonConverter<float>
+{
+    public override bool HandleNull => true;
+
+    public override float Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.Null ? float.NaN : reader.GetSingle();
+
+    public override void Write(Utf8JsonWriter writer, float value, JsonSerializerOptions options)
+    {
+        if (float.IsFinite(value)) writer.WriteNumberValue(value);
+        else writer.WriteNullValue();
     }
 }

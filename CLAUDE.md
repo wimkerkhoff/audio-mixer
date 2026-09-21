@@ -768,6 +768,21 @@ later judgment.
   duplicated to both channels (L/R correlation measured at exactly 1.0000), so the second channel is a
   verbatim copy and the file halves losslessly. A `Stereo` strip on a genuinely stereo device keeps
   both. Verified: a split pair writes 1-channel files at half the size of the stereo strips beside them.
+- **A NaN calibration median silently destroyed the whole session record.** `InputSummary.SpeechDb`
+  and `FloorDb` are `float.NaN` until a mic has produced enough voiced audio, and System.Text.Json
+  refuses to write NaN — it throws. `SessionStore.Save` wraps everything in a blanket catch (a record
+  that takes down the mixer it describes being the worse outcome), so the throw became a `return null`
+  and a line in the **opt-in** log. Net effect: any service where one mic was never used, or that was
+  too quiet to calibrate, produced **no session record at all**, with nothing visible to say so — and
+  those are precisely the services the record exists for. Found 2026-09-21 by the first
+  `SessionRecorder` test, not by anyone reading a folder. Fixed with `NaNAsNullConverter`, which
+  writes non-finite floats as **null** and reads null back as NaN. Null rather than the `NaN` literal
+  `AllowNamedFloatingPointLiterals` emits, because these files are read by the offline tooling and
+  `NaN` is not valid JSON (Python accepts it, jq does not); `/state` already maps NaN to null, so the
+  two agree. General lesson: a blanket catch around serialization converts a data-shape bug into
+  silent, total data loss — if the catch is load-bearing, the thing it guards needs a test that
+  actually round-trips the awkward values.
+
 - **`decisions-<stamp>.csv` sits beside every capture, and is the only thing that can answer "should
   it have picked a different mic".** The diag WAVs are tapped BEFORE the automix gain and before the
   bus, so they show what each mic heard and nothing about what was done with it; the mix shows a
