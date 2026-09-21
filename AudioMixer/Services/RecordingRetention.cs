@@ -52,6 +52,17 @@ public sealed class RecordingRetention
     public bool MustStopNow() => _folders.Length > 0 && FreeGb(_folders[0]) < StopFloorGb;
 
     /// <summary>Deletes expired files, then oldest-first while space is short. Returns what it removed.</summary>
+    /// <summary>
+    /// A capture kept as a replay fixture belongs in `analysis/keep/`, which ReplayRig also searches
+    /// and this never walks — EnumerateFiles is top-level only, so a subfolder is already immune.
+    ///
+    /// It has to be somewhere, because the fixtures live in the folder this prunes: both golden
+    /// baselines referenced a stamp 42 days older than the 28-day rule, so their source WAVs were
+    /// deleted on the first launch after retention shipped. The fixtures are the only way to exercise
+    /// the selector without a room full of people, so losing them silently is expensive.
+    /// </summary>
+    public const string KeepFolder = "keep";
+
     public (int Files, double Gb) Prune(DateTime? nowUtc = null)
     {
         var cutoff = (nowUtc ?? DateTime.UtcNow).AddDays(-RetentionDays);

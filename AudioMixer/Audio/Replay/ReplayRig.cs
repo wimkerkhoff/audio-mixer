@@ -68,12 +68,25 @@ public sealed partial class ReplayRig : IDisposable
         _timer = new Timer(Tick, null, Timeout.Infinite, Timeout.Infinite);
     }
 
-    /// <summary>Lists the session stamps available in <paramref name="dir"/>, newest first.</summary>
+    /// <summary>
+    /// Where a capture goes to survive retention. Recordings are pruned at 28 days and this folder is
+    /// not walked (EnumerateFiles is top-level only), so a fixture worth keeping is moved here — which
+    /// is exactly what the two golden baselines needed and did not have.
+    /// </summary>
+    public static string KeepDirectory =>
+        Path.Combine(DefaultDirectory, Services.RecordingRetention.KeepFolder);
+
+    /// <summary>Lists the session stamps available in <paramref name="dir"/> and its keep/ folder,
+    /// newest first.</summary>
     public static IReadOnlyList<string> ListSessions(string? dir = null)
     {
         dir ??= DefaultDirectory;
         if (!System.IO.Directory.Exists(dir)) return [];
-        return System.IO.Directory.GetFiles(dir, "diag-input*.wav")
+        var keep = Path.Combine(dir, Services.RecordingRetention.KeepFolder);
+        var files = System.IO.Directory.GetFiles(dir, "diag-input*.wav");
+        if (System.IO.Directory.Exists(keep))
+            files = [.. files, .. System.IO.Directory.GetFiles(keep, "diag-input*.wav")];
+        return files
             .Select(p => FileRx().Match(Path.GetFileName(p)))
             .Where(m => m.Success)
             .Select(m => m.Groups[2].Value)
@@ -98,7 +111,15 @@ public sealed partial class ReplayRig : IDisposable
               ?? sessions.FirstOrDefault(s => s.Contains(stamp, StringComparison.OrdinalIgnoreCase))
               ?? throw new FileNotFoundException($"no session matching '{stamp}' in {dir}");
 
-        var matches = System.IO.Directory.GetFiles(dir, $"diag-input*-{resolved}.wav")
+        // Look in keep/ as well, and let it win: a fixture moved there is the copy meant to survive.
+        var keepDir = Path.Combine(dir, Services.RecordingRetention.KeepFolder);
+        var files = System.IO.Directory.GetFiles(dir, $"diag-input*-{resolved}.wav");
+        if (System.IO.Directory.Exists(keepDir))
+        {
+            var kept = System.IO.Directory.GetFiles(keepDir, $"diag-input*-{resolved}.wav");
+            if (kept.Length > 0) files = kept;
+        }
+        var matches = files
             .Select(p => (path: p, m: FileRx().Match(Path.GetFileName(p))))
             .Where(x => x.m.Success)
             .Select(x => (x.path, index: int.Parse(x.m.Groups[1].Value) - 1))

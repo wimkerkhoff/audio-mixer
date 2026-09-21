@@ -73,6 +73,29 @@ public class RecordingRetentionTests : IDisposable
         Assert.False(File.Exists(b));
     }
 
+    /// <summary>
+    /// A capture kept as a replay fixture must survive. Both golden baselines referenced a stamp 42
+    /// days older than the 28-day rule, so their source WAVs were deleted on the first launch after
+    /// retention shipped — and those fixtures are the only way to exercise the selector without a
+    /// room full of people. `analysis/keep/` is not walked, and ReplayRig searches it.
+    /// </summary>
+    [Fact]
+    public void AFixtureInTheKeepFolderIsNeverPruned()
+    {
+        var keep = Path.Combine(_dir, RecordingRetention.KeepFolder);
+        Directory.CreateDirectory(keep);
+        var fixture = Path.Combine(keep, "diag-input1-20260809-092931.wav");
+        File.WriteAllBytes(fixture, new byte[2048]);
+        File.SetLastWriteTimeUtc(fixture, DateTime.UtcNow.AddDays(-400));
+        var ordinary = Wav("diag-input1-20260809-092931.wav", 400);
+
+        var (files, _) = new RecordingRetention(_dir).Prune();
+
+        Assert.Equal(1, files);
+        Assert.True(File.Exists(fixture), "the kept fixture was pruned");
+        Assert.False(File.Exists(ordinary));
+    }
+
     /// <summary>Only audio. A session record is tens of kilobytes and is what you still want when the
     /// audio is gone, so it must never be swept up by an audio retention rule.</summary>
     [Fact]

@@ -205,11 +205,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _diagnostics = new DiagnosticsLog(_engine, Channels, Outputs);
         // Not gated on AudioLog.Enabled, unlike the diagnostics log: the session that matters is the
         // one nobody thought to prepare for. Replay is excluded — it is a sandbox, not a service.
-        if (!_isReplaying)
-        {
-            _session = new SessionRecorder(_engine, Channels, Outputs) { Config = BuildSessionConfig };
-            Scenes.OnOperatorAction = what => _session?.Action(what);
-        }
         _meterTimer.Tick += (_, _) =>
         {
             foreach (var ch in Channels) ch.RefreshMeters();
@@ -221,7 +216,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 o => _engine.AutoMixActiveInput(o),
                 // Clamped as well as stopped above: the tick runs on a timer and must never be able to
                 // index past a list that shrank under it, whatever else changes.
-                i => i < Channels.Count ? Channels[i].PostPeakDb : -120.0,
+                // The smoothed RMS the selector actually compares, NOT the peak: with this rig's
+                // 20-45 dB crest the two are nowhere near each other, and the whole point of the
+                // column is lining it up against PriorityActiveRms and SilenceFloorRms. Same
+                // conversion /state uses for envDb.
+                i => i < _engine.Inputs.Length ? Db(_engine.Inputs[i].CurrentLevelLinear) : -120.0,
                 (i, o) => i < _engine.Inputs.Length ? _engine.Inputs[i].GetAutoMixGain(o) : 1f,
                 o => Outputs[o].LevelerGainDb,
                 Scenes.Current?.ToString() ?? "Custom");
@@ -248,6 +247,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         TryLoadInitialPreset();
+
+        // AFTER the preset: SessionAggregator sizes itself from Channels.Count, and before the preset
+        // that is still DefaultInputCount = 3. On the six-transmitter rig every session record showed
+        // inputs 4-6 with zero leader, ducked and muted time — plausible-looking and wrong. Replay is
+        // excluded: it is a sandbox, not a service.
+        if (!_isReplaying)
+        {
+            _session = new SessionRecorder(_engine, Channels, Outputs) { Config = BuildSessionConfig };
+            Scenes.OnOperatorAction = what => _session?.Action(what);
+        }
+
         StartReplayIfRequested();
         // After the preset, so a scene overrides saved state rather than the other way round.
         if (App.StartupScene is { } scene) Scenes.Apply(scene);
@@ -875,6 +885,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         StatusText = verdict.Reason!;
         return false;
     }
+
+    /// <summary>Linear RMS to dBFS, floored the way /state floors it so silence is finite.</summary>
+    private static double Db(double linear) =>
+        linear <= 1e-6 ? -120.0 : Math.Round(20 * Math.Log10(linear), 1);
 
     private List<ChannelRouting> RoutingSnapshot() =>
         Channels.Select(c => new ChannelRouting(

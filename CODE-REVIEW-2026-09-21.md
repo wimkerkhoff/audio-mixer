@@ -12,38 +12,6 @@ Line numbers are against `b8c8aae` and will drift as you edit — search for the
 
 Each of these was traced through the code end to end. Ordered by how badly it hurts a live service.
 
-### 1.7 Retention deletes the replay fixtures
-
-- **Where:** `RecordingRetention` is built over `analysis/` and `recordings/`
-  (`MainViewModel.cs:54`); `ReplayRig.DefaultDirectory` is that same `analysis/` folder
-  (`ReplayRig.cs:60`); `Prune()` runs at every record start (`:1296`), i.e. 12 s after every launch.
-- **Effect:** both `tools/baselines/*.json` reference stamp `20260809-092931`, 42 days before the
-  retention commit — those WAVs were pruned on the first launch after it unless copied elsewhere.
-  Any future fixture will go the same way after 28 days.
-- **Fix:** keep fixtures outside the pruned folders (e.g. `analysis/keep/` that `ReplayRig` also
-  searches, or exclude stamps referenced by `tools/baselines`), and record it as a gotcha.
-
-### 1.8 Session records report zero for mics 4 and up
-
-- **Where:** `MainViewModel.cs:221` constructs `SessionRecorder` (→ `SessionAggregator(channels.Count,
-  …)`, `SessionRecorder.cs:58`) before `TryLoadInitialPreset()` at `:260`, when `Channels.Count` is
-  `DefaultInputCount` = 3. `SessionAggregator.Tick` loops `i < _inputs` (`:161`) and `Build`
-  returns 0 for the rest (`:209-211`). Runtime `InputCount` changes are never propagated.
-- **Effect:** on the 6× Wireless PRO rig every session record shows inputs 4–6 with
-  `LeaderPercent = DuckedPercent = MutedByGatePercent = 0` — plausible-looking and wrong.
-- **Fix:** construct the recorder after the preset, and resize the aggregator on `ApplyInputCount`
-  (or make it grow lazily).
-
-### 1.9 The decisions CSV logs peak, not the RMS the selector compares
-
-- **Where:** `MainViewModel.cs:233` passes `Channels[i].PostPeakDb`; `DecisionTrack.Sample`'s doc
-  (`:73`) says the argument is "the post-fader level the selector actually compares", which is the
-  smoothed RMS in `InputChannel.CurrentLevelLinear`.
-- **Effect:** with this rig's 20–45 dB crest the `level_*` columns cannot be lined up against
-  `PriorityActiveRms` / `SilenceFloorRms`, which is the whole reason the file exists.
-- **Fix:** pass `20*log10(_engine.Inputs[i].CurrentLevelLinear)` — `StateSnapshot.cs:303` already
-  computes exactly this for `envDb`.
-
 ### 1.10 Medium — reported by the review, not independently re-traced
 
 - [ ] `SessionSummary.Scene` only updates when the alert set changes (`MainViewModel.cs:553-556`
