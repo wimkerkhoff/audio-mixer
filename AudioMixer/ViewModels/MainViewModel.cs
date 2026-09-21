@@ -116,7 +116,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             ApplyInputCount(clamped);
             _inputCount = clamped;
             RaisePropertyChanged();
-            RaisePropertyChanged(nameof(WindowWidth));
             QueueAutosave();
         }
     }
@@ -127,17 +126,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // Measured at 10 inputs 2026-09-20: the old `count * 96 + 240` produced a 1200 px window whose
     // client area is ~1184, leaving (1184 - 230) / 10 = 95.4 px per strip and 85.4 px of content
     // against the strip's MinWidth of 86 — clipping by a hair because the border was never counted.
-    // 100 px per strip plus 260 gives real headroom (91 px of content at 10 inputs) and still fits a
-    // 1920-wide screen at 1260 px. Low counts are unchanged: 3 inputs still clamps to the 560 floor.
-    private const double StripWidth = 100;
-    private const double NonStripWidth = 260;   // 230 output column + window chrome
-
-    public double WindowWidth => Math.Max(560, _inputCount * StripWidth + NonStripWidth);
-
-    private const double BaseWindowHeight = 404;   // grows with the output column's rows (leveler = +60)
-    private const double VbCableBannerHeight = 36;
-    public double WindowHeight => BaseWindowHeight + (ShowVbCablePrompt ? VbCableBannerHeight : 0);
-
     public MainViewModel()
     {
         _engine = new AudioEngine();
@@ -238,7 +226,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 o => Outputs[o].LevelerGainDb,
                 Scenes.Current?.ToString() ?? "Custom");
             RefreshHealth();
-            if (_isReplaying) RaisePropertyChanged(nameof(ReplayPositionText));
         };
         _meterTimer.Start();
 
@@ -277,7 +264,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand SingingCommand { get; private set; } = null!;
     public RelayCommand UseLapelCommand { get; private set; } = null!;
     public RelayCommand UseRoomMicsCommand { get; private set; } = null!;
-    public RelayCommand DismissAlertCommand { get; private set; } = null!;
 
     /// <summary>
     /// Does the thing an alert suggests. Until 2026-09-21 every suggested fix was a label, which for a
@@ -395,7 +381,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     ///
     /// This sets ROLE, not IsPriority. Role is what scenes read — it has to survive Prayer clearing
     /// the priority flag, which is why it is a property of the mic rather than of the current setup.
-    /// Setting priority on several channels at once is still possible from the Advanced gear popup,
+    /// Setting priority on several channels at once is still possible from the per-input settings,
     /// so the old pastor-plus-worship-leader case is awkward but not lost.
     /// </summary>
     public IReadOnlyList<string> LapelOptions =>
@@ -442,15 +428,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
     private readonly HashSet<string> _dismissedAlerts = new();
 
-    public HealthAlert? TopAlert => Alerts.Count > 0 ? Alerts[0] : null;
-    public bool HasAlert => Alerts.Count > 0;
-    public string AlertSummary => Alerts.Count switch
-    {
-        0 => "All good",
-        1 => TopAlert!.Message,
-        _ => $"{TopAlert!.Message}   (+{Alerts.Count - 1} more)",
-    };
-
     private void InitScenesAndHealth()
     {
         Scenes = new SceneController(Channels, Outputs);
@@ -463,11 +440,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         SingingCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Singing));
         UseLapelCommand = new RelayCommand(() => Scenes.VoiceSource = Models.VoiceSource.Lapel);
         UseRoomMicsCommand = new RelayCommand(() => Scenes.VoiceSource = Models.VoiceSource.RoomMics);
-        DismissAlertCommand = new RelayCommand(() =>
-        {
-            if (TopAlert != null) _dismissedAlerts.Add(TopAlert.Id);
-            RefreshHealth(force: true);
-        });
     }
 
     // --- Settings-window options ----------------------------------------------------------------
@@ -576,9 +548,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _session.Scene = Scenes.Current?.ToString();
             _session.Note(fresh);
         }
-        RaisePropertyChanged(nameof(TopAlert));
-        RaisePropertyChanged(nameof(HasAlert));
-        RaisePropertyChanged(nameof(AlertSummary));
         RaisePropertyChanged(nameof(AlertCount));
         RaisePropertyChanged(nameof(AlertBadgeState));
         RaisePropertyChanged(nameof(AlertBadgeText));
@@ -835,16 +804,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         get => _replaySessionLabel;
         private set => SetField(ref _replaySessionLabel, value);
-    }
-
-    /// <summary>Replay position, polled by the meter timer so the UI can show a transport readout.</summary>
-    public string ReplayPositionText
-    {
-        get
-        {
-            var rig = _engine.Replay;
-            return rig == null ? "" : $"{rig.Position:hh\\:mm\\:ss} / {rig.Duration:hh\\:mm\\:ss}";
-        }
     }
 
     // Loopback JSON state endpoint for diagnostics — opt-in via AUDIOMIXER_STATE (a port number, or
@@ -1223,7 +1182,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         _vbCableInstalled = IsVbCableInstalled(_allInputDevices, _allOutputDevices);
         RaisePropertyChanged(nameof(ShowVbCablePrompt));
-        RaisePropertyChanged(nameof(WindowHeight));
     }
 
     private void OpenVbCableDownload() => OpenUrl(VbCableUrl);
@@ -1245,7 +1203,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (_vbCablePromptDismissed) return;
         _vbCablePromptDismissed = true;
         RaisePropertyChanged(nameof(ShowVbCablePrompt));
-        RaisePropertyChanged(nameof(WindowHeight));
         QueueAutosave();
     }
 
@@ -1367,7 +1324,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 ApplyInputCount(desired);
                 _inputCount = desired;
                 RaisePropertyChanged(nameof(InputCount));
-                RaisePropertyChanged(nameof(WindowWidth));
             }
 
             var usedInputIds = new HashSet<string>();

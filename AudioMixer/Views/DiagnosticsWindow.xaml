@@ -76,7 +76,6 @@
                     <ColumnDefinition Width="70"/>
                     <ColumnDefinition Width="60"/>
                     <ColumnDefinition Width="60"/>
-                    <ColumnDefinition Width="60"/>
                     <ColumnDefinition Width="70"/>
                     <ColumnDefinition Width="90"/>
                 </Grid.ColumnDefinitions>
@@ -88,9 +87,9 @@
                            ToolTip="Median level of its non-voiced buffers: the room floor this mic actually hears. Read it with the room empty to derive the automixer's silence floor."/>
                 <TextBlock Grid.Column="4" Text="env dB" Style="{StaticResource Head}"/>
                 <TextBlock Grid.Column="5" Text="flux-cv" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="7" Text="gain A" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="8" Text="gain B" Style="{StaticResource Head}"/>
-                <TextBlock Grid.Column="9" Text="state" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="6" Text="gain A" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="7" Text="gain B" Style="{StaticResource Head}"/>
+                <TextBlock Grid.Column="8" Text="state" Style="{StaticResource Head}"/>
             </Grid>
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
@@ -107,7 +106,6 @@
                                         <ColumnDefinition Width="70"/>
                                         <ColumnDefinition Width="60"/>
                                         <ColumnDefinition Width="60"/>
-                                        <ColumnDefinition Width="60"/>
                                         <ColumnDefinition Width="70"/>
                                         <ColumnDefinition Width="90"/>
                                     </Grid.ColumnDefinitions>
@@ -118,9 +116,9 @@
                                     <TextBlock Grid.Column="3" Text="{Binding Floor}" Style="{StaticResource Cell}"/>
                                     <TextBlock Grid.Column="4" Text="{Binding EnvDb}" Style="{StaticResource Cell}"/>
                                     <TextBlock Grid.Column="5" Text="{Binding FluxCv}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="7" Text="{Binding GainA}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="8" Text="{Binding GainB}" Style="{StaticResource Cell}"/>
-                                    <TextBlock Grid.Column="9" Text="{Binding State}" Style="{StaticResource Cell}"
+                                    <TextBlock Grid.Column="6" Text="{Binding GainA}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="7" Text="{Binding GainB}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="8" Text="{Binding State}" Style="{StaticResource Cell}"
                                                Foreground="{Binding StateBrush}"/>
                                 </Grid>
                             </Border>

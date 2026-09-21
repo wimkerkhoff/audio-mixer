@@ -46,7 +46,7 @@ public class StateSnapshotTests
         foreach (var key in new[]
                  {
                      "index", "label", "device", "source", "highPassHz", "inputDb", "postDb", "rmsDb",
-                     "speechDb", "floorDb", "calBuffers", "envDb", "crest", "fluxCv", "clarity",
+                     "speechDb", "floorDb", "calBuffers", "envDb", "fluxCv",
                      "routes", "muted", "volumePercent", "isPriority", "isDucking", "isAutoMixActive",
                      "automixGain",
                  })

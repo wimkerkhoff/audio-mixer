@@ -192,15 +192,11 @@ public sealed class OutputViewModel : ViewModelBase
     public string CurrentAutoMixLabel =>
         AutoMixModeOptions[Math.Clamp(_autoMixModeIndex, 0, AutoMixModeOptions.Length - 1)];
 
-    // Stable hand-off: hold the selected mic with hysteresis so a brief louder moment on another mic
-    // (e.g. a distant speakerphone's AGC pumping up in a talker's pause) can't steal the selection.
-    // On by default. Off = legacy instantaneous-loudest selection.
 
     // Reference-guided selection: pick the room mic whose envelope best matches the priority/lapel mic
     // instead of the loudest. Experimental, off by default. Needs an active priority mic as reference.
 
     // Reference-free: among mics within a level floor of the loudest, prefer the most natural (lowest
-    // spectral-flux instability). Experimental, off by default. Lower precedence than Match lapel.
 
     public OutputViewModel(
         int index,

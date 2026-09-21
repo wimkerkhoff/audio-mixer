@@ -73,7 +73,7 @@ public sealed class OutputPreset
     public string? CustomLabel { get; set; }
     public string? DeviceId { get; set; }
     public string? DeviceName { get; set; }
-    public int AutoMixMode { get; set; }              // 0 Off, 1 Share, 2 Gate
+    public int AutoMixMode { get; set; }           
     public float Volume { get; set; } = 100f;          // percent
 
     // Bus leveler. Property initialisers, not a constructor: System.Text.Json leaves them alone when

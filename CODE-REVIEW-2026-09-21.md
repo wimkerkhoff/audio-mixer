@@ -87,47 +87,6 @@ Each of these was traced through the code end to end. Ordered by how badly it hu
 
 ## 2. Anker-era leftovers
 
-### 2.1 Dead code — delete (verified: no remaining caller or binding)
-
-- [ ] **Per-channel delay stage.** `Audio/DelayLine.cs` (whole file); `InputChannel._delayLine`,
-      `DelayMs` (`:366-380`), the `new DelayLine(48000*2*2)` in `Start` (`:411`, 768 KB per channel
-      start), `delay.ProcessInPlace` (`:768`); `ChannelViewModel.DelayMs` (`:153-166`) and
-      `HasAdvancedSettings` (`:312-313`). Nothing sets the delay, so every sample is copied through
-      the ring at offset 0 for nothing. Keep the `fifo == null || converted == null` early-return in
-      `OnDataAvailable`.
-- [ ] **Crest → "Mic clarity"** end to end: `AutoMixer` `CrestMin/CrestMax/QualityFloor/CrestMs`,
-      `_crest`, `_crestCoef`, the per-tick block at `:141-163`, `AutoMixDiag.Crest`;
-      `InputChannel.CurrentPeakLinear` (its only consumer) and `Clarity`; `ChannelViewModel`
-      `HasClarity/ClarityBar/ClarityText` (raised 30 Hz, bound nowhere); `DiagnosticsLog.cs:46-48`
-      "(clarity NN%)"; `StateSnapshot.cs:43,45` `crest`/`clarity` keys and `StateSnapshotTests:49`;
-      the `peak` parameter of `InjectLevelsForTest` (no test passes it). Finding 1 says crest fails
-      through DSP; on a DSP-free mic it is dominated by handling transients, so it is no proximity
-      cue there either.
-- [ ] **Comment residue for removed selectors:** `AutoMixer.cs:41-47` (reference-guided rationale)
-      and `:57` (dangling "Which metric decides the leader this tick. Correlation outranks Natural…");
-      `OutputViewModel.cs:158-166` (three orphaned blocks for StableHandoff/ReferenceGuided/
-      PreferNatural); `MixerPreset.cs:97` (`// 0 Off, 1 Share, 2 Gate` — contradicts the enum);
-      `InputChannel.cs:128` ("share leader"); `MainViewModel.cs:377-378` ("Advanced gear popup");
-      `Scene.cs:17-18, 25-27` (Share / prefer-natural / Anker gating in enum docs — point at finding
-      4 instead); `SceneTransformTests.cs:64-73` test named `…DisablesPreferNatural` that asserts
-      nothing about it.
-- [ ] `DiagnosticsWindow.xaml:73-125`: 10 `ColumnDefinition`s but headers/cells skip column 6 (the
-      ref-corr column left a 60 px hole).
-- [ ] **Dead Advanced-window members** (0 XAML refs each): `MainViewModel` `WindowWidth`,
-      `WindowHeight`, `StripWidth`, `NonStripWidth`, `BaseWindowHeight`, `VbCableBannerHeight`,
-      `ShowVbCablePrompt`, `DownloadVbCableCommand`, `DismissVbCablePromptCommand`,
-      `ReplayPositionText` (still raised every tick in replay), `DismissAlertCommand`, `TopAlert`,
-      `HasAlert`, `AlertSummary`; `ChannelViewModel` `SourceStereo/Left/Right`, `SourceSuffix`,
-      `HighPassChoices/Text/Index`, `MeterFraction`, `BandStart/Width`, `FractionFor`,
-      `InputPeakHoldDb`; `RouteToggleViewModel` `LedTooltip`, `IsDucking`, `RefreshLed`;
-      `OutputViewModel` `LevelerLiftBar`, `LevelerState`, `LevelerSummary`, `AutoMixEnabled`,
-      `CurrentAutoMixLabel`; converters `SeverityBrushConverter`, `NullToVisibilityConverter`,
-      `MicDotConverter` declared in `SimpleWindow.xaml:24-26` but unused. `WindowSizingTests.cs`
-      pins local copies of constants for a window that no longer exists — delete with them.
-- [ ] Test fixture strings: `HealthMonitorTests.cs:13-14,169`, `VirtualDeviceFilterTests.cs:27`,
-      `DeviceResolverTests.cs:20,74-76,109,180` — cosmetic; the `(N- …)` enumerator shapes are still
-      real for Rode RX endpoints, so swap the names and keep the shapes.
-
 ### 2.2 Wired, speakerphone-only — remove with a stated risk
 
 - [ ] **Bluetooth rule wording and name fallback.** Keep the enumerator-bus check
@@ -168,25 +127,7 @@ Each of these was traced through the code end to end. Ordered by how badly it hu
 
 ### 2.4 Tools
 
-Delete:
-- [ ] `tools/replay_share.py` — replays the removed Share gain formula and the *pre-fix* flux scale;
-      hardcodes stereo `reshape(-1, 2)` so split-strip mono captures are misread.
-- [ ] `tools/replay_natural.py`, `tools/review_natural.py` — replay/judge Prefer natural;
-      `review_natural.py:6` hardcodes `C:\Users\FreeGrace\…\AudioMixer.log`.
-- [ ] `tools/scene4.py`, `tools/scene5.py`, `tools/spectro.py` — hardcoded 2026-06 Anker stamps and
-      In4/In5 labels; stereo reshape; `spectro.py` throws `KeyError` on a 3-mic session.
-- [ ] `tools/voice_quality.py` — exists only to reproduce the finding-3 inversion (recorded).
-- [ ] `tools/RefCorr/` — offline validation for Match lapel (removed).
-- [ ] `tools/baselines/presentation.json`, `singing.json` — recorded with `preferNatural: true` on
-      5 Ankers; the current engine can never reproduce them, and their source WAVs were likely
-      pruned (1.7). `replay-baseline.ps1` writes a fresh baseline when the file is absent.
-- [ ] `BROADCAST-MODE.md` — plan for a firmware feature Anker removed; its own header says delete.
-      Check §2.3 (Standby vs recorder) is resolved before deleting; move to ROADMAP if not.
-
 Update:
-- [ ] `tools/replay-baseline.ps1:56-58` drops `--advanced` (the app silently ignores unknown flags,
-      so fixtures already run under SimpleWindow and the comment is false); `:130` reads
-      `outputs[$o].preferNatural`, which `/state` no longer emits.
 - [ ] `tools/gate_rate.py:3-5,20-21`, `tools/naturalness.py:3,27`, `tools/AnalyzeInputs/Program.cs:
       5-9,15,38-41` — Anker labels/docstrings; `AnalyzeInputs:15` mirrors the crest constants
       being deleted in 2.1.

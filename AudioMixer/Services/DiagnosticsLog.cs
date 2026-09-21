@@ -43,9 +43,8 @@ public sealed class DiagnosticsLog
             if (winner == _lastAutoMixWinner[o]) continue;
             int prev = _lastAutoMixWinner[o];
             _lastAutoMixWinner[o] = winner;
-            string clarity = winner >= 0 && winner < _channels.Count ? _channels[winner].ClarityText : "—";
             AudioLog.Write(
-                $"Output {OutputViewModel.Tag(o)} auto-mix: {Name(prev)} → {Name(winner)} (clarity {clarity})");
+                $"Output {OutputViewModel.Tag(o)} auto-mix: {Name(prev)} → {Name(winner)}");
         }
 
         string Name(int i) => i < 0 ? "none"

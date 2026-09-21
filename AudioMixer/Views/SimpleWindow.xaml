@@ -21,9 +21,6 @@
     -->
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <v:SeverityBrushConverter x:Key="SeverityBrush"/>
-        <v:NullToVisibilityConverter x:Key="NullToVis"/>
-        <v:MicDotConverter x:Key="MicDot"/>
 
         <Style x:Key="Cap" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#A9A9B6"/>

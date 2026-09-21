@@ -20,11 +20,6 @@ public sealed class InputChannel : IDisposable
     private float _currentLevelLinear;
     public float CurrentLevelLinear => Volatile.Read(ref _currentLevelLinear);
 
-    // Peak (max |sample|) latched per buffer. AutoMixer divides this by the RMS to get a crest
-    // factor — a closeness/clarity proxy that survives the speakerphones' own AGC (AGC normalizes
-    // RMS but can't un-smear the reverb that fills a distant mic's envelope troughs).
-    private float _currentPeakLinear;
-    public float CurrentPeakLinear => Volatile.Read(ref _currentPeakLinear);
 
     /// <summary>
     /// Feeds the levels the automixer selects on, without a capture device.
@@ -34,10 +29,9 @@ public sealed class InputChannel : IDisposable
     /// The only thing standing in the way was that the levels are normally written by the capture
     /// callback, so this is that one seam and nothing more. Internal, like the conversion-chain seam.
     /// </summary>
-    internal void InjectLevelsForTest(float rms, float peak = 0f)
+    internal void InjectLevelsForTest(float rms)
     {
         Volatile.Write(ref _currentLevelLinear, rms);
-        Volatile.Write(ref _currentPeakLinear, peak <= 0f ? rms : peak);
     }
 
     // Spectral-flux instability (coefficient of variation of frame-to-frame spectral change) latched
@@ -116,16 +110,7 @@ public sealed class InputChannel : IDisposable
 
     public void ResetCalibration() => _calibration.Reset();
 
-    // Smoothed crest-derived clarity weight (0..1, NaN when no recent speech), written by AutoMixer
-    // for display. Higher = closer/cleaner mic.
-    private float _clarity = float.NaN;
-    public float Clarity
-    {
-        get => Volatile.Read(ref _clarity);
-        set => Volatile.Write(ref _clarity, value);
-    }
-
-    // True when the automixer is currently selecting this channel (gate winner / share leader /
+    // True when the automixer is currently selecting this channel (gate winner / automix leader /
     // active priority mic) on any output it is routed to. Drives the per-input green "selected" LED.
     private bool _isAutoMixActive;
     public bool IsAutoMixActive
@@ -242,7 +227,6 @@ public sealed class InputChannel : IDisposable
     private WaveFormat? _captureFormat;
     private BufferedWaveProvider? _captureFifo;
     private ISampleProvider? _convertedSource;
-    private DelayLine? _delayLine;
 
     private float _gainLinear = 1f;
     private bool _muted;
@@ -363,22 +347,6 @@ public sealed class InputChannel : IDisposable
         set => Volatile.Write(ref _muted, value);
     }
 
-    public int DelayMs
-    {
-        get
-        {
-            var d = _delayLine;
-            return d == null ? 0 : (int)Math.Round(d.DelaySamples * 1000.0 / InternalSampleRate);
-        }
-        set
-        {
-            var d = _delayLine;
-            if (d == null) return;
-            int samples = (int)Math.Round(Math.Max(0, value) * InternalSampleRate / 1000.0);
-            d.DelaySamples = samples;
-        }
-    }
-
     public void Start(AudioDeviceInfo deviceInfo)
     {
         var device = deviceInfo.Resolve()
@@ -408,7 +376,6 @@ public sealed class InputChannel : IDisposable
         };
 
         _convertedSource = BuildConversionChain(_captureFifo.ToSampleProvider(), _captureFormat, Source);
-        _delayLine = new DelayLine(InternalSampleRate * InternalChannels * 2);
         int hz = Volatile.Read(ref _highPassHz);
         if (hz > 0)
         {
@@ -453,17 +420,14 @@ public sealed class InputChannel : IDisposable
             }
             _captureFifo = null;
             _convertedSource = null;
-            _delayLine = null;
             InputPeak.Reset();
             PostPeak.Reset();
             Volatile.Write(ref _currentLevelLinear, 0f);
-            Volatile.Write(ref _currentPeakLinear, 0f);
             ResetAnalysisState();
             ResetCalibration();
             Interlocked.Exchange(ref _clippedSamples, 0);
             _hpLeft = null; _hpRight = null;
             _rfPrevVoiced = false;   // don't count a drop edge across a stop/restart
-            Volatile.Write(ref _clarity, float.NaN);
             Volatile.Write(ref _isAutoMixActive, false);
             for (int o = 0; o < _outputCount; o++) _autoMixRamp[o] = 1f;
             foreach (var buf in _outBuffers) buf.ClearBuffer();
@@ -648,17 +612,13 @@ public sealed class InputChannel : IDisposable
     private float MeasureAndLatchLevels(float[] samples, int count)
     {
         double sumSq = 0;
-        float peak = 0f;
         for (int i = 0; i < count; i++)
         {
             float s = samples[i];
             sumSq += (double)s * s;
-            float a = s < 0 ? -s : s;
-            if (a > peak) peak = a;
         }
         float rms = (float)Math.Sqrt(sumSq / count);
         Volatile.Write(ref _currentLevelLinear, rms);
-        Volatile.Write(ref _currentPeakLinear, peak);
         return rms;
     }
 
@@ -736,8 +696,7 @@ public sealed class InputChannel : IDisposable
     {
         var fifo = _captureFifo;
         var converted = _convertedSource;
-        var delay = _delayLine;
-        if (fifo == null || converted == null || delay == null || _captureFormat == null) return;
+        if (fifo == null || converted == null || _captureFormat == null) return;
         if (e.BytesRecorded <= 0) return;
 
         Volatile.Write(ref _lastDataTicks, Environment.TickCount64);
@@ -769,8 +728,6 @@ public sealed class InputChannel : IDisposable
             {
                 for (int i = 0; i < read; i++) rented[i] *= gain;
             }
-
-            delay.ProcessInPlace(rented, read);
 
             PostPeak.Observe(rented, read);
 

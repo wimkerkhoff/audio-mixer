@@ -34,31 +34,13 @@ public sealed class AutoMixer
     // mic can't steal it. This is what fixes the speakerphones — their AGC applies make-up gain in a
     // talker's pauses, momentarily out-leveling the close mic; without a hold the selection chatters
     // to whatever distant mic pumped up. Measured on real hardware: hold+hysteresis cuts selection
-    // flips ~5x AND tracks the closest mic better than the old crest weighting (see CLAUDE.md).
+    // flips ~5x and tracks the closest mic (see CLAUDE.md finding 1).
     private const int HandoffHoldTicks = 20;       // ~200 ms a winner is held before it can switch
     private const float HandoffHysteresis = 1.413f; // challenger must be ~+3 dB louder to take over
 
-    // Reference-guided selection (opt-in per output): instead of picking the LOUDEST mic, pick the
-    // room mic whose loudness envelope best matches the priority/lapel mic — a clean ground-truth copy
-    // of the talker. Validated offline (tools/RefCorr): when level ranks a loud-but-bad speakerphone
-    // above a quieter clean one, envelope-correlation-to-lapel inverts that and ranks the clean mic
-    // first (level is fooled by the bad mic's AGC; correlation isn't, because the bad mic's envelope is
-    // smeared by reverb/noise and tracks the lapel less faithfully). Needs an active priority mic as
-    // the reference; falls back to level-wins when none is speaking.
-    // Crest factor (peak/RMS) is NO LONGER part of the selection — on the speakerphone DSP it does
-    // not track proximity (gating/AGC make it noise; it ranked the closest mic <40% of the time and
-    // actually increased selection flips). It is kept only as the per-mic "clarity" readout in the
-    // gear popup, mapped CrestMin..CrestMax -> [QualityFloor,1].
-    private const float CrestMin = 2.2f;
-    private const float CrestMax = 6.0f;
-    private const float QualityFloor = 0.35f;
-    private const float CrestMs = 120f;            // crest smoothing; slower than the level envelope
-
-    // Which metric decides the leader this tick. Correlation outranks Natural, which outranks Level;
     private readonly int _outputCount;
     private readonly int[] _modes;                 // AutoMixMode as int (enum can't use Volatile<T>)
     private readonly float[] _env;                 // smoothed level per channel (sized to max inputs)
-    private readonly float[] _crest;               // smoothed crest factor per channel (display only)
     private readonly bool[] _activeAny;            // scratch: channel selected on any output this tick
     private readonly int[] _activeInput;           // per output, selected channel index (-1 = none)
     private readonly int[] _winner;                // per output held leader, -1 = none
@@ -70,7 +52,6 @@ public sealed class AutoMixer
 
     private readonly float _attackCoef;
     private readonly float _releaseCoef;
-    private readonly float _crestCoef;
 
     public AutoMixer(int outputCount, int maxChannels)
     {
@@ -89,13 +70,11 @@ public sealed class AutoMixer
         }
 
         _env = new float[maxChannels];
-        _crest = new float[maxChannels];
         _cv = new float[maxChannels];
         _activeAny = new bool[maxChannels];
 
         _attackCoef = (float)(1 - Math.Exp(-TickSeconds / (AttackMs / 1000.0)));
         _releaseCoef = (float)(1 - Math.Exp(-TickSeconds / (ReleaseMs / 1000.0)));
-        _crestCoef = (float)(1 - Math.Exp(-TickSeconds / (CrestMs / 1000.0)));
     }
 
     public void SetMode(int output, AutoMixMode mode)
@@ -116,14 +95,13 @@ public sealed class AutoMixer
         var d = new AutoMixDiag
         {
             Env = new float[n],
-            Crest = new float[n],
             Cv = new float[n],
             Mode = new AutoMixMode[_outputCount],
             Winner = new int[_outputCount],
             WinnerHold = new int[_outputCount],
             ActiveInput = new int[_outputCount],
         };
-        for (int i = 0; i < n; i++) { d.Env[i] = _env[i]; d.Crest[i] = _crest[i]; d.Cv[i] = _cv[i]; }
+        for (int i = 0; i < n; i++) { d.Env[i] = _env[i]; d.Cv[i] = _cv[i]; }
         for (int o = 0; o < _outputCount; o++)
         {
             d.Mode[o] = (AutoMixMode)Volatile.Read(ref _modes[o]);
@@ -138,8 +116,7 @@ public sealed class AutoMixer
     {
         int n = Math.Min(inputs.Length, _env.Length);
 
-        // Level envelope per channel, plus the crest-derived clarity readout (display only — crest is
-        // refreshed only while a mic hears speech, otherwise peak/RMS is meaningless noise).
+        // Level envelope per channel.
         for (int i = 0; i < n; i++)
         {
             float inst = inputs[i].CurrentLevelLinear;
@@ -148,19 +125,6 @@ public sealed class AutoMixer
             _env[i] = e;
             _cv[i] = inputs[i].CurrentFluxCv;
 
-            if (inst > SilenceFloorRms)
-            {
-                float c = inputs[i].CurrentPeakLinear / (inst + 1e-6f);
-                float ce = _crest[i];
-                ce += (c - ce) * _crestCoef;
-                _crest[i] = ce;
-                float t = Math.Clamp((ce - CrestMin) / (CrestMax - CrestMin), 0f, 1f);
-                inputs[i].Clarity = QualityFloor + (1f - QualityFloor) * t;
-            }
-            else
-            {
-                inputs[i].Clarity = float.NaN;   // idle: no estimate to show
-            }
             _activeAny[i] = false;
         }
 
@@ -291,7 +255,6 @@ public sealed class AutoMixer
 public sealed class AutoMixDiag
 {
     public float[] Env = Array.Empty<float>();        // smoothed level per channel (the selection metric)
-    public float[] Crest = Array.Empty<float>();      // smoothed crest factor per channel (display only)
     public float[] Cv = Array.Empty<float>();         // spectral-flux instability (diagnostic: rises on RF dropouts)
     public AutoMixMode[] Mode = Array.Empty<AutoMixMode>();
     public int[] Winner = Array.Empty<int>();         // held leader per output (-1 none)

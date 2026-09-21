@@ -6,13 +6,16 @@ using NAudio.Wave;
 // button and works out, per known-close segment (the mic the talker stood nearest dominates its
 // own track), which signal metric most reliably ranks the closest/cleanest mic highest — even
 // when level gaps are small (the real room case). Tests whether crest factor is flat / inverted
-// / mis-ranged on the Anker DSP and what beats it. Uses NAudio (already a repo dependency).
+// / mis-ranged on the Rode DSP and what beats it. Uses NAudio (already a repo dependency).
 
+// Crest weighting is simulated HERE and nowhere else: the engine dropped it (finding 1 — it
+// ranked the closest mic no better and increased selection flips). These constants are this
+// tool's own, not a mirror of the engine's any more.
+const float CrestMin = 2.2f, CrestMax = 6.0f, QualityFloor = 0.35f;
 const int Hop = 480;            // 10 ms frame grid @ 48 kHz
 const double VoiceAbs = 0.006;  // ~ -44 dBFS: room mic is hearing speech above this RMS
 const int GapClose = 25;        // bridge <=250 ms gaps inside one spoken phrase
 const int MinRegion = 30;       // >= 300 ms voiced run = a position segment
-const float CrestMin = 2.2f, CrestMax = 6.0f, QualityFloor = 0.35f;  // engine mapping (AutoMixer.cs)
 
 string dir = args.Length > 0
     ? args[0]
@@ -36,7 +39,7 @@ foreach (var f in sess)
     m.Rms10 = FrameRms(sig, Hop, Hop);
     m.Peak10 = FramePeak(sig, Hop, Hop);
     mics.Add(m);
-    Console.WriteLine($"  {m.Label,-5} {(double)sig.Length / sr,5:0.0}s  noiseFloor={20 * Math.Log10(m.NoiseFloor + 1e-12),6:0.0}dB  ({(m.IsRode ? "Rode lapel ref" : "Anker")})");
+    Console.WriteLine($"  {m.Label,-5} {(double)sig.Length / sr,5:0.0}s  noiseFloor={20 * Math.Log10(m.NoiseFloor + 1e-12),6:0.0}dB  ({(m.IsRode ? "Rode lapel ref" : "Rode")})");
 }
 Console.WriteLine();
 

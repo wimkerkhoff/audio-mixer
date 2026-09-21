@@ -170,21 +170,6 @@ public sealed class ChannelViewModel : ViewModelBase
     public double BandStart => TargetBandStart;
     public double BandWidth => TargetBandWidth;
 
-    private int _delayMs;
-    public int DelayMs
-    {
-        get => _delayMs;
-        set
-        {
-            int clamped = Math.Clamp(value, 0, 1000);
-            if (SetField(ref _delayMs, clamped))
-            {
-                _channel.DelayMs = clamped;
-                RaisePropertyChanged(nameof(HasAdvancedSettings));
-            }
-        }
-    }
-
     private bool _isPriority;
     public bool IsPriority
     {
@@ -330,7 +315,7 @@ public sealed class ChannelViewModel : ViewModelBase
 
     // Drives the gear icon's "customized" highlight.
     public bool HasAdvancedSettings =>
-        _delayMs != 0 || _isPriority || _source != ChannelSource.Stereo || _highPassHz != 0;
+        _isPriority || _source != ChannelSource.Stereo || _highPassHz != 0;
 
     public RelayCommand ClearDeviceCommand { get; }
 
@@ -349,11 +334,6 @@ public sealed class ChannelViewModel : ViewModelBase
     {
         for (int o = 0; o < Routes.Length && o < outputs.Length; o++) Routes[o].AttachOutput(outputs[o]);
     }
-
-    // Crest-derived clarity (0..1, higher = closer/cleaner). NaN when the mic hears no speech.
-    public bool HasClarity => !float.IsNaN(_channel.Clarity);
-    public double ClarityBar => float.IsNaN(_channel.Clarity) ? 0 : _channel.Clarity;
-    public string ClarityText => float.IsNaN(_channel.Clarity) ? "—" : $"{_channel.Clarity * 100:F0}%";
 
     public ChannelViewModel(
         int index,
@@ -392,9 +372,6 @@ public sealed class ChannelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(MeterFraction));
         RaisePropertyChanged(nameof(CalibrationText));
         foreach (var r in Routes) r.RefreshLed();
-        RaisePropertyChanged(nameof(HasClarity));
-        RaisePropertyChanged(nameof(ClarityBar));
-        RaisePropertyChanged(nameof(ClarityText));
         RaisePropertyChanged(nameof(HasDevice));
         RaisePropertyChanged(nameof(IsRoutedAnywhere));
     }
