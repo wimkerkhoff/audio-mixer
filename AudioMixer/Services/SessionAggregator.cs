@@ -1,4 +1,4 @@
-namespace AudioMixer.Services;
+﻿namespace AudioMixer.Services;
 
 /// <summary>What one microphone did over a whole session.</summary>
 public sealed record InputSummary
@@ -65,7 +65,6 @@ public sealed record SessionSummary
     public string Stamp { get; init; } = "";
     public DateTime StartedUtc { get; init; }
     public double DurationMinutes { get; init; }
-    public string? Scene { get; init; }
     public SessionConfig Config { get; init; } = new();
     public IReadOnlyList<InputSummary> Inputs { get; init; } = Array.Empty<InputSummary>();
     public IReadOnlyList<OutputSummary> Outputs { get; init; } = Array.Empty<OutputSummary>();
@@ -197,7 +196,7 @@ public sealed class SessionAggregator
     }
 
     public SessionSummary Build(
-        string stamp, DateTime startedUtc, string? scene,
+        string stamp, DateTime startedUtc,
         IReadOnlyList<InputSummary> inputSeed, IReadOnlyList<OutputSummary> outputSeed,
         SessionConfig? config = null)
     {
@@ -230,7 +229,6 @@ public sealed class SessionAggregator
             Stamp = stamp,
             StartedUtc = startedUtc,
             DurationMinutes = minutes,
-            Scene = scene,
             Config = config ?? new SessionConfig(),
             Inputs = inputs,
             Outputs = outputs,

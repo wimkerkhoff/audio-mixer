@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -60,8 +60,7 @@ public partial class DiagnosticsWindow : Window
             return;
         }
 
-        SessionPanel.Children.Add(Head($"{s.DurationMinutes:F1} min" +
-            (s.Scene == null ? "" : $"  ·  {s.Scene}")));
+        SessionPanel.Children.Add(Head($"{s.DurationMinutes:F1} min"));
 
         foreach (var o in s.Outputs)
         {

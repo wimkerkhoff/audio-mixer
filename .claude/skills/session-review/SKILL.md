@@ -32,7 +32,7 @@ Under `~/Documents/AudioMixer/`:
 | File | What it is | Tapped where |
 |---|---|---|
 | `analysis/diag-input<N>-<stamp>.wav` | one mic, raw | **pre-fader, pre-low-cut** — what the mic heard |
-| `analysis/decisions-<stamp>.csv` | 10 Hz decision track | scene, winner/bus, leveler gain/bus, per-mic level + applied gain |
+| `analysis/decisions-<stamp>.csv` | 10 Hz decision track | automix mode/bus, winner/bus, leveler gain/bus, per-mic level + applied gain. Captures before 2026-09-23 have a single `scene` column instead of the mode columns |
 | `recordings/mix-<A|B>-<stamp>.wav` | the bus | **post-leveler, pre-volume** — what was sent |
 | `sessions/session-<stamp>.json` | aggregates + config + events | whole session |
 

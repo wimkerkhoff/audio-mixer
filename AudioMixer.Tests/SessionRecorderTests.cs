@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using AudioMixer.Services;
 
 namespace AudioMixer.Tests;
@@ -60,7 +60,7 @@ public class SessionRecorderTests : IDisposable
     // --- the summary --------------------------------------------------------------------------------
 
     /// <summary>The record has to be readable without the rig in front of you, so the labels, the
-    /// devices and the scene all have to survive into it.</summary>
+    /// devices and the config all have to survive into it.</summary>
     [Fact]
     public void TheSummaryCarriesTheRigItWasRecordedOn()
     {
@@ -68,13 +68,11 @@ public class SessionRecorderTests : IDisposable
         f.Channels[0].CustomLabel = "LAPEL";
         f.Channels[0].SelectedDevice = VmFixture.Lapel;
         var r = Recorder(f);
-        r.Scene = "Prayer";
         r.Config = () => new SessionConfig { LowCutHz = 80, Lapel = "LAPEL" };
         Pump(r, 5);
 
         var s = r.BuildSummary();
 
-        Assert.Equal("Prayer", s.Scene);
         Assert.Equal("LAPEL", s.Inputs[0].Label);
         Assert.Equal("Wireless PRO RX", s.Inputs[0].DeviceName);
         Assert.Equal(80, s.Config.LowCutHz);

@@ -12,7 +12,7 @@ public static class StateSnapshot
     public static string Build(
         AudioEngine engine, IReadOnlyList<ChannelViewModel> channels,
         IReadOnlyList<OutputViewModel> outputs, int inputCount, string status,
-        string? scene = null, IReadOnlyList<HealthAlert>? alertList = null)
+        IReadOnlyList<HealthAlert>? alertList = null)
     {
         var alerts = alertList ?? Array.Empty<HealthAlert>();
         static double ToDb(double lin) => lin <= 1e-6 ? -120.0 : Math.Round(20 * Math.Log10(lin), 1);
@@ -100,7 +100,6 @@ public static class StateSnapshot
             ts = DateTime.Now.ToString("HH:mm:ss.fff"),
             inputCount,
             status,
-            scene,
             alerts = alerts.Select(a => new { a.Id, severity = a.Severity.ToString(), a.Message }).ToArray(),
             replay = rig == null ? null : new
             {

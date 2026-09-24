@@ -49,6 +49,11 @@ also restore the automixer's core assumption — with no AGC anywhere, a level d
 
 ## Scene matrix
 
+> **Superseded 2026-09-23 — scenes were removed** (see CLAUDE.md, "The UI"). The matrix below is
+> still the right *configuration* for each kind of meeting, but the operator now sets it directly:
+> route and mute the mics on their rows, choose the priority mic in the panel's PRIORITY MIC picker,
+> and tap **Singing** for worship. "No new scenes are needed" below became "no scenes at all".
+
 Decided 2026-08-30. The presenter wears the lapel with **priority ON** for teaching, Q&A *and*
 theology study; only prayer runs with no lapel at all.
 

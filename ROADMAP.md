@@ -9,6 +9,14 @@ Status key: 🔲 planned · 🔬 needs live data / validation · 🛠 doable now
 
 ## Operator experience
 
+### ❌ Scenes — REMOVED 2026-09-23, replaced by a Singing toggle and a priority picker
+The four scene buttons and the voice-source override are gone; see CLAUDE.md ("The UI") for the
+full reasoning. In short: operators could not remember what each did, and because every scene
+rewrote every mute and route it silently undid their own changes — twice in one evening. What
+survived is the knowledge they cannot re-derive: **Singing** (both buses automix Off) and the
+**priority mic** picker, both on the operator panel. The entries below that mention scenes are kept as
+the record of why things were built; where one still describes live work it has been retargeted.
+
 ### 🛠 Build queue as of 2026-09-20 — mostly built, three items open
 
 Everything below was settled with the operator this session. Mockups:
@@ -250,7 +258,7 @@ Plus **one** operator override: a coarse **Voice source** toggle — **Lapel vs 
 
 *Why:* operators aren't audio-savvy; the common path has to "just work," and on a crowded single screen it has to stay small.
 
-### 🔲 Scene control — Standby / Teaching / Prayer / Singing
+### ❌ Scene control — Standby / Teaching / Prayer / Singing — *built 2026-08-09, removed 2026-09-23*
 One operator control that switches the whole behavior:
 - **Standby** — outputs muted, so pre-service chatter never reaches Zoom/recording.
 - **Teaching** — the current follow-the-talker automix (priority-lapel ducks the room; correct for
@@ -298,9 +306,12 @@ variation; raw multi-mic activity was useless — 3–4 mics hot for the entire 
 control is reliable. Pairs naturally with Easy UI.
 
 ### 🔬 Singing auto-detect → operator prompt → auto-revert
-A semi-automatic layer over the Singing scene: best-effort **detect** likely singing, **prompt** the
+*Retargeted 2026-09-23: the scene is gone, so this now prompts to turn the Singing toggle on (both
+buses Off) and back. The mic policy below is Anker-era and does not survive: the toggle leaves which
+mics are open to the operator.*
+A semi-automatic layer over the Singing toggle: best-effort **detect** likely singing, **prompt** the
 operator ("Singing? Switch to a single mic until it's over") rather than auto-switching, apply the
-scene on confirm, and **auto-revert** to the prior mode when singing ends. Mic policy in the scene:
+toggle on confirm, and **auto-revert** to the prior mode when singing ends. Mic policy in the scene:
 **if the lapel is in use, just use the lapel** (a real mic; skip the Ankers entirely); **if no
 lapel, pin the single cleanest Anker** (lowest live flux-cv) — not several (compounded speakerphone
 DSP artifacts, see the Singing scene note above).
@@ -371,7 +382,8 @@ current ~3 dB margin, which would make the held leader sticky.
 
 ### 🔬 Scene-driven noise reduction — spectral subtraction, never a gate
 Operator-requested 2026-08-23: cut background noise during prayer without hurting singing. The toggle
-already exists — `Scene.Singing` — so this is a strength property hung off the scene, not new UI.
+already exists — the Singing toggle (originally `Scene.Singing`, removed 2026-09-23) — so this is a
+strength property keyed off "both buses Off", not new UI.
 
 **Technique is the whole decision.** A gate or expander attenuates based on level over time and
 punches holes in sustained material; that is the S500 failure mode and it is also what silences a
@@ -652,7 +664,7 @@ it green (that destroys the only evidence).
 Still to add: a **prayer** fixture from 2026-07-26, and a synthetic generator for cases the recordings
 don't contain.
 
-### 🛠 Scenes as a pure transform
+### ❌ Scenes as a pure transform — *removed with the scenes 2026-09-23; the allowlist warning below still holds*
 Implement a scene as a testable function (`Scene` → list of property assignments) separate from the code
 that applies it, so scene behaviour is unit-testable with no audio. Scenes are the riskiest new surface
 because they *write* operator state. **Check every new persisted VM property against

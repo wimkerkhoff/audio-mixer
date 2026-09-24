@@ -198,7 +198,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         foreach (var ch in Channels) AttachChannel(ch);
         foreach (var op in Outputs) op.PropertyChanged += OnSettingChanged;
 
-        InitScenesAndHealth();
+        InitAutomixControls();
         for (int o = 0; o < _lastOutputSound.Length; o++) _lastOutputSound[o] = Environment.TickCount64;
 
         _meterTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -226,7 +226,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 i => i < _engine.Inputs.Length ? Db(_engine.Inputs[i].CurrentLevelLinear) : -120.0,
                 (i, o) => i < _engine.Inputs.Length ? _engine.Inputs[i].GetAutoMixGain(o) : 1f,
                 o => Outputs[o].LevelerGainDb,
-                Scenes.Current?.ToString() ?? "Custom");
+                o => ((AutoMixMode)Outputs[o].AutoMixModeIndex).ToString());
             RefreshHealth();
         };
         _meterTimer.Start();
@@ -258,25 +258,66 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (!_isReplaying)
         {
             _session = new SessionRecorder(_engine, Channels, Outputs) { Config = BuildSessionConfig };
-            Scenes.OnOperatorAction = what => _session?.Action(what);
         }
 
         StartReplayIfRequested();
-        // After the preset, so a scene overrides saved state rather than the other way round.
-        if (App.StartupScene is { } scene) Scenes.Apply(scene);
         StartStateServer();
     }
 
-    // --- Scenes and health (Simple mode) -------------------------------------------------------
+    // --- Singing: the one automix decision the operator makes -------------------------------------
+    //
+    // Scenes were removed 2026-09-23. They rewrote every channel and output at once, which silently
+    // undid any hand mute the moment someone changed scene, and the operators -- who are trusted with
+    // mute and A/B and mix in OBS -- could not remember what each of four buttons did. What survives
+    // is the one piece of knowledge an operator cannot re-derive: singing has no single talker, so
+    // follow-the-talker must be OFF. Everything else a scene did, the operator does directly.
+    //
+    // Priority needs no handling here. AutoMixer's Off branch sets unity gain and skips the priority
+    // logic entirely, so a priority lapel cannot duck anything while the buses are Off -- and it is
+    // still armed when they go back to Gate, which the old Singing scene (which cleared it) was not.
 
-    public SceneController Scenes { get; private set; } = null!;
+    public RelayCommand ToggleSingingCommand { get; private set; } = null!;
 
-    public RelayCommand StandbyCommand { get; private set; } = null!;
-    public RelayCommand TeachingCommand { get; private set; } = null!;
-    public RelayCommand PrayerCommand { get; private set; } = null!;
-    public RelayCommand SingingCommand { get; private set; } = null!;
-    public RelayCommand UseLapelCommand { get; private set; } = null!;
-    public RelayCommand UseRoomMicsCommand { get; private set; } = null!;
+    /// <summary>True only when every bus is Off. Mixed counts as not singing, so a tap turns it on.</summary>
+    public bool IsSinging => Outputs.Length > 0
+        && Outputs.All(o => o.AutoMixModeIndex == (int)AutoMixMode.Off);
+
+    /// <summary>
+    /// "on" / "off" / "mixed" for the button's DataTrigger -- a string because a WPF trigger Value is
+    /// parsed as text and silently never fires against a bool. "mixed" exists because the per-bus mode
+    /// is still settable in Settings, and a toggle showing "off" while one bus was Off would lie.
+    /// </summary>
+    public string SingingState =>
+        IsSinging ? "on"
+        : Outputs.Any(o => o.AutoMixModeIndex == (int)AutoMixMode.Off) ? "mixed"
+        : "off";
+
+    /// <summary>What the automixer is doing right now, in words, so nobody has to remember it.</summary>
+    public string SingingSummary => SingingState switch
+    {
+        "on" => "Singing: every mic open, no switching.",
+        "mixed" => "Buses differ. Tap to put both in singing.",
+        _ => "Speaking: one mic at a time, following the talker.",
+    };
+
+    private void InitAutomixControls()
+    {
+        ToggleSingingCommand = new RelayCommand(() =>
+        {
+            var mode = IsSinging ? AutoMixMode.Gate : AutoMixMode.Off;
+            foreach (var o in Outputs) o.AutoMixModeIndex = (int)mode;
+        });
+        foreach (var op in Outputs)
+        {
+            op.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(OutputViewModel.AutoMixModeIndex)) return;
+                RaisePropertyChanged(nameof(IsSinging));
+                RaisePropertyChanged(nameof(SingingState));
+                RaisePropertyChanged(nameof(SingingSummary));
+            };
+        }
+    }
 
     /// <summary>
     /// Does the thing an alert suggests. Until 2026-09-21 every suggested fix was a label, which for a
@@ -394,17 +435,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // --- the lapel, as a single choice ------------------------------------------------------------
 
     /// <summary>
-    /// Which channel is the presenter's lapel, as one selection rather than a set of checkboxes.
-    /// Operator's call 2026-09-20: only one input is ever the lapel on this rig.
+    /// Which channel is the priority mic, as one selection rather than a set of checkboxes.
+    /// Operator's call 2026-09-20: only one input is ever priority on this rig, and this is the ONLY
+    /// control that sets it, so "one at a time" holds by construction.
     ///
-    /// This sets ROLE, not IsPriority. Role is what scenes read — it has to survive Prayer clearing
-    /// the priority flag, which is why it is a property of the mic rather than of the current setup.
-    /// Setting priority on several channels at once is still possible from the per-input settings,
-    /// so the old pastor-plus-worship-leader case is awkward but not lost.
+    /// Sets Role and IsPriority together. They used to diverge -- scenes cleared the priority flag and
+    /// left the role -- and with this picker on the operator panel a divergence would be a visible
+    /// lie: the panel naming a priority mic that is not ducking anything. Everything that clears
+    /// priority therefore goes through here (see ApplyFix and the preset load).
     /// </summary>
     public IReadOnlyList<string> LapelOptions =>
         new[] { "(none)" }.Concat(Channels.Select(c =>
             c.DisplayName)).ToList();
+
+    private bool _settingLapel;
 
     public int LapelIndex
     {
@@ -416,17 +460,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         set
         {
             // Exclusive by construction: one channel becomes the lapel, every other becomes a room mic.
-            // Priority IS the lapel now (operator, 2026-09-20: only one mic is ever priority). Role
-            // and priority were two controls for one idea, and the separate checkbox was the one that
-            // could be left armed on an unused mic — the documented hazard where a bumped lapel
-            // silently ducks every room mic off the stream. Scenes still clear priority where they
-            // must: Prayer mutes and de-prioritises the lapel outright.
-            for (int i = 0; i < Channels.Count; i++)
+            // Role and priority were two controls for one idea, and the separate checkbox was the one
+            // that could be left armed on an unused mic — the documented hazard where a bumped lapel
+            // silently ducks every room mic off the stream.
+            _settingLapel = true;
+            try
             {
-                bool isLapel = i == value - 1;
-                Channels[i].IsLapel = isLapel;
-                Channels[i].IsPriority = isLapel;
+                for (int i = 0; i < Channels.Count; i++)
+                {
+                    bool isLapel = i == value - 1;
+                    Channels[i].IsLapel = isLapel;
+                    Channels[i].IsPriority = isLapel;
+                }
             }
+            finally { _settingLapel = false; }
             RaisePropertyChanged();
             // LapelOptions is NOT re-raised here. It lists the strips' names and does not depend on
             // which one is the lapel, so replacing the ComboBox's ItemsSource mid-set achieves
@@ -449,20 +496,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
     private readonly HashSet<string> _dismissedAlerts = new();
-
-    private void InitScenesAndHealth()
-    {
-        Scenes = new SceneController(Channels, Outputs);
-        // A scene claim must not outlive a hand-edit, or the Simple-mode pill lies about what is live.
-        Scenes.SceneApplied += _ => { _autosaveTimer.Stop(); _autosaveTimer.Start(); };
-
-        StandbyCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Standby));
-        TeachingCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Teaching));
-        PrayerCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Prayer));
-        SingingCommand = new RelayCommand(() => Scenes.Apply(Models.Scene.Singing));
-        UseLapelCommand = new RelayCommand(() => Scenes.VoiceSource = Models.VoiceSource.Lapel);
-        UseRoomMicsCommand = new RelayCommand(() => Scenes.VoiceSource = Models.VoiceSource.RoomMics);
-    }
 
     // --- Settings-window options ----------------------------------------------------------------
     // Persisted: a picker filter the operator has to re-tick on every launch is not a setting. They
@@ -570,20 +603,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _dismissedAlerts.RemoveWhere(id => !HealthMonitor
             .Evaluate(snapshot).Any(a => a.Id == id));
 
-        // Before the early return: the scene is not an alert, and hanging it off this comparison
-        // meant a session that ran cleanly (no alert ever changing) recorded whatever scene happened
-        // to be live at the first health tick.
-        if (_session != null) _session.Scene = Scenes.Current?.ToString();
-
         if (fresh.Count == Alerts.Count && fresh.Zip(Alerts).All(p => p.First == p.Second)) return;
 
         Alerts.Clear();
         foreach (var a in fresh) Alerts.Add(a);
-        if (_session != null)
-        {
-            _session.Scene = Scenes.Current?.ToString();
-            _session.Note(fresh);
-        }
+        _session?.Note(fresh);
         RaisePropertyChanged(nameof(AlertCount));
         RaisePropertyChanged(nameof(AlertBadgeState));
         RaisePropertyChanged(nameof(AlertBadgeText));
@@ -601,7 +625,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             channels.Add(new ChannelHealth(
                 i,
                 vm.DisplayName,
-                vm.Role,
                 vm.SelectedDevice?.FriendlyName,
                 vm.Routes.Any(r => r.IsOn),
                 vm.Muted,
@@ -632,7 +655,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.SelectedDevice == null || vm.IsPlaying));
         }
 
-        return new HealthSnapshot(Scenes.Current, channels, outputs, IsReplaying);
+        return new HealthSnapshot(channels, outputs, IsReplaying);
     }
 
     private readonly long[] _lastOutputSound = new long[AudioEngine.OutputCount];
@@ -686,7 +709,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
                 case FixKind.ClearPriority:
                     if (ch == null) return;
-                    ch.IsPriority = false;
+                    // Through the picker when it is the lapel, so Role clears with the flag and the
+                    // operator panel stops naming a priority mic that no longer ducks anything.
+                    if (ch.IsLapel) LapelIndex = 0;
+                    else ch.IsPriority = false;
                     StatusText = $"{Label(ch)} is no longer the priority mic.";
                     break;
 
@@ -710,12 +736,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 case FixKind.Resync:
                     ResyncAudioCommand.Execute(null);
                     return;   // Resync writes its own status and action
-
-                case FixKind.ReapplyScene:
-                    if (Scenes.Current is not Models.Scene scene) return;
-                    Scenes.Apply(scene);
-                    StatusText = $"{scene} re-applied.";
-                    break;
 
                 case FixKind.OpenSettings:
                 case FixKind.OpenDiagnostics:
@@ -870,8 +890,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     private string BuildStateJson() =>
-        StateSnapshot.Build(_engine, Channels, Outputs, InputCount, StatusText,
-            Scenes.Current?.ToString(), Alerts);
+        StateSnapshot.Build(_engine, Channels, Outputs, InputCount, StatusText, Alerts);
 
     private ChannelViewModel CreateChannel(int index)
     {
@@ -888,12 +907,23 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void AttachChannel(ChannelViewModel ch)
     {
         ch.PropertyChanged += OnSettingChanged;
+        // LapelIndex is derived from the channels, so a preset load or a health fix changing a role
+        // has to re-raise it -- OnSettingChanged cannot, because it is suppressed during a load, and
+        // the operator panel (unlike Settings, which is opened later) is on screen from startup.
+        // Not while the picker's own setter is looping: it raises once at the end, and a raise
+        // mid-loop is the TwoWay trap documented on the setter.
+        ch.PropertyChanged += (_, e) =>
+        {
+            if (!_settingLapel && e.PropertyName is nameof(ChannelViewModel.Role)
+                    or nameof(ChannelViewModel.IsPriority))
+                RaisePropertyChanged(nameof(LapelIndex));
+        };
         foreach (var r in ch.Routes) r.PropertyChanged += OnSettingChanged;
         ch.AttachOutputs(Outputs);
 
-        // The operator panel can switch routes and mute directly, which is a path straight around the
-        // invariant SceneTransform's tests protect. Only this class can see the sibling channels the
-        // decision depends on, so the guard is wired from here.
+        // The operator panel switches routes and mute directly, so nothing else stands between a tap
+        // and a bus with no live mic on it. Only this class can see the sibling channels the decision
+        // depends on, so the guard is wired from here.
         ch.MuteGuard = i => Allow(Services.RouteGuard.CheckMute(RoutingSnapshot(), i));
         ch.RouteGuard = (i, o) => Allow(Services.RouteGuard.CheckUnroute(RoutingSnapshot(), i, o));
         for (int o = 0; o < ch.Routes.Length; o++)
@@ -907,13 +937,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private bool Allow(RouteVerdict verdict)
     {
-        // A scene rewrites every channel at once, and Write walks them in index order, so the guard
-        // sees torn intermediate states: applying Prayer from Singing(Lapel) muted the lapel FIRST,
-        // while it was still the only cover on both buses, and the guard refused — leaving the lapel
-        // routed and unmuted with "Bus A would have no microphone" on the status line. The scene's own
-        // end state is guaranteed correct by SceneTransform (which is tested); the guard exists for
-        // the operator panel's direct mute/route toggles, which have no such plan.
-        if (Scenes.IsApplying) return true;
         if (verdict.Allowed) return true;
         StatusText = verdict.Reason!;
         return false;
@@ -1317,9 +1340,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged(nameof(LapelOptions));
 
         // A rename is cosmetic: it changes a label, not what is on the stream. It still has to save,
-        // but it must not clear the active scene — and with UpdateSourceTrigger=PropertyChanged on the
-        // Settings text box it fired once per KEYSTROKE, so typing a new name silently dropped the
-        // scene pill letter by letter.
+        // but it is not an operator action worth a line in the session record -- with
+        // UpdateSourceTrigger=PropertyChanged on the Settings text box it fires once per KEYSTROKE.
         if (IsCosmetic(e.PropertyName))
         {
             _autosaveTimer.Stop();
@@ -1329,21 +1351,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         // A veto raises the same notification a real change does, so that the control snaps back —
         // but the value behind it is unchanged, and everything below reads the value. Logging it
-        // recorded the OPPOSITE action ("LAPEL unmuted" when a mute was refused), cleared the scene
-        // the operator had not left, and restarted the autosave for a write that never happened.
+        // recorded the OPPOSITE action ("LAPEL unmuted" when a mute was refused) and restarted the
+        // autosave for a write that never happened.
         if (sender is ChannelViewModel { ChangeRefused: true }
             or RouteToggleViewModel { ChangeRefused: true }) return;
 
-        // A hand-edit invalidates the active scene, so Simple mode stops claiming one. Guarded,
-        // because applying a scene writes these same properties.
-        if (Scenes is { IsApplying: false })
-        {
-            Scenes.MarkCustomised();
-            // Only hand edits are logged as operator actions. A scene writes every channel and output
-            // at once, so logging those would bury the one deliberate change in twenty derived ones —
-            // the scene itself is logged instead, where it is applied.
-            _session?.Action(DescribeChange(sender, e.PropertyName));
-        }
+        _session?.Action(DescribeChange(sender, e.PropertyName));
 
         _autosaveTimer.Stop();
         _autosaveTimer.Start();
@@ -1468,12 +1481,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Channels[i].SelectedDevice = match;
                 Channels[i].VolumePercent = cp.VolumePercent;
                 Channels[i].Muted = cp.Muted;
-                Channels[i].IsPriority = cp.Priority;
-                // Presets written before scenes existed have no Role, and 0 (Room) is indistinguishable
+                // Presets written before Role existed have none, and 0 (Room) is indistinguishable
                 // from "not set" — migrate those from the priority flag, which is what marked the lapel.
                 Channels[i].Role = cp.Role != 0
                     ? (Models.ChannelRole)cp.Role
                     : (cp.Priority ? Models.ChannelRole.Lapel : Models.ChannelRole.Room);
+                // Priority FOLLOWS the role rather than loading independently. A preset saved while
+                // the old Prayer scene was active holds Role=Lapel, Priority=false, and the operator
+                // panel's picker reads the role -- so loading the flag as saved would show a priority
+                // mic that ducks nothing. Safe even for that preset: Prayer also muted and unrouted
+                // the lapel, and a muted, unrouted priority mic cannot duck a room mic.
+                Channels[i].IsPriority = Channels[i].Role == Models.ChannelRole.Lapel;
                 for (int r = 0; r < Channels[i].Routes.Length && r < cp.Routes.Length; r++)
                 {
                     Channels[i].Routes[r].IsOn = cp.Routes[r];

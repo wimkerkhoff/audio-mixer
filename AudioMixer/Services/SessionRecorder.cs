@@ -1,4 +1,4 @@
-using AudioMixer.Audio;
+﻿using AudioMixer.Audio;
 using AudioMixer.ViewModels;
 
 namespace AudioMixer.Services;
@@ -31,9 +31,6 @@ public sealed class SessionRecorder : IDisposable
     /// was nearly lost. The file is keyed on the start stamp, so each checkpoint simply overwrites.
     /// </summary>
     public const double CheckpointMinutes = 2.0;
-
-    /// <summary>The scene in force, set by the view model; recorded so a session can be read in context.</summary>
-    public string? Scene { get; set; }
 
     /// <summary>
     /// How the rig is configured, sampled when the record is written. Supplied as a callback rather
@@ -132,7 +129,7 @@ public sealed class SessionRecorder : IDisposable
                 ? OutputViewModel.Tag(o) : _outputs[o].CustomLabel,
         }).ToList();
 
-        return _aggregator.Build(Stamp, _startedLocal.ToUniversalTime(), Scene, inputs, outputs, Config?.Invoke());
+        return _aggregator.Build(Stamp, _startedLocal.ToUniversalTime(), inputs, outputs, Config?.Invoke());
     }
 
     /// <summary>

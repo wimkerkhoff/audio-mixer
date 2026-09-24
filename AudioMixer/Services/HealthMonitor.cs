@@ -1,6 +1,4 @@
-using AudioMixer.Models;
-
-namespace AudioMixer.Services;
+﻿namespace AudioMixer.Services;
 
 public enum AlertSeverity { Info, Warning, Critical }
 
@@ -23,7 +21,6 @@ public enum FixKind
     SplitSides,
     ResetCalibration,
     Resync,
-    ReapplyScene,
     OpenSettings,
     OpenDiagnostics,
 }
@@ -39,8 +36,8 @@ public sealed record HealthAlert(
     /// <summary>
     /// "fix" or "none", for the Checks window's triggers. A string on purpose: a WPF trigger's Value is
     /// parsed as text, so comparing it against a non-string binding fails SILENTLY — the trigger never
-    /// runs and there is no error anywhere. The repo already carries that scar (see the …State
-    /// properties on SceneController, which exist for exactly this reason).
+    /// runs and there is no error anywhere. The operator panel's selection buttons carry the same
+    /// scar (the "on"/"off" state strings on MainViewModel exist for exactly this reason).
     /// </summary>
     public string FixState => Fix == FixKind.None ? "none" : "fix";
 }
@@ -48,7 +45,6 @@ public sealed record HealthAlert(
 public sealed record ChannelHealth(
     int Index,
     string Label,
-    ChannelRole Role,
     string? DeviceName,
     bool Routed,
     bool Muted,
@@ -74,7 +70,6 @@ public sealed record OutputHealth(
     bool Playing = true);
 
 public sealed record HealthSnapshot(
-    Scene? Scene,
     IReadOnlyList<ChannelHealth> Channels,
     IReadOnlyList<OutputHealth> Outputs,
     bool IsReplaying);
@@ -239,17 +234,6 @@ public static class HealthMonitor
                     $"{c.Label} is the priority mic but has been silent {c.SecondsSinceSound / 60:F0} min. " +
                     "If it is bumped it will duck every room mic off the stream.",
                     "Clear priority", FixKind.ClearPriority, c.Index));
-            }
-        }
-
-        // Singing inverts the automixer's assumption: any priority mic gates the congregation out.
-        if (s.Scene == Models.Scene.Singing)
-        {
-            foreach (var c in s.Channels.Where(c => c.IsPriority && c.Routed))
-            {
-                alerts.Add(new HealthAlert($"in{c.Index}.singingpriority", AlertSeverity.Critical,
-                    $"{c.Label} is still the priority mic during Singing. The congregation is being ducked off the stream.",
-                    "Re-apply Singing", FixKind.ReapplyScene, c.Index));
             }
         }
 

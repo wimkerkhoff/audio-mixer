@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using AudioMixer.Services;
 
 namespace AudioMixer.Tests;
@@ -28,10 +28,22 @@ public class DecisionTrackTests : IDisposable
     private static readonly string[] Buses = { "A", "B" };
 
     private static void Sample(DecisionTrack t, int winner = 0, float gain = 1f) =>
-        t.Sample(_ => winner, i => -24.0 - i, (_, _) => gain, _ => 0f, "Prayer");
+        t.Sample(_ => winner, i => -24.0 - i, (_, _) => gain, _ => 0f, o => o == 0 ? "Gate" : "Off");
 
     private static string[] Lines(string path) =>
         File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
+
+    [Fact]
+    public void EachRowCarriesEveryBussMode()
+    {
+        var path = Path_("decisions.csv");
+        using (var t = new DecisionTrack(path, Mics, Buses)) Sample(t);
+
+        var row = Lines(path)[1].Split(',');
+
+        Assert.Equal("Gate", row[1]);
+        Assert.Equal("Off", row[2]);
+    }
 
     [Fact]
     public void TheHeaderNamesEveryBusAndEveryMic()
@@ -41,7 +53,9 @@ public class DecisionTrackTests : IDisposable
 
         var header = Lines(path)[0];
 
-        Assert.StartsWith("ms,scene,", header);
+        // The mode, per bus, sits where the scene used to: it is what separates "automix Off" from
+        // "a silent room" when winner = -1, and a mode cannot go stale the way a scene claim could.
+        Assert.StartsWith("ms,mode_A,mode_B,", header);
         Assert.Contains("winner_A", header);
         Assert.Contains("winner_B", header);
         Assert.Contains("leveler_A", header);
@@ -61,7 +75,8 @@ public class DecisionTrackTests : IDisposable
         using (var t = new DecisionTrack(path, Mics, Buses)) Sample(t);
 
         var lines = Lines(path);
-        int expected = 2 + Buses.Length * 2 + Mics.Length * (1 + Buses.Length);   // 15
+        // ms, then mode + winner + leveler per bus, then level + a gain per bus for every mic.
+        int expected = 1 + Buses.Length * 3 + Mics.Length * (1 + Buses.Length);   // 16
 
         Assert.Equal(2, lines.Length);
         Assert.Equal(expected, lines[0].Split(',').Length);
@@ -140,8 +155,8 @@ public class DecisionTrackTests : IDisposable
 
         var cells = Lines(path)[1].Split(',');
 
-        Assert.Equal("-1", cells[2]);
-        Assert.Equal("-1", cells[3]);
+        Assert.Equal("-1", cells[3]);   // after ms, mode_A, mode_B
+        Assert.Equal("-1", cells[4]);
         Assert.Equal("1.00", cells[^1]);   // silent-room writes unity; a priority duck writes 0.00
     }
 

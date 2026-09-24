@@ -1,5 +1,4 @@
-using AudioMixer.Models;
-using AudioMixer.Services;
+﻿using AudioMixer.Services;
 
 namespace AudioMixer.Tests;
 
@@ -10,11 +9,11 @@ namespace AudioMixer.Tests;
 /// </summary>
 public class HealthMonitorTests
 {
-    private static ChannelHealth Mic(int i, string label = "Anker", ChannelRole role = ChannelRole.Room,
+    private static ChannelHealth Mic(int i, string label = "Anker",
         string? device = "ANKER #1 (Anker Soundsync)", bool routed = true, bool muted = false,
         bool priority = false, double levelDb = -25, double sinceData = 0, double sinceSound = 0,
         string? bus = null, string? deviceId = null, int side = 0, float speechDb = float.NaN)
-        => new(i, label, role, device, routed, muted, priority, levelDb, sinceData, sinceSound,
+        => new(i, label, device, routed, muted, priority, levelDb, sinceData, sinceSound,
                bus, deviceId, side, speechDb);
 
     private static OutputHealth Bus(int i, string label = "OBS/Zoom", bool hasDevice = true,
@@ -22,8 +21,8 @@ public class HealthMonitorTests
         => new(i, label, hasDevice, muted, peakDb, sinceSound, volume);
 
     private static HealthSnapshot Snap(IEnumerable<ChannelHealth>? ch = null,
-        IEnumerable<OutputHealth>? outs = null, Scene? scene = null, bool replay = false)
-        => new(scene, (ch ?? new[] { Mic(0) }).ToList(), (outs ?? new[] { Bus(0) }).ToList(), replay);
+        IEnumerable<OutputHealth>? outs = null, bool replay = false)
+        => new((ch ?? new[] { Mic(0) }).ToList(), (outs ?? new[] { Bus(0) }).ToList(), replay);
 
     private static bool Has(IReadOnlyList<HealthAlert> a, string idSuffix) =>
         a.Any(x => x.Id.EndsWith(idSuffix, StringComparison.Ordinal));
@@ -74,7 +73,7 @@ public class HealthMonitorTests
         // every room mic off the stream.
         var a = HealthMonitor.Evaluate(Snap(ch: new[]
         {
-            Mic(0, "LAPEL", ChannelRole.Lapel, "R0de wireless", priority: true, levelDb: -65, sinceSound: 300),
+            Mic(0, "LAPEL", "R0de wireless", priority: true, levelDb: -65, sinceSound: 300),
             Mic(1),
         }));
         Assert.Contains(a, x => x.Id.EndsWith(".idlepriority"));
@@ -85,21 +84,10 @@ public class HealthMonitorTests
     {
         var a = HealthMonitor.Evaluate(Snap(ch: new[]
         {
-            Mic(0, "LAPEL", ChannelRole.Lapel, "R0de wireless", priority: true, levelDb: -22, sinceSound: 0),
+            Mic(0, "LAPEL", "R0de wireless", priority: true, levelDb: -22, sinceSound: 0),
             Mic(1),
         }));
         Assert.False(Has(a, ".idlepriority"));
-    }
-
-    [Fact]
-    public void PriorityMicDuringSinging_IsCritical()
-    {
-        // The 2026-07-05 failure: worship reached the stream as pastor-only because the priority lapel
-        // ducked every room mic to zero.
-        var a = HealthMonitor.Evaluate(Snap(
-            ch: new[] { Mic(0, "LAPEL", ChannelRole.Lapel, "R0de wireless", priority: true), Mic(1) },
-            scene: Scene.Singing));
-        Assert.Contains(a, x => x.Severity == AlertSeverity.Critical && x.Id.EndsWith(".singingpriority"));
     }
 
     [Fact]
@@ -107,7 +95,7 @@ public class HealthMonitorTests
     {
         var a = HealthMonitor.Evaluate(Snap(ch: new[]
         {
-            Mic(0, "LAPEL", ChannelRole.Lapel, "R0de wireless", routed: false, priority: true, levelDb: -20),
+            Mic(0, "LAPEL", "R0de wireless", routed: false, priority: true, levelDb: -20),
             Mic(1),
         }));
         Assert.Contains(a, x => x.Severity == AlertSeverity.Critical && x.Id.EndsWith(".offair"));
@@ -309,7 +297,6 @@ public class HealthMonitorTests
     public void ABusWhoseStreamHasStoppedIsCritical()
     {
         var alerts = HealthMonitor.Evaluate(new HealthSnapshot(
-            null,
             new[] { Mic(0) },
             new[] { Bus(0), Bus(1) with { Playing = false } },
             IsReplaying: false));
@@ -325,7 +312,6 @@ public class HealthMonitorTests
     public void AStoppedBusDoesNotAlsoRaiseTheMutedOrSilentRules()
     {
         var alerts = HealthMonitor.Evaluate(new HealthSnapshot(
-            null,
             new[] { Mic(0, levelDb: -10) },
             new[] { Bus(0), Bus(1) with { Playing = false, Muted = true, SecondsSinceSound = 600 } },
             IsReplaying: false));
@@ -341,7 +327,6 @@ public class HealthMonitorTests
     public void ABusWithNoDeviceIsNotAlsoReportedAsStopped()
     {
         var alerts = HealthMonitor.Evaluate(new HealthSnapshot(
-            null,
             new[] { Mic(0) },
             new[] { Bus(0), Bus(1) with { HasDevice = false } },
             IsReplaying: false));
@@ -354,7 +339,7 @@ public class HealthMonitorTests
     public void AHealthyPlayingBusRaisesNothing()
     {
         var alerts = HealthMonitor.Evaluate(new HealthSnapshot(
-            null, new[] { Mic(0) }, new[] { Bus(0), Bus(1) }, IsReplaying: false));
+            new[] { Mic(0) }, new[] { Bus(0), Bus(1) }, IsReplaying: false));
 
         Assert.DoesNotContain(alerts, x => x.Id.EndsWith(".stopped"));
     }

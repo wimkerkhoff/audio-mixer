@@ -17,9 +17,9 @@ namespace AudioMixer.Tests;
 public class StateSnapshotTests
 {
     private static JsonElement Build(VmFixture f, string status = "Running",
-                                     string? scene = null, IReadOnlyList<HealthAlert>? alerts = null)
+                                     IReadOnlyList<HealthAlert>? alerts = null)
     {
-        var json = StateSnapshot.Build(f.Engine, f.Channels, f.Outputs, f.Channels.Count, status, scene, alerts);
+        var json = StateSnapshot.Build(f.Engine, f.Channels, f.Outputs, f.Channels.Count, status, alerts);
         return JsonDocument.Parse(json).RootElement;
     }
 
@@ -141,14 +141,16 @@ public class StateSnapshotTests
     }
 
     [Fact]
-    public void TheSceneAndAlertsAreCarriedSoAStateDumpExplainsItself()
+    public void TheAlertsAreCarriedSoAStateDumpExplainsItself()
     {
         using var f = new VmFixture();
         var alerts = new[] { new HealthAlert("level.low", AlertSeverity.Warning, "Input 1 is 20 dB low") };
 
-        var root = Build(f, scene: "Prayer", alerts: alerts);
+        var root = Build(f, alerts: alerts);
 
-        Assert.Equal("Prayer", root.GetProperty("scene").GetString());
+        // Scenes were removed 2026-09-23. The key goes with them rather than lingering as a null, so
+        // tooling that still reads it fails loudly instead of reporting "no scene" forever.
+        Assert.False(root.TryGetProperty("scene", out _));
         var a = root.GetProperty("alerts")[0];
         Assert.Equal("level.low", a.GetProperty("Id").GetString());
         Assert.Equal("Warning", a.GetProperty("severity").GetString());

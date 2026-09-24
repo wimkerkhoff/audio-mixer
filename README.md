@@ -3,7 +3,7 @@
 A Windows desktop mixer for a small AV rig: **1–10 microphones → 2 output buses**, typically a
 monitor headset and Zoom/OBS via VB-CABLE. It was built for a church meeting room where volunteers
 run the service alone, so the guiding rule is that the app should be on autopilot — the operator
-picks a scene and it handles the rest.
+routes and mutes mics as on any desk, and the app decides which of the open mics is on the stream.
 
 Its real job is **choosing which microphone is on the stream**. In a room covered by several mics,
 every talker is picked up by all of them at different distances, and simply summing them gives
@@ -16,24 +16,25 @@ rest, holding its choice so a pause cannot hand the room to a distant mic.
 
 | Window | What it is for |
 |---|---|
-| **Operator panel** | The mixer. Scenes, one row per mic (state stripe, meter with target band, level, mute, bus A/B that lights when the automixer picks it), an on-air card per bus, one toolbar. |
+| **Operator panel** | The mixer. The Singing toggle and the priority-mic picker, one row per mic (state stripe, meter with target band, level, mute, bus A/B that lights when the automixer picks it), an on-air card per bus, one toolbar. |
 | **Checks** | Everything needing attention, and nothing that is merely fine. It opens itself only when something is wrong, so its appearance is the signal. Each item offers a button that does the fix where one exists. Never blocks. |
 | **Diagnostics** | Why this mic (ranked, with the deciding numbers) · the session so far · calibration · devices. Never needed to run a service. |
-| **Settings** | The rig: which mic is the lapel, each strip's device and split side, automix mode, the bus leveler, the global low-cut, device-picker filters. |
+| **Settings** | The rig: each strip's device and split side, automix mode per bus, the bus leveler, the global low-cut, device-picker filters. |
 
-## Scenes
+## The two decisions on the operator panel
 
-The operator's main control. A scene rewrites every channel and output at once, so nobody has to
-remember which mic to mute.
+Everything else — which mics are open, on which bus, muted or not — the operator sets directly on the
+mic rows. Two things are not obvious enough to leave to memory, so they get their own controls:
 
-- **Standby** — nothing on the stream.
-- **Teaching** — one talker. Choose lapel or room mics as the voice source.
-- **Prayer** — turn-taking room mics, lapel muted and de-prioritised.
-- **Singing** — automix **off**: with a congregation singing there is no single talker to follow, so
-  follow-the-talker inverts and chops. Everything routed stays open.
+- **Singing** — turns follow-the-talker **off** on both buses. With a congregation singing there is no
+  single talker to follow, so follow-the-talker chops. Every routed mic stays open; tap again when the
+  speaking resumes. The line under the button says what the automixer is doing right now.
+- **Priority mic** — the one mic (normally the presenter's lapel) that is never switched off and that
+  ducks the others while it is speaking. One at a time, and "(none)" when nobody is wearing it.
 
-Scene rules live in a pure, unit-tested function (`Services/SceneTransform`), because a wrong rule
-drops the congregation off the stream silently.
+There used to be four scene buttons (Standby, Teaching, Prayer, Singing). They were removed in
+2026-09: nobody could remember what each did, and because a scene rewrote every mute and route it
+silently undid the operator's own changes.
 
 ## Choosing the microphone
 
@@ -67,7 +68,7 @@ Each service leaves four things under `Documents\AudioMixer\`:
 | File | What it is |
 |---|---|
 | `analysis\diag-input{N}-{stamp}.wav` | one microphone, raw — pre-fader and pre-low-cut |
-| `analysis\decisions-{stamp}.csv` | 10 Hz: scene, winner per bus, leveler gain, each mic's level and applied gain |
+| `analysis\decisions-{stamp}.csv` | 10 Hz: automix mode and winner per bus, leveler gain, each mic's level and applied gain |
 | `recordings\mix-{A,B}-{stamp}.wav` | what each bus actually sent |
 | `sessions\session-{stamp}.json` | aggregates, events, operator actions, and the config to read them against |
 
@@ -139,7 +140,6 @@ dotnet test AudioMixer.sln
 | `--state[=PORT]` | Serve a live JSON snapshot on `http://127.0.0.1:7077/state` — the fastest way to see the selector's reasoning without the GUI. |
 | `--shots[=DIR]` | Render every window to PNG and exit. Works with the workstation locked, where a screen grab returns the lock screen. |
 | `--log` | Write `%TEMP%\AudioMixer.log`, including WPF binding failures. Crashes are always logged regardless, to `%TEMP%\AudioMixer.crash.log`. |
-| `--scene=NAME` | Apply a scene at startup. |
 | `--open-all` | Open every window, so one run covers all their markup. |
 
 ## Architecture
@@ -170,7 +170,7 @@ WasapiCapture (per input)
 - **MVVM**: engine in `Audio/`, pure rules in `Services/`, view models in `ViewModels/`, four windows
   in `Views/`.
 
-Anything that makes a judgement — scene rules, health rules, the routing guard, session aggregates —
+Anything that makes a judgement — health rules, the routing guard, the automixer, session aggregates —
 lives in a pure function so it can be unit-tested. Nearly 400 tests cover that layer; anything
 needing a device or a window is exercised by a replay run instead.
 

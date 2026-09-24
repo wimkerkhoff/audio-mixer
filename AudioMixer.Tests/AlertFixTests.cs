@@ -1,5 +1,4 @@
-using AudioMixer.Models;
-using AudioMixer.Services;
+﻿using AudioMixer.Services;
 
 namespace AudioMixer.Tests;
 
@@ -19,7 +18,7 @@ public class AlertFixTests
                                      double level = -30, double sinceData = 0, double sinceSound = 0,
                                      int side = 0, string? deviceId = "dev1",
                                      float speechDb = -24f, bool stale = false) =>
-        new(i, label, ChannelRole.Room, device, routed, muted, priority, level, sinceData, sinceSound,
+        new(i, label, device, routed, muted, priority, level, sinceData, sinceSound,
             null, deviceId, side, speechDb, stale);
 
     private static OutputHealth Bus(int i, bool device = true, bool muted = false,
@@ -27,9 +26,9 @@ public class AlertFixTests
         new(i, $"Bus {(char)('A' + i)}", device, muted, -20, sinceSound, volume);
 
     private static IReadOnlyList<HealthAlert> Run(
-        IEnumerable<ChannelHealth> mics, IEnumerable<OutputHealth>? buses = null, Scene? scene = null) =>
+        IEnumerable<ChannelHealth> mics, IEnumerable<OutputHealth>? buses = null) =>
         HealthMonitor.Evaluate(new HealthSnapshot(
-            scene, mics.ToList(), (buses ?? new[] { Bus(0), Bus(1) }).ToList(), IsReplaying: false));
+            mics.ToList(), (buses ?? new[] { Bus(0), Bus(1) }).ToList(), IsReplaying: false));
 
     private static HealthAlert Find(IReadOnlyList<HealthAlert> alerts, string idSuffix) =>
         alerts.Single(a => a.Id.EndsWith(idSuffix, StringComparison.Ordinal));
@@ -116,16 +115,6 @@ public class AlertFixTests
 
         Assert.Equal(FixKind.SplitSides, a.Fix);
         Assert.Equal(0, a.Target);
-    }
-
-    [Fact]
-    public void APriorityMicLeftArmedDuringSingingOffersToReapplyTheScene()
-    {
-        var mics = new[] { Mic(0), Mic(1, "LAPEL", priority: true, level: -20) };
-
-        var a = Find(Run(mics, scene: Scene.Singing), "singingpriority");
-
-        Assert.Equal(FixKind.ReapplyScene, a.Fix);
     }
 
     [Fact]

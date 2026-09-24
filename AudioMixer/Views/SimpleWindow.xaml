@@ -121,6 +121,12 @@
                     <Setter Property="Foreground" Value="#FFFFFF"/>
                     <Setter Property="FontWeight" Value="SemiBold"/>
                 </DataTrigger>
+                <!-- Neither on nor off: the buses disagree (one is Off). Amber, not green, because a
+                     half-applied mode is the thing to notice. -->
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="mixed">
+                    <Setter Property="BorderBrush" Value="#D29922"/>
+                    <Setter Property="Foreground" Value="#F0C674"/>
+                </DataTrigger>
             </Style.Triggers>
         </Style>
 
@@ -281,33 +287,28 @@
             </StackPanel>
         </Grid>
 
-        <!-- Scenes: the one control that matters -->
-        <UniformGrid Rows="1" Columns="4" Margin="0,0,0,6">
-            <Button Content="Standby" Margin="0,0,3,0" Command="{Binding StandbyCommand}"
-                    ToolTip="{Binding Scenes.StandbyTip}"
-                    Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.StandbyState}"/>
-            <Button Content="Teaching" Margin="0,0,3,0" Command="{Binding TeachingCommand}"
-                    ToolTip="{Binding Scenes.TeachingTip}"
-                    Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.TeachingState}"/>
-            <Button Content="Prayer" Margin="0,0,3,0" Command="{Binding PrayerCommand}"
-                    ToolTip="{Binding Scenes.PrayerTip}"
-                    Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.PrayerState}"/>
-            <Button Content="Singing" Command="{Binding SingingCommand}"
-                    ToolTip="{Binding Scenes.SingingTip}"
-                    Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.SingingState}"/>
-        </UniformGrid>
-
-        <!-- The only operator override, and only where it means something -->
-        <Border Style="{StaticResource Card}" Margin="0,0,0,6"
-                Visibility="{Binding Scenes.ShowVoiceSource, Converter={StaticResource BoolToVis}}">
+        <!-- The two decisions that carry knowledge an operator cannot re-derive. Scenes used to wrap
+             them in four presets that also rewrote every mute and route, silently undoing hand
+             changes; everything else a scene did, the operator now does on the rows below. The line
+             under the toggle says what the automixer IS doing, so nobody has to remember it. -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,6">
             <StackPanel>
-                <TextBlock Text="VOICE SOURCE" Style="{StaticResource Cap}" Margin="0,0,0,3"/>
-                <UniformGrid Rows="1" Columns="2">
-                    <Button Content="Lapel" Margin="0,0,3,0" Command="{Binding UseLapelCommand}"
-                            Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.LapelState}"/>
-                    <Button Content="Room mics" Command="{Binding UseRoomMicsCommand}"
-                            Style="{StaticResource SceneBtn}" Tag="{Binding Scenes.RoomState}"/>
-                </UniformGrid>
+                <Button Content="Singing" Command="{Binding ToggleSingingCommand}"
+                        Style="{StaticResource SceneBtn}" Tag="{Binding SingingState}"
+                        ToolTip="Singing has no single talker, so the automixer stops switching and every mic stays open. Tap again when speaking resumes."/>
+                <TextBlock Text="{Binding SingingSummary}" Style="{StaticResource Cap}"
+                           Margin="0,3,0,6" TextTrimming="CharacterEllipsis"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="PRIORITY MIC" Style="{StaticResource Cap}"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding LapelOptions}"
+                              SelectedIndex="{Binding LapelIndex, Mode=TwoWay}" FontSize="11"
+                              ToolTip="Never switched off by the automixer, and ducks the other mics while it is speaking. One at a time."/>
+                </Grid>
             </StackPanel>
         </Border>
 

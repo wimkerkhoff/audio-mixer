@@ -1,4 +1,4 @@
-namespace AudioMixer.Services;
+﻿namespace AudioMixer.Services;
 
 /// <summary>One channel, as far as routing safety is concerned.</summary>
 /// <param name="Dead">
@@ -23,13 +23,12 @@ public readonly record struct RouteVerdict(bool Allowed, string? Reason)
 /// <summary>
 /// Whether a manual routing or mute change is safe to apply.
 ///
-/// Scenes already hold the invariant that no scene/override combination can leave the stream with
-/// nothing on it — 20 unit tests protect it. Making A/B and mute clickable in the operator panel
-/// opened a path straight around those tests: a volunteer can now reach the same silent-stream state
-/// one tap at a time. This is that invariant, restated for manual changes.
+/// The invariant is that nothing the operator does can leave a bus with no live microphone on it.
+/// Scenes used to hold it for whole-rig changes; since they were removed (2026-09-23) every change
+/// is a manual one, so this is the only thing holding it. A volunteer can otherwise reach the
+/// silent-stream state one tap at a time, and nobody in the room can hear that it happened.
 ///
-/// Pure, so the rules are testable without devices or windows — the same reason SceneTransform and
-/// HealthMonitor are. The rule is deliberately narrow: it blocks the last live source leaving a bus
+/// Pure, so the rules are testable without devices or windows — the same reason HealthMonitor is. The rule is deliberately narrow: it blocks the last live source leaving a bus
 /// and nothing else. It is NOT a general policy engine, and it must never block a change that merely
 /// looks unwise, because an operator who is fought by the UI stops trusting it.
 /// </summary>

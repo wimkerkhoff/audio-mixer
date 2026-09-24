@@ -1,4 +1,4 @@
-using AudioMixer.Services;
+﻿using AudioMixer.Services;
 
 namespace AudioMixer.Tests;
 
@@ -24,7 +24,7 @@ public class SessionAggregatorTests
     };
 
     private static SessionSummary Build(SessionAggregator a) =>
-        a.Build("t", new DateTime(2026, 9, 20, 9, 42, 53, DateTimeKind.Utc), "Prayer", Seed3, SeedOut);
+        a.Build("t", new DateTime(2026, 9, 20, 9, 42, 53, DateTimeKind.Utc), Seed3, SeedOut);
 
     private static float Unity(int i, int o) => 1f;
 
@@ -212,13 +212,12 @@ public class SessionAggregatorTests
         var a = new SessionAggregator(1, 1);
         a.Tick(Sec, new[] { 0 }, Unity);
 
-        var s = a.Build("t", DateTime.UtcNow, "Prayer",
+        var s = a.Build("t", DateTime.UtcNow,
             new[] { new InputSummary { Index = 0, Label = "LAPEL", SpeechDb = -45.3f, FloorDb = -61.5f } },
             new[] { new OutputSummary { Index = 0, Label = "OBS/Zoom" } });
 
         Assert.Equal("LAPEL", s.Inputs[0].Label);
         Assert.Equal(-45.3f, s.Inputs[0].SpeechDb, 2);
-        Assert.Equal("Prayer", s.Scene);
     }
 
     // --- operator actions -------------------------------------------------------------------------

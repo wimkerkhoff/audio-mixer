@@ -1,4 +1,4 @@
-using AudioMixer.Audio;
+﻿using AudioMixer.Audio;
 
 namespace AudioMixer.Tests;
 
@@ -71,6 +71,49 @@ public class AutoMixerTests
 
         Assert.Equal(-1, mix.ActiveInput(0));
         Assert.All(rig, c => Assert.Equal(1f, c.GetAutoMixGain(0)));
+    }
+
+    /// <summary>
+    /// The whole Singing control rests on this. The 2026-07-05 failure put worship on the stream as
+    /// pastor-only, because an armed priority lapel ducked every room mic to zero; the Singing scene
+    /// prevented it by clearing priority and a health alert caught it when it did not. Both are gone
+    /// (2026-09-23): the toggle now only sets the buses Off and leaves the lapel armed, so the ONLY
+    /// thing keeping the congregation on air is Off returning before the priority logic runs.
+    /// </summary>
+    [Fact]
+    public void OffIgnoresAnActivePriorityMic_SoSingingCannotDuckTheRoom()
+    {
+        var rig = Rig(3);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.20f);      // far over PriorityActiveRms: it would duck under Gate
+        rig[1].InjectLevelsForTest(0.02f);
+        rig[2].InjectLevelsForTest(0.02f);
+
+        var mix = new AutoMixer(Outputs, 3);   // Off is the default
+        Run(mix, rig);
+
+        Assert.All(rig, c => Assert.Equal(1f, c.GetAutoMixGain(0)));
+        Assert.All(rig, c => Assert.Equal(1f, c.GetAutoMixGain(1)));
+    }
+
+    /// <summary>The other half: leaving Singing resumes the duck without re-arming anything.</summary>
+    [Fact]
+    public void BackToGate_TheStillArmedPriorityMicDucksAgain()
+    {
+        var rig = Rig(3);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.20f);
+        rig[1].InjectLevelsForTest(0.02f);
+        rig[2].InjectLevelsForTest(0.02f);
+
+        var mix = new AutoMixer(Outputs, 3);
+        Run(mix, rig);
+        for (int o = 0; o < Outputs; o++) mix.SetMode(o, AutoMixMode.Gate);
+        Run(mix, rig);
+
+        Assert.Equal(1f, rig[0].GetAutoMixGain(0));
+        Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+        Assert.Equal(0f, rig[2].GetAutoMixGain(0));
     }
 
     [Fact]

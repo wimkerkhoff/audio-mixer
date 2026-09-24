@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO;
 using System.Text;
 
@@ -42,7 +42,12 @@ public sealed class DecisionTrack : IDisposable
             _writer = new StreamWriter(path, append: false, Encoding.UTF8);
             Path = path;
 
-            var header = new StringBuilder("ms,scene");
+            var header = new StringBuilder("ms");
+            // The automix mode per bus, because winner = -1 has three causes (mode Off, the priority
+            // duck, a silent room) and nothing else in the row separates the first from the third.
+            // This column used to hold the scene, which was a CLAIM about the mode -- and a hand edit
+            // made it a stale one. The mode itself cannot go stale.
+            foreach (var o in outputNames) header.Append(",mode_").Append(Safe(o));
             foreach (var o in outputNames) header.Append(",winner_").Append(Safe(o));
             // Without this you can hear that the mix was levelled but not by how much, or whether the
             // leveler was working at all — which is half of "did the leveler behave".
@@ -75,7 +80,7 @@ public sealed class DecisionTrack : IDisposable
     /// </summary>
     public void Sample(
         Func<int, int> winner, Func<int, double> levelDb, Func<int, int, float> gain,
-        Func<int, float> levelerGainDb, string scene)
+        Func<int, float> levelerGainDb, Func<int, string> mode)
     {
         if (_writer == null) return;
         long now = _clock.ElapsedMilliseconds;
@@ -83,7 +88,8 @@ public sealed class DecisionTrack : IDisposable
         _lastWriteMs = now;
 
         var row = new StringBuilder();
-        row.Append(now).Append(',').Append(Safe(scene));
+        row.Append(now);
+        for (int o = 0; o < _outputs; o++) row.Append(',').Append(Safe(mode(o)));
         for (int o = 0; o < _outputs; o++) row.Append(',').Append(winner(o));
         for (int o = 0; o < _outputs; o++)
             row.Append(',').Append(levelerGainDb(o).ToString("F1", CultureInfo.InvariantCulture));

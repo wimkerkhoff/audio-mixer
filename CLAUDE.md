@@ -5,11 +5,11 @@ per-channel volume, mute, delay, routing toggles, VU meters, recording, and pres
 mix to a headset AND Zoom/OBS (via VB-CABLE) simultaneously, with delay compensation and an
 automixer for distributed room mics.
 
-Input count is runtime-configurable via a toolbar picker (`MainViewModel.InputCount` →
+Input count is runtime-configurable in Settings (`MainViewModel.InputCount` →
 `AudioEngine.SetInputCount`): the engine grows/shrinks its `Inputs` array (preserving existing
 channels, stop+dispose on shrink) and restarts the output buses to re-collect providers. `Channels`
-is an `ObservableCollection`; the window is non-resizable (`ResizeMode=CanMinimize`) and its width is
-computed from the input count in `MainWindow` code-behind (see the UniformGrid gotcha).
+is an `ObservableCollection`; the operator panel is a fixed 330 px wide with one row per mic and
+`SizeToContent="Height"`, so more mics grow it downward (see the window-sizing gotcha).
 
 ## The rig (why the gotchas look the way they do)
 
@@ -32,9 +32,9 @@ reading them:
 - **Rode lapel** on the presenter, used as a **priority** channel when present.
 - Room is ~60 ft wide; the furthest mic sits ~50 ft from the dongles — **at the edge of RF range**.
 - Outputs: a monitor headset + VB-CABLE feeding Zoom/OBS.
-- Usage scenes: teaching (one talker), prayer meetings (turn-taking room mics, no lapel),
-  congregational singing (the automixer's one-talker assumption inverts). Scene guidance lives in
-  ROADMAP.md and session memory, not here.
+- Usage: teaching (one talker), prayer meetings (turn-taking room mics, often led from the lapel),
+  congregational singing (the automixer's one-talker assumption inverts — the Singing toggle).
+  Per-meeting setup guidance lives in session memory, not here.
 
 ## Stack
 
@@ -48,18 +48,18 @@ reading them:
 
 ```
 AudioMixer.sln
-ROADMAP.md                    # Planned work / scene design. Not a spec of what IS.
+ROADMAP.md                    # Planned work and the decisions behind it. Not a spec of what IS.
 RODE-PRO-RIG.md               # The 6x Wireless PRO replacement rig: plan, watch-list,
                               #   commissioning checklist. Fold results here, then delete it.
 publish.ps1                   # Single-file publish
-AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): scenes, health, autosave allowlist
+AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): health, routing guard, autosave allowlist
 AudioMixer/
 ├── App.xaml / App.xaml.cs    # Single-instance mutex; OWNS MainViewModel; ApplyCliFlags (see Conventions)
 ├── Views/                    # The whole UI. Four windows, no Advanced — see below.
-│   ├── SimpleWindow.xaml     # THE mixer: scenes, channel rows (level/mute/bus A+B), on-air cards
+│   ├── SimpleWindow.xaml     # THE mixer: Singing toggle, priority picker, mic rows, on-air cards
 │   ├── ChecksWindow.xaml     # Everything needing attention; opens itself only when something does
 │   ├── DiagnosticsWindow.xaml # Ranked "why this mic?" table; own 10 Hz timer, off when closed
-│   ├── SettingsWindow.xaml   # The lapel, mic devices + split side, automix mode, leveler, low-cut
+│   ├── SettingsWindow.xaml   # Mic devices + split side, per-bus automix mode, leveler, low-cut
 │   └── OperatorConverters.cs # Severity->brush, mic-dot colour, null/inverse visibility
 ├── Audio/
 │   ├── AudioEngine.cs        # Capture/render lifecycle, graph wiring, AutoMix tick + stall watchdog
@@ -70,7 +70,7 @@ AudioMixer/
 │   ├── InputChannel.cs       # capture → side split → taps → low-cut → mute → gain → delay → automix → push
 │   ├── OutputBus.cs          # MixingSampleProvider → peak tap → volume → WasapiOut; optional recorder
 │   ├── AutoMixer.cs          # Per-output leader decision loop (level / lapel-corr / natural); off-thread
-│   ├── AutoMixMode.cs        # enum Off/Share/Gate
+│   ├── AutoMixMode.cs        # enum Off/Gate
 │   ├── IAutoMixControl.cs    # Per-output automix setters — the VM's one dependency, not N delegates
 │   ├── AudioDeviceInfo.cs    # Device id + friendly name record
 │   ├── ChannelSource.cs      # Stereo/Left/Right — which transmitter of a split receiver a strip takes
@@ -85,7 +85,7 @@ AudioMixer/
 │   └── DeviceList.cs / RelayCommand.cs / ViewModelBase.cs
 ├── Models/MixerPreset.cs     # Serializable: device ids+names, volumes, mutes, delays, routes, automix
 ├── Services/
-│   ├── SceneTransform.cs     # PURE scene rules: (scene, override, state) -> state. Unit-tested.
+│   ├── RouteGuard.cs         # PURE: refuses a mute/unroute that would leave a bus with no live mic
 │   ├── HealthMonitor.cs      # PURE alert rules for the banner. Unit-tested.
 │   ├── PersistedProperties.cs # The autosave allowlist, extracted so its invariant is testable
 │   ├── BindingErrorListener.cs # WPF binding failures -> the log (on with --log)
@@ -120,16 +120,41 @@ home, which is worth recording because the split cost real confusion: two places
 device pickers, two toolbars, and a window that could not be closed (only hidden) because it owned the
 view model.
 
-- **Operator panel** (`SimpleWindow`) — scenes, one row per mic (state stripe, meter with the target
-  band, level, mute, bus A/B that lights when the automixer picks it), on-air cards per bus with their
-  own trim, and one toolbar. This is the mixer now, not a simplified view of one.
+- **Operator panel** (`SimpleWindow`) — the Singing toggle and the priority-mic picker, one row per
+  mic (state stripe, meter with the target band, level, mute, bus A/B that lights when the automixer
+  picks it), on-air cards per bus with their own trim, and one toolbar. This is the mixer now, not a
+  simplified view of one.
 - **Checks** — every warning and error, nothing that is merely fine. Opens itself only when something
   needs attention, so its appearance is the signal; never blocks.
 - **Diagnostics** — why this mic, the session record, calibration, devices. Never needed to run a service.
-- **Settings** — the rig: which mic is the lapel (and therefore priority), each strip's device and split
-  side, automix mode, the bus leveler, the global low-cut, picker filters.
+- **Settings** — the rig: each strip's device and split side, automix mode per bus, the bus leveler,
+  the global low-cut, picker filters.
 
 `App` owns `MainViewModel` and disposes it in `OnExit`. `--advanced` / `--simple` are gone.
+
+**Scenes were removed 2026-09-23.** There used to be four buttons — Standby, Teaching, Prayer,
+Singing — plus a voice-source override, each rewriting every channel's mute, route and priority and
+every bus's automix mode at once. Two things killed them, both from one live evening: (1) the
+operators could not remember what each button did, and a tooltip is no help under pressure or on a
+touchscreen; (2) a scene rewrote *everything*, so a hand mute on one strip or one bus was silently
+undone by the next scene change — "set it by hand" and "use scenes" did not compose. The operators
+are trusted with per-strip mute and A/B and are comfortable mixing in OBS, so the presets were
+protecting people from controls they already use well.
+
+What survived is the knowledge an operator cannot re-derive, as two controls on the operator panel:
+- **Singing** — both buses to automix **Off** (tap again for Gate). Singing has no single talker, so
+  follow-the-talker must stop. It deliberately does *not* touch priority: `AutoMixer`'s Off branch
+  sets unity gain and returns before the priority logic runs, so an armed lapel cannot duck anything
+  while the buses are Off, and it is still armed when they go back to Gate. That early return is now
+  the ONLY thing keeping a congregation on air during worship (the 2026-07-05 failure), so it is
+  pinned by `AutoMixerTests.OffIgnoresAnActivePriorityMic_SoSingingCannotDuckTheRoom`. Unlike the
+  old scene it does not unroute room mics either: which mics are open is the operator's A/B call. A
+  third state, amber **mixed**, shows when the two buses disagree (the per-bus mode is still in
+  Settings), and a line under the button says in words what the automixer is doing right now.
+- **Priority mic** — the `LapelIndex` picker, moved out of Settings. See "Priority mics" below.
+
+Do not rebuild presets on top of this without solving the stomping problem first: any control that
+rewrites state the operator also sets by hand will silently undo their hand changes.
 
 ## Audio architecture
 
@@ -247,13 +272,15 @@ fixed 2026-07-26 (`ComputeFlux` accumulates → `ComputeFluxWindow` runs the FFT
 0.03→0.01 for the ~94 windows/s rate, `_fluxFill` reset in `Stop`). Live scale is now ~0.35–0.5 and
 **matches** the offline Python `flux_cv` (~0.4–0.6), so offline replays are faithful.
 
-**Priority mics** (`IsPriority`, per-input gear popup). A priority mic (the presenter's lapel) is
+**Priority mics** (`IsPriority`, the operator panel's PRIORITY MIC picker). A priority mic (the presenter's lapel) is
 always full level and out of the competition, and while *active* (`PriorityActiveRms`, ~−40 dBFS) it
 ducks the room mics — otherwise that voice reaches the bus via both the clean lapel and a delayed
 room mic and comb-filters. **Exactly one mic is priority, and it is the lapel** (operator, 2026-09-20). Role
-and priority were two controls for one idea; picking the lapel in Settings now sets both, exclusively.
-Scenes still clear priority where they must — Prayer mutes and de-prioritises it outright — so `Role`
-stays the durable property and `IsPriority` the runtime one. The engine has no hard limit, but nothing
+and priority were two controls for one idea; the picker (`MainViewModel.LapelIndex`) sets both,
+exclusively, and is the only thing that does — the "Clear priority" health fix routes through it, and a
+preset load derives `IsPriority` from `Role` rather than loading it separately. They used to diverge
+(scenes cleared the flag and kept the role), which with the picker on the operator panel would have
+shown a priority mic that ducks nothing. `Role` is the persisted half. The engine has no hard limit, but nothing
 in the UI can arm a second priority mic, which also retires the hazard of one left armed on an unused
 strip. Two priority mics hearing one source would still double, since they do not duck each other. **Hazard:** an unused-but-open priority lapel that crosses −40 dBFS (bumped,
 drift) silently ducks every room mic off the stream. Unroute/clear the flag when not in use.
@@ -295,7 +322,7 @@ The app used to be unexercisable without a live congregation, which blocked all 
 
 - **Replay** (`--replay[=STAMP] --seek=MM:SS --for=MM:SS --speed=N --loop`) feeds the inputs from a
   recorded session's `diag-input*.wav` files. Capture sits behind NAudio's `IWaveIn`, so everything
-  downstream — gain, delay, flux-CV, RF tallies, automixer, meters, LEDs, scenes — runs unmodified.
+  downstream — gain, flux-CV, RF tallies, automixer, meters, LEDs — runs unmodified.
   Two things are load-bearing: the rig emits **480-frame** buffers (WASAPI shared mode's size; at 512+
   the cross-buffer flux accumulation is bypassed and you test different code), and **one clock pumps
   every source in lockstep** (independent timers drift and change which mic wins).
@@ -333,15 +360,14 @@ The app used to be unexercisable without a live congregation, which blocked all 
   a window that failed to open. (`PrintWindow` is no use either: it returns blank for WPF content.)
   Zero binding errors is *not* evidence the layout is right; it is also what a window that rendered
   garbage reports.
-- **Unit tests** (`AudioMixer.Tests`) cover only pure logic — scene rules, health rules, the autosave
-  allowlist invariant, the low-cut option mapping. Anything needing a device or a window is verified
+- **Unit tests** (`AudioMixer.Tests`) cover only pure logic — health rules, the routing guard, the
+  automixer, the autosave allowlist invariant, the low-cut option mapping. Anything needing a device or a window is verified
   by a replay run instead. The one exception is `XamlResourceTests`, which reads the markup as *text*
   (no WPF instantiation, no devices) to check every `{StaticResource}` key resolves in its own file —
   see the UI gotcha for why a clean build does not.
 - **Nothing runs on push.** `.github/workflows/release.yml` only builds on a version tag; it never
   runs `dotnet test`. So the suite is only as good as the last person who ran it locally — which is
   how a window that crashed on open shipped and stayed broken for weeks.
-- `--scene=NAME` applies a scene at startup, so the whole scene path is assertable from `/state`.
 
 ## Conventions
 
@@ -393,8 +419,10 @@ The app used to be unexercisable without a live congregation, which blocked all 
   no thresholds in-app — classify after the session.
 - **Diagnostic state endpoint**: `StateServer` serves a live JSON snapshot at
   `http://127.0.0.1:<port>/state` — channels (levels/routes/mute/automix gains/`speechDb`/`floorDb`/
-  `envDb`/`fluxCv`), outputs (mode/leveler state/`winner`/`winnerHold`/`activeInput`), plus the scene,
-  the alert list and a `replay` block (null when live). Its shape is pinned by `StateSnapshotTests`,
+  `calAgeMs`/`envDb`/`fluxCv`, plus `endpointGainDb`/`clippedSamples`/`underruns` for gain and crackle
+  triage), outputs (mode/`muted`/leveler state/`winner`/`winnerHold`/`activeInput`), plus the alert
+  list and a `replay` block (null when live). `endpointGainDb` is cached per device-list refresh, not
+  read per request — reading endpoints costs seconds and this handler runs on the UI thread. Its shape is pinned by `StateSnapshotTests`,
   because renaming a key breaks the offline tooling silently. **Opt-in**
   via `AUDIOMIXER_STATE` (port number, default 7077) or `--state[=PORT]`. Read-only, loopback only;
   `MainViewModel.BuildStateJson` marshals to the UI thread. Fastest way to watch the automixer's
@@ -812,8 +840,10 @@ later judgment.
   it have picked a different mic".** The diag WAVs are tapped BEFORE the automix gain and before the
   bus, so they show what each mic heard and nothing about what was done with it; the mix shows a
   choice was wrong but never what the alternative sounded like at that instant. The CSV carries one
-  row per 100 ms — leader per bus, plus each mic's level and applied gain — sharing the recording's
-  stamp so it lines up sample-wise. 10 Hz is deliberate: the automixer's hold is 200 ms, so this
+  row per 100 ms — automix mode and leader per bus, plus each mic's level and applied gain — sharing
+  the recording's stamp so it lines up sample-wise. The mode column replaced a `scene` column on
+  2026-09-23; it is the better record anyway, because a scene was a *claim* about the mode that a
+  hand edit made stale, and it settles the first of `winner = -1`'s three causes (finding 4) directly. 10 Hz is deliberate: the automixer's hold is 200 ms, so this
   cannot miss a hand-off, and an hour costs ~2 MB against gigabytes of audio.
 
 
@@ -847,6 +877,13 @@ later judgment.
   why the cure is evidence for the diagnosis. Resync is the same fix without the restart. Do not
   reach for the gain slider first: the operator's instinct is clipping, and the two crackles sound
   alike.
+  **⚠ Read `under=` only for pairs that are ROUTED** (found 2026-09-23, hours after the paragraph above
+  was written). The counter compares buffer depth to each bus read, and an unrouted strip's feed buffer
+  is empty by design — correct silence, not a hole — so every (strip, bus) pair that is *not* routed
+  climbs ~100/s forever. Measured on a fresh launch: five unrouted pairs at 5175 after ~50 s, the two
+  routed pairs at 3-5. Filter by `routes` in `/state` before reading a climb as crackle. The evening
+  that produced the triage above did not, so its "climbing" evidence is uncertain; the restart cure
+  still stands.
 - **Per-channel delay and the clap test were removed 2026-09-20.** Both came from Anker-era delay
   compensation, which the automixer superseded: Gate hard-mutes every non-leader, so only one mic's
   copy of a voice reaches the bus and there is nothing left to time-align. `DelayAnalyzer`, the delay
@@ -963,13 +1000,13 @@ later judgment.
 - **A WPF trigger's `Value` is parsed as a STRING, so comparing it against a boolean binding is
   unreliable** — the trigger silently never fires and every button renders unselected with no error
   anywhere. Bind selection state to `Tag` as an `"on"`/`"off"` **string** and use a `DataTrigger` on
-  `{Binding Tag, RelativeSource={RelativeSource Self}}` (see `Views/SimpleWindow.xaml`, and the
-  `…State` string properties on `SceneController` that exist only for this).
+  `{Binding Tag, RelativeSource={RelativeSource Self}}` (see `Views/SimpleWindow.xaml` and
+  `MainViewModel.SingingState`, whose third value, "mixed", is a second reason it is a string).
 
-- **Scene and alert *rules* live in pure functions** (`Services/SceneTransform`, `Services/HealthMonitor`)
-  that take and return plain records, with the view models only marshalling values in and out. Scenes
-  rewrite every channel and output at once and a wrong rule drops the congregation off the stream
-  silently; alert rules fire in situations nobody can stage on demand. Keep new rules in the pure
+- **Alert and routing *rules* live in pure functions** (`Services/HealthMonitor`, `Services/RouteGuard`)
+  that take and return plain records, with the view models only marshalling values in and out. A wrong
+  routing rule drops the congregation off the stream silently; alert rules fire in situations nobody
+  can stage on demand. Keep new rules in the pure
   layer so they stay unit-testable — do NOT put judgement in the view models.
   **An alert names its remedy as a value, not a delegate** (`HealthAlert.Fix`, a `FixKind`, plus a
   `Target` strip/bus index); `MainViewModel.ApplyFix` carries it out and `SimpleWindow` handles the two
@@ -980,31 +1017,13 @@ later judgment.
   bus: routing, device, or the far end?) deliberately carry `FixKind.None` and stay plain text. A
   button that cannot help is worse than a sentence.
 
-- **Input strips live in a `UniformGrid Rows="1"`, which divides the column equally and IGNORES each
-  child's `MinWidth`.** A fixed-width window crams N strips into whatever space exists and clips the
-  right-most controls (A/B route toggles vanish first). Fix: the window is non-resizable and its width
-  is computed from input count (`MainViewModel.WindowWidth = max(560, count*StripWidth +
-  NonStripWidth)`, 100/260), applied in
-  `MainWindow` code-behind. Don't bind `Window.Width` in XAML — `DataContext` is set *after*
-  `InitializeComponent`, so the binding isn't reliably applied at startup and it falls back to the
-  **That width is the only thing keeping the strips legible, so it needs headroom, not a bare fit:**
-  the earlier `count*96 + 240` never counted the window border, and at 10 inputs a 1200 px window has
-  a ~1184 px client — (1184-230)/10 = 95.4 px per strip, 85.4 px of content against the strip's
-  `MinWidth` of 86, clipping by a hair. Verified end to end at 10 inputs 2026-09-20: the preset loads,
-  all four windows open, no binding errors, 1260x404 fits 1920. `WindowSizingTests` pins every count
-  1-10 against that minimum and its constants must be changed with the view model's.
-  literal. Set `Width` in code-behind after assigning `DataContext` and on `WindowWidth`
-  PropertyChanged. `WindowHeight` follows the same pattern (`BaseWindowHeight` + the VB-CABLE banner
-  when `ShowVbCablePrompt`). Also: outputs live in a fixed-width column (**230 px**), NOT `Auto` — an
-  `Auto` column lets device-name buttons expand to their full untrimmed text and blows out the layout.
-- **Adding a row to the output template clips it silently.** The window is `CanMinimize` with its
-  height from the `BaseWindowHeight` constant, and there is no scrollbar — a new `RowDefinition` in
-  the output `DataTemplate` just doesn't render, with no error and nothing in the log. Bump
-  `BaseWindowHeight` in the same change (the leveler row cost +60 px). The two outputs share that
-  230 px column via `UniformGrid Rows="1"`, so each strip is only ~115 px wide: put a collapsed
-  `ToggleButton` + `Popup` in the column and every slider *inside* the popup, which is its own
-  top-level window and unconstrained by the column. That is why the automix mode picker, the device
-  picker and the leveler are all popups.
+- **The operator panel sizes itself; there is no window-size arithmetic left to get wrong.**
+  `SimpleWindow` is a fixed 330 px wide with `SizeToContent="Height"` and one row per mic, so adding a
+  row or a card grows the window instead of clipping it. Two gotchas that used to sit here — a
+  `UniformGrid` of strip columns ignoring `MinWidth`, and a fixed `BaseWindowHeight` that silently
+  clipped any new row — described the retired Advanced `MainWindow`, and were removed 2026-09-23 along
+  with a reference to a `WindowSizingTests` that no longer existed. The failure comes back only if a
+  window is given a fixed `Height` again.
 - **Enumerating audio endpoints is SLOW and must never run on the UI thread.**
   `AudioDeviceInfo.Enumerate` opens three COM property stores per endpoint (friendly name, bus,
   container id); measured 2026-09-23 at **3.5-3.9 s for 30 endpoints** on the rig machine, which has
@@ -1031,7 +1050,8 @@ steps exist because doing them out of order gives a confident wrong answer (anal
 checking level being the expensive one).
 
 A session is one `<stamp>` across four artefacts: the per-mic `diag-input*.wav` (pre-fader,
-pre-low-cut), `decisions-*.csv` (10 Hz: scene, winner, leveler gain, per-mic level and applied gain),
+pre-low-cut), `decisions-*.csv` (10 Hz: automix mode and winner per bus, leveler gain, per-mic level
+and applied gain),
 `mix-*.wav` (post-leveler), and `session-*.json` (aggregates, events, and the `Config` the whole thing
 has to be read against). **Start from the JSON** — without the config the numbers do not mean anything.
 
@@ -1067,7 +1087,7 @@ Update CLAUDE.md **in the same change** whenever you:
 **What NOT to add here:**
 - Per-task progress, in-flight TODOs, or PR descriptions (tasks/commits), or planned work (ROADMAP).
 - Restatements of what the code obviously does.
-- Session-specific operational settings (which scene to run this Sunday) — that's session memory.
+- Session-specific operational settings (which mics to route this Sunday) — that's session memory.
 - Speculative future plans. Document what IS, not what might be.
 
 **Optimization pass** — every ~5 substantial changes (or when a section bloats):

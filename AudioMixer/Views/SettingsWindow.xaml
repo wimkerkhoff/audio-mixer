@@ -39,17 +39,6 @@
 
             <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <TextBlock Text="Microphone roles" Style="{StaticResource Head}"/>
-                    <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
-                               Text="Which microphone is the presenter's lapel. It is never gated, and it ducks the room mics while the presenter is speaking."/>
-                    <ComboBox ItemsSource="{Binding LapelOptions}"
-                              SelectedIndex="{Binding LapelIndex, Mode=TwoWay}"
-                              FontSize="11" HorizontalAlignment="Left" MinWidth="180"/>
-                </StackPanel>
-            </Border>
-
-            <Border Style="{StaticResource Card}">
-                <StackPanel>
                     <TextBlock Text="Microphones" Style="{StaticResource Head}"/>
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
                                Text="Which device each strip listens to. A two-transmitter receiver in Split mode is one device carrying TX1 on the left and TX2 on the right: bind it to two strips, one set to Left and one to Right."/>

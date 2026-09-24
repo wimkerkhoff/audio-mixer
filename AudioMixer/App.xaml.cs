@@ -1,4 +1,4 @@
-using System.Threading;
+﻿using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -123,10 +123,6 @@ public partial class App : Application
             else if (a.StartsWith("--preset=", StringComparison.OrdinalIgnoreCase))
             {
                 Services.PresetStore.PathOverride = a[9..];
-            }
-            else if (a.StartsWith("--scene=", StringComparison.OrdinalIgnoreCase))
-            {
-                if (Enum.TryParse<Models.Scene>(a[8..], ignoreCase: true, out var sc)) StartupScene = sc;
             }
             else if (a.StartsWith("--shots", StringComparison.OrdinalIgnoreCase))
             {
@@ -261,12 +257,6 @@ public partial class App : Application
     }
 
     private static bool _openAllWindows;
-
-    /// <summary>
-    /// Applied once the view model is up. Lets a desktop shortcut open straight into a scene, and lets
-    /// a smoke run assert the whole scene path (pure transform -> view models -> engine) from /state.
-    /// </summary>
-    public static Models.Scene? StartupScene { get; private set; }
 
     private void ShowListenerLoop()
     {

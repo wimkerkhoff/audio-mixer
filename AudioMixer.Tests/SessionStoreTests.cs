@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using AudioMixer.Services;
 
 namespace AudioMixer.Tests;
@@ -25,7 +25,6 @@ public class SessionStoreTests : IDisposable
         Stamp = stamp,
         StartedUtc = new DateTime(2026, 9, 20, 9, 42, 53, DateTimeKind.Utc),
         DurationMinutes = 28.8,
-        Scene = "Prayer",
         Inputs = new[]
         {
             new InputSummary { Index = 0, Label = "LAPEL", SpeechDb = -45.3f, FloorDb = -61.5f,
@@ -56,7 +55,6 @@ public class SessionStoreTests : IDisposable
 
         Assert.NotNull(back);
         Assert.Equal(28.8, back!.DurationMinutes, 3);
-        Assert.Equal("Prayer", back.Scene);
         Assert.Equal(-45.3f, back.Inputs[0].SpeechDb, 2);
         Assert.Equal(177, back.Outputs[0].Handoffs);
         Assert.Equal(28.2, back.Outputs[0].OccupancyPercent[-1], 2);
