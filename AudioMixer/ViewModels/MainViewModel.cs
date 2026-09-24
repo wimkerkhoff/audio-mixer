@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -142,8 +142,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _deviceWatcher = new DeviceWatcher();
         _deviceWatcher.DevicesChanged += () => RunOnUi(() =>
         {
+            // Said before the refresh, not after: enumeration is now asynchronous and takes seconds,
+            // so a "refreshed" message here would be a lie for the whole time it mattered, and would
+            // then be overwritten by the real count anyway.
+            StatusText = "Audio devices changed. Refreshing the device list...";
             RefreshDevices();
-            StatusText = "Audio devices changed. Device lists refreshed.";
         });
 
         for (int i = 0; i < _engine.InputCount; i++)
@@ -1209,14 +1212,63 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             d => bound.Contains(d.Id) || !VirtualDeviceFilter.IsVirtualOutput(d.FriendlyName));
     }
 
+    // Enumeration is SLOW and must never run on the UI thread: it opens three COM property stores
+    // per endpoint (friendly name, bus, container id), which measured ~3.5 s for 30 endpoints on the
+    // rig machine -- and it is slowest exactly during a plug event, when the audio stack is
+    // renegotiating and this is most likely to be called. Doing it inline froze the whole window for
+    // seconds on every unplug/replug. Only the rebuild, which touches ObservableCollections and the
+    // engine, belongs on the UI thread.
     private void RefreshDevices()
     {
-        _allInputDevices = AudioDeviceInfo.Enumerate(DataFlow.Capture);
-        _allOutputDevices = AudioDeviceInfo.Enumerate(DataFlow.Render);
+        if (Interlocked.Exchange(ref _refreshInFlight, 1) == 1)
+        {
+            // A plug burst is already debounced upstream, but a manual click can still land on top of
+            // a watcher refresh. Coalesce rather than queue: a second full enumeration would produce
+            // the same lists three seconds later and rebuild the pickers under the operator twice.
+            Volatile.Write(ref _refreshQueued, 1);
+            return;
+        }
+        StartRefresh();
+    }
+
+    private void StartRefresh() => Task.Run(() =>
+    {
+        List<AudioDeviceInfo> capture, render;
+        try
+        {
+            capture = AudioDeviceInfo.Enumerate(DataFlow.Capture);
+            render = AudioDeviceInfo.Enumerate(DataFlow.Render);
+        }
+        catch (Exception ex)
+        {
+            AudioLog.Write($"Device enumeration failed: {ex.GetType().Name}: {ex.Message}");
+            Volatile.Write(ref _refreshInFlight, 0);
+            RunOnUi(() => StatusText = $"Couldn't read the device list: {ex.Message}");
+            return;
+        }
+
+        RunOnUi(() =>
+        {
+            try { ApplyDeviceLists(capture, render); }
+            finally
+            {
+                Volatile.Write(ref _refreshInFlight, 0);
+                if (Interlocked.Exchange(ref _refreshQueued, 0) == 1) RefreshDevices();
+            }
+        });
+    });
+
+    private void ApplyDeviceLists(List<AudioDeviceInfo> capture, List<AudioDeviceInfo> render)
+    {
+        _allInputDevices = capture;
+        _allOutputDevices = render;
         DedupeAndRebuild();
         UpdateVbCableStatus();
         StatusText = $"Refreshed: {_allInputDevices.Count} inputs, {_allOutputDevices.Count} outputs";
     }
+
+    private int _refreshInFlight;
+    private int _refreshQueued;
 
     // VB-CABLE installs "CABLE Input" (render) + "CABLE Output" (capture); detect either by the VB-Audio vendor tag.
     private static bool IsVbCableInstalled(IEnumerable<AudioDeviceInfo> a, IEnumerable<AudioDeviceInfo> b) =>
