@@ -97,39 +97,12 @@ public sealed class ChannelViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Asked before a change that could take audio off a bus. Set by MainViewModel, which is the only
-    /// thing that can see the sibling channels a routing decision depends on. Returning false vetoes
-    /// the change and the control snaps back. Null in unit contexts, where nothing is vetoed.
-    /// </summary>
-    public Func<int, bool>? MuteGuard { get; set; }
-    public Func<int, int, bool>? RouteGuard { get; set; }
-
-    /// <summary>
-    /// True when the LAST PropertyChanged this strip raised was a veto snapping the control back, not
-    /// a change. The two are indistinguishable to a listener otherwise — a refused mute raises
-    /// `Muted` with `Muted` still false — and MainViewModel's listener took that at face value: it
-    /// wrote "LAPEL unmuted" into the session action log for an action that was refused, cleared the
-    /// active scene, and restarted the autosave. A record that reports the opposite of what happened
-    /// is worse than one that reports nothing, because step 8 of the session review reads it.
-    /// </summary>
-    internal bool ChangeRefused { get; private set; }
-
     private bool _muted;
     public bool Muted
     {
         get => _muted;
         set
         {
-            // Only muting can uncover a bus; unmuting always adds. Asking on both would mean a refusal
-            // could trap the channel in the muted state it was refused out of.
-            if (value && !_muted && MuteGuard != null && !MuteGuard(Index))
-            {
-                ChangeRefused = true;
-                RaisePropertyChanged();
-                ChangeRefused = false;
-                return;
-            }
             if (SetField(ref _muted, value)) _channel.Muted = value;
         }
     }
@@ -433,8 +406,6 @@ public sealed class ChannelViewModel : ViewModelBase
 
 public sealed class RouteToggleViewModel : ViewModelBase
 {
-    /// <summary>Set by the owning channel; vetoes a route being switched OFF. See ChannelViewModel.</summary>
-    public Func<int, bool>? Guard { get; set; }
 
     /// <summary>
     /// Whether the automixer is currently sending THIS mic to THIS bus. Per-output on purpose: with
@@ -500,23 +471,10 @@ public sealed class RouteToggleViewModel : ViewModelBase
         get => _channel.GetRoute(_outputIndex);
         set
         {
-            // Only switching OFF can uncover a bus. Switching on always adds, and asking there could
-            // refuse a change that was about to make things better.
-            if (!value && IsOn && Guard != null && !Guard(_outputIndex))
-            {
-                ChangeRefused = true;
-                RaisePropertyChanged();
-                ChangeRefused = false;
-                return;
-            }
             _channel.SetRoute(_outputIndex, value);
             RaisePropertyChanged();
         }
     }
-
-    /// <summary>As <see cref="ChannelViewModel.ChangeRefused"/>: this raise is the toggle snapping
-    /// back from a veto, not a routing change.</summary>
-    internal bool ChangeRefused { get; private set; }
 
     public RouteToggleViewModel(int outputIndex, InputChannel channel)
     {

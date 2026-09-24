@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using AudioMixer.Audio;
 
 namespace AudioMixer.ViewModels;
@@ -102,10 +102,12 @@ public sealed class OutputViewModel : ViewModelBase
         }
     }
 
-    // Bus mute, used by Standby and by the Simple-mode on-air cards. Deliberately NOT persisted: a
-    // mute that survived a restart would put an operator on air-silent with no memory of why, and
-    // Standby is a runtime state, not a configuration. It applies at the bus volume, which sits AFTER
-    // the peak/recorder tap — so a muted output still meters, and you can see audio is arriving.
+    // Bus mute, from the on-air cards. PERSISTED since 2026-09-23 (operator's call). It used to reset on
+    // every launch, for fear that a remembered mute would leave the stream silent with nobody knowing
+    // why; the Checks window now raises "<bus> is muted" with an Unmute button, which answers that, and
+    // an operator re-muting a bus after every restart was the more real failure. It applies at the bus
+    // volume, which sits AFTER the peak/recorder tap — so a muted output still meters, and you can see
+    // audio is arriving.
     private bool _muted;
     public bool Muted
     {

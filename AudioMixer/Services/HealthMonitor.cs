@@ -1,4 +1,4 @@
-﻿namespace AudioMixer.Services;
+namespace AudioMixer.Services;
 
 public enum AlertSeverity { Info, Warning, Critical }
 

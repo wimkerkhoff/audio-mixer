@@ -1,4 +1,4 @@
-﻿namespace AudioMixer.Audio;
+namespace AudioMixer.Audio;
 
 /// <summary>
 /// Speech-vs-floor level histogram, used to set transmitter gain against a target (RODE-PRO-RIG.md).

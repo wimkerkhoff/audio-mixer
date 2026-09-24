@@ -39,6 +39,17 @@
 
             <Border Style="{StaticResource Card}">
                 <StackPanel>
+                    <TextBlock Text="Priority mic" Style="{StaticResource Head}"/>
+                    <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
+                               Text="Normally the presenter's lapel. It is never switched off by the automixer, and it turns the other mics down while it is speaking. Only one mic can be priority. To leave it out of a meeting, mute it on the main panel."/>
+                    <ComboBox ItemsSource="{Binding LapelOptions}"
+                              SelectedIndex="{Binding LapelIndex, Mode=TwoWay}"
+                              FontSize="11" HorizontalAlignment="Left" MinWidth="180"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
                     <TextBlock Text="Microphones" Style="{StaticResource Head}"/>
                     <TextBlock Style="{StaticResource Cap}" Margin="0,0,0,6"
                                Text="Which device each strip listens to. A two-transmitter receiver in Split mode is one device carrying TX1 on the left and TX2 on the right: bind it to two strips, one set to Left and one to Right."/>

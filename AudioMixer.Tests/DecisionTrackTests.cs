@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using AudioMixer.Services;
 
 namespace AudioMixer.Tests;

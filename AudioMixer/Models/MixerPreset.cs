@@ -93,6 +93,8 @@ public sealed class OutputPreset
     public string? DeviceName { get; set; }
     public int AutoMixMode { get; set; }           
     public float Volume { get; set; } = 100f;          // percent
+    // Absent from presets written before 2026-09-23, so those load unmuted -- what they always did.
+    public bool Muted { get; set; }
 
     // Bus leveler. Property initialisers, not a constructor: System.Text.Json leaves them alone when
     // a key is absent, so every preset written before the leveler existed loads with it OFF and sane

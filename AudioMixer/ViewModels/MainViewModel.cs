@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -264,59 +264,53 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         StartStateServer();
     }
 
-    // --- Singing: the one automix decision the operator makes -------------------------------------
+    // --- Speaking / Singing: the one automix decision the operator makes ----------------------------
     //
     // Scenes were removed 2026-09-23. They rewrote every channel and output at once, which silently
     // undid any hand mute the moment someone changed scene, and the operators -- who are trusted with
     // mute and A/B and mix in OBS -- could not remember what each of four buttons did. What survives
     // is the one piece of knowledge an operator cannot re-derive: singing has no single talker, so
-    // follow-the-talker must be OFF. Everything else a scene did, the operator does directly.
+    // follow-the-talker must be OFF. Everything else a scene did, the operator does directly --
+    // including taking the priority lapel out of a meeting, which is a mute: its level is measured
+    // after the mute gate, so a muted lapel never reads as speaking and cannot duck anyone.
     //
     // Priority needs no handling here. AutoMixer's Off branch sets unity gain and skips the priority
     // logic entirely, so a priority lapel cannot duck anything while the buses are Off -- and it is
     // still armed when they go back to Gate, which the old Singing scene (which cleared it) was not.
 
-    public RelayCommand ToggleSingingCommand { get; private set; } = null!;
+    public RelayCommand SetSpeakingCommand { get; private set; } = null!;
+    public RelayCommand SetSingingCommand { get; private set; } = null!;
 
-    /// <summary>True only when every bus is Off. Mixed counts as not singing, so a tap turns it on.</summary>
-    public bool IsSinging => Outputs.Length > 0
-        && Outputs.All(o => o.AutoMixModeIndex == (int)AutoMixMode.Off);
+    public bool IsSpeaking => Outputs.Length > 0 && Outputs.All(o => o.AutoMixModeIndex == (int)AutoMixMode.Gate);
+    public bool IsSinging => Outputs.Length > 0 && Outputs.All(o => o.AutoMixModeIndex == (int)AutoMixMode.Off);
 
-    /// <summary>
-    /// "on" / "off" / "mixed" for the button's DataTrigger -- a string because a WPF trigger Value is
-    /// parsed as text and silently never fires against a bool. "mixed" exists because the per-bus mode
-    /// is still settable in Settings, and a toggle showing "off" while one bus was Off would lie.
-    /// </summary>
-    public string SingingState =>
-        IsSinging ? "on"
-        : Outputs.Any(o => o.AutoMixModeIndex == (int)AutoMixMode.Off) ? "mixed"
-        : "off";
-
-    /// <summary>What the automixer is doing right now, in words, so nobody has to remember it.</summary>
-    public string SingingSummary => SingingState switch
-    {
-        "on" => "Singing: every mic open, no switching.",
-        "mixed" => "Buses differ. Tap to put both in singing.",
-        _ => "Speaking: one mic at a time, following the talker.",
-    };
+    // "on" / "off" / "mixed" for each side's DataTrigger -- strings because a WPF trigger Value is
+    // parsed as text and silently never fires against a bool. "mixed" lights BOTH sides amber when the
+    // buses disagree (the per-bus mode is still in Settings): lighting neither would read as "off", and
+    // lighting one would claim a mode only half the rig is in.
+    public string SpeakingState => IsSpeaking ? "on" : IsSinging ? "off" : "mixed";
+    public string SingingState => IsSinging ? "on" : IsSpeaking ? "off" : "mixed";
 
     private void InitAutomixControls()
     {
-        ToggleSingingCommand = new RelayCommand(() =>
-        {
-            var mode = IsSinging ? AutoMixMode.Gate : AutoMixMode.Off;
-            foreach (var o in Outputs) o.AutoMixModeIndex = (int)mode;
-        });
+        SetSpeakingCommand = new RelayCommand(() => SetAllModes(AutoMixMode.Gate));
+        SetSingingCommand = new RelayCommand(() => SetAllModes(AutoMixMode.Off));
         foreach (var op in Outputs)
         {
             op.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName != nameof(OutputViewModel.AutoMixModeIndex)) return;
+                RaisePropertyChanged(nameof(IsSpeaking));
                 RaisePropertyChanged(nameof(IsSinging));
+                RaisePropertyChanged(nameof(SpeakingState));
                 RaisePropertyChanged(nameof(SingingState));
-                RaisePropertyChanged(nameof(SingingSummary));
             };
         }
+    }
+
+    private void SetAllModes(AutoMixMode mode)
+    {
+        foreach (var o in Outputs) o.AutoMixModeIndex = (int)mode;
     }
 
     /// <summary>
@@ -440,9 +434,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// control that sets it, so "one at a time" holds by construction.
     ///
     /// Sets Role and IsPriority together. They used to diverge -- scenes cleared the priority flag and
-    /// left the role -- and with this picker on the operator panel a divergence would be a visible
-    /// lie: the panel naming a priority mic that is not ducking anything. Everything that clears
-    /// priority therefore goes through here (see ApplyFix and the preset load).
+    /// left the role -- and a divergence makes this picker a lie: naming a priority mic that is not
+    /// ducking anything. Everything that clears priority therefore goes through here (see ApplyFix and
+    /// the preset load). Lives in Settings: it is set once per rig, and taking the lapel out of a
+    /// meeting is a mute on the operator panel, not a change of priority.
     /// </summary>
     public IReadOnlyList<string> LapelOptions =>
         new[] { "(none)" }.Concat(Channels.Select(c =>
@@ -717,7 +712,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     break;
 
                 case FixKind.RouteToBuses:
-                    // Putting a mic back ON air only ever adds, so RouteGuard has nothing to refuse.
                     if (ch == null) return;
                     foreach (var r in ch.Routes) r.IsOn = true;
                     StatusText = $"{Label(ch)} routed to every bus.";
@@ -921,39 +915,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         foreach (var r in ch.Routes) r.PropertyChanged += OnSettingChanged;
         ch.AttachOutputs(Outputs);
 
-        // The operator panel switches routes and mute directly, so nothing else stands between a tap
-        // and a bus with no live mic on it. Only this class can see the sibling channels the decision
-        // depends on, so the guard is wired from here.
-        ch.MuteGuard = i => Allow(Services.RouteGuard.CheckMute(RoutingSnapshot(), i));
-        ch.RouteGuard = (i, o) => Allow(Services.RouteGuard.CheckUnroute(RoutingSnapshot(), i, o));
         for (int o = 0; o < ch.Routes.Length; o++)
-        {
-            int output = o;
-            ch.Routes[o].Guard = _ => Allow(
-                Services.RouteGuard.CheckUnroute(RoutingSnapshot(), ch.Index, output));
             ch.Routes[o].IsLeaderOnOutput = out_ => _engine.AutoMixActiveInput(out_) == ch.Index;
-        }
-    }
-
-    private bool Allow(RouteVerdict verdict)
-    {
-        if (verdict.Allowed) return true;
-        StatusText = verdict.Reason!;
-        return false;
     }
 
     /// <summary>Linear RMS to dBFS, floored the way /state floors it so silence is finite.</summary>
     private static double Db(double linear) =>
         linear <= 1e-6 ? -120.0 : Math.Round(20 * Math.Log10(linear), 1);
-
-    private List<ChannelRouting> RoutingSnapshot() =>
-        Channels.Select(c => new ChannelRouting(
-            c.Index,
-            c.DisplayName,
-            c.Routes.Select(r => r.IsOn).ToArray(),
-            c.Muted,
-            c.SelectedDevice != null,
-            Environment.TickCount64 - _engine.Inputs[c.Index].LastDataTicks > 2000)).ToList();
 
     private void DetachChannel(ChannelViewModel ch)
     {
@@ -1349,13 +1317,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // A veto raises the same notification a real change does, so that the control snaps back —
-        // but the value behind it is unchanged, and everything below reads the value. Logging it
-        // recorded the OPPOSITE action ("LAPEL unmuted" when a mute was refused) and restarted the
-        // autosave for a write that never happened.
-        if (sender is ChannelViewModel { ChangeRefused: true }
-            or RouteToggleViewModel { ChangeRefused: true }) return;
-
         _session?.Action(DescribeChange(sender, e.PropertyName));
 
         _autosaveTimer.Stop();
@@ -1510,6 +1471,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 // Gate — Share's job was follow-the-talker, and Gate is what every scene forced.
                 Outputs[o].AutoMixModeIndex = (int)OutputPreset.MigrateMode(op.AutoMixMode);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
+                Outputs[o].Muted = op.Muted;
 
                 // Strength first (it rewrites threshold/ratio/cap), then the individual values, so a
                 // preset that was tuned away from its strength preset keeps the tuned numbers.

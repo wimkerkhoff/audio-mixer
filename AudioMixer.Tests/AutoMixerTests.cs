@@ -1,4 +1,4 @@
-﻿using AudioMixer.Audio;
+using AudioMixer.Audio;
 
 namespace AudioMixer.Tests;
 

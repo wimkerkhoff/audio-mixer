@@ -1,4 +1,4 @@
-﻿namespace AudioMixer.Services;
+namespace AudioMixer.Services;
 
 /// <summary>What one microphone did over a whole session.</summary>
 public sealed record InputSummary

@@ -121,7 +121,7 @@
                     <Setter Property="Foreground" Value="#FFFFFF"/>
                     <Setter Property="FontWeight" Value="SemiBold"/>
                 </DataTrigger>
-                <!-- Neither on nor off: the buses disagree (one is Off). Amber, not green, because a
+                <!-- The buses disagree (one Gate, one Off): both sides go amber, because a
                      half-applied mode is the thing to notice. -->
                 <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="mixed">
                     <Setter Property="BorderBrush" Value="#D29922"/>
@@ -287,30 +287,17 @@
             </StackPanel>
         </Grid>
 
-        <!-- The two decisions that carry knowledge an operator cannot re-derive. Scenes used to wrap
-             them in four presets that also rewrote every mute and route, silently undoing hand
-             changes; everything else a scene did, the operator now does on the rows below. The line
-             under the toggle says what the automixer IS doing, so nobody has to remember it. -->
-        <Border Style="{StaticResource Card}" Margin="0,0,0,6">
-            <StackPanel>
-                <Button Content="Singing" Command="{Binding ToggleSingingCommand}"
-                        Style="{StaticResource SceneBtn}" Tag="{Binding SingingState}"
-                        ToolTip="Singing has no single talker, so the automixer stops switching and every mic stays open. Tap again when speaking resumes."/>
-                <TextBlock Text="{Binding SingingSummary}" Style="{StaticResource Cap}"
-                           Margin="0,3,0,6" TextTrimming="CharacterEllipsis"/>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="PRIORITY MIC" Style="{StaticResource Cap}"
-                               VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <ComboBox Grid.Column="1" ItemsSource="{Binding LapelOptions}"
-                              SelectedIndex="{Binding LapelIndex, Mode=TwoWay}" FontSize="11"
-                              ToolTip="Never switched off by the automixer, and ducks the other mics while it is speaking. One at a time."/>
-                </Grid>
-            </StackPanel>
-        </Border>
+        <!-- The one automix decision an operator makes, as two sides so the current mode is always
+             lit. Scenes used to wrap it in four presets that also rewrote every mute and route,
+             silently undoing hand changes; everything else, the operator does on the rows below. -->
+        <UniformGrid Rows="1" Columns="2" Margin="0,0,0,6">
+            <Button Content="Speaking" Margin="0,0,3,0" Command="{Binding SetSpeakingCommand}"
+                    Style="{StaticResource SceneBtn}" Tag="{Binding SpeakingState}"
+                    ToolTip="One mic at a time. The automixer follows whoever is talking and switches the other mics off, so one voice is never heard through several mics at once. Use for teaching, prayer and discussion."/>
+            <Button Content="Singing" Command="{Binding SetSingingCommand}"
+                    Style="{StaticResource SceneBtn}" Tag="{Binding SingingState}"
+                    ToolTip="Every mic stays open and nothing switches. Congregational singing has no single talker to follow, so switching would chop it."/>
+        </UniformGrid>
 
         <!-- Channel rows: what a physical desk shows, at a width that fits beside OBS and Zoom.
              Width is constant no matter how many mics; it grows downward, which is the direction a

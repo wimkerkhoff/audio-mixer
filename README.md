@@ -16,21 +16,26 @@ rest, holding its choice so a pause cannot hand the room to a distant mic.
 
 | Window | What it is for |
 |---|---|
-| **Operator panel** | The mixer. The Singing toggle and the priority-mic picker, one row per mic (state stripe, meter with target band, level, mute, bus A/B that lights when the automixer picks it), an on-air card per bus, one toolbar. |
+| **Operator panel** | The mixer. A Speaking / Singing toggle, one row per mic (state stripe, meter with target band, level, mute, bus A/B that lights when the automixer picks it), an on-air card per bus, one toolbar. |
 | **Checks** | Everything needing attention, and nothing that is merely fine. It opens itself only when something is wrong, so its appearance is the signal. Each item offers a button that does the fix where one exists. Never blocks. |
 | **Diagnostics** | Why this mic (ranked, with the deciding numbers) · the session so far · calibration · devices. Never needed to run a service. |
-| **Settings** | The rig: each strip's device and split side, automix mode per bus, the bus leveler, the global low-cut, device-picker filters. |
+| **Settings** | The rig: the priority mic, each strip's device and split side, automix mode per bus, the bus leveler, the global low-cut, device-picker filters. |
 
-## The two decisions on the operator panel
+## Speaking and Singing
 
-Everything else — which mics are open, on which bus, muted or not — the operator sets directly on the
-mic rows. Two things are not obvious enough to leave to memory, so they get their own controls:
+Which mics are open, on which bus, muted or not — the operator sets directly on the mic rows. The one
+thing not obvious enough to leave to memory is a two-sided toggle at the top of the panel:
 
-- **Singing** — turns follow-the-talker **off** on both buses. With a congregation singing there is no
-  single talker to follow, so follow-the-talker chops. Every routed mic stays open; tap again when the
-  speaking resumes. The line under the button says what the automixer is doing right now.
-- **Priority mic** — the one mic (normally the presenter's lapel) that is never switched off and that
-  ducks the others while it is speaking. One at a time, and "(none)" when nobody is wearing it.
+- **Speaking** — follow-the-talker: one mic at a time, the others switched off, so one voice is
+  never heard through several mics at once.
+- **Singing** — follow-the-talker **off**. A congregation singing has no single talker, so switching
+  would chop it; every routed mic stays open.
+
+Both sides go amber if the two buses have been set to different modes in Settings.
+
+The **priority mic** (normally the presenter's lapel) is never switched off and ducks the others
+while it is speaking. It is chosen once in Settings; to leave the lapel out of a meeting, mute it.
+All mutes, mic and bus, are remembered across a restart.
 
 There used to be four scene buttons (Standby, Teaching, Prayer, Singing). They were removed in
 2026-09: nobody could remember what each did, and because a scene rewrote every mute and route it
@@ -170,7 +175,7 @@ WasapiCapture (per input)
 - **MVVM**: engine in `Audio/`, pure rules in `Services/`, view models in `ViewModels/`, four windows
   in `Views/`.
 
-Anything that makes a judgement — health rules, the routing guard, the automixer, session aggregates —
+Anything that makes a judgement — health rules, the automixer, session aggregates —
 lives in a pure function so it can be unit-tested. Nearly 400 tests cover that layer; anything
 needing a device or a window is exercised by a replay run instead.
 

@@ -61,6 +61,7 @@ public static class PresetMapper
                 LevelerIdleFloorDb = o.LevelerIdleFloorDb,
                 LimiterCeilingDb = o.LimiterCeilingDb,
                 Volume = o.VolumePercent,
+                Muted = o.Muted,
             }).ToArray(),
         };
 }

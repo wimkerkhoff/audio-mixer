@@ -33,7 +33,8 @@ reading them:
 - Room is ~60 ft wide; the furthest mic sits ~50 ft from the dongles — **at the edge of RF range**.
 - Outputs: a monitor headset + VB-CABLE feeding Zoom/OBS.
 - Usage: teaching (one talker), prayer meetings (turn-taking room mics, often led from the lapel),
-  congregational singing (the automixer's one-talker assumption inverts — the Singing toggle).
+  congregational singing (the automixer's one-talker assumption inverts — the Singing side of the
+  Speaking/Singing toggle).
   Per-meeting setup guidance lives in session memory, not here.
 
 ## Stack
@@ -52,14 +53,14 @@ ROADMAP.md                    # Planned work and the decisions behind it. Not a 
 RODE-PRO-RIG.md               # The 6x Wireless PRO replacement rig: plan, watch-list,
                               #   commissioning checklist. Fold results here, then delete it.
 publish.ps1                   # Single-file publish
-AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): health, routing guard, autosave allowlist
+AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): health, automixer, autosave allowlist
 AudioMixer/
 ├── App.xaml / App.xaml.cs    # Single-instance mutex; OWNS MainViewModel; ApplyCliFlags (see Conventions)
 ├── Views/                    # The whole UI. Four windows, no Advanced — see below.
-│   ├── SimpleWindow.xaml     # THE mixer: Singing toggle, priority picker, mic rows, on-air cards
+│   ├── SimpleWindow.xaml     # THE mixer: Speaking/Singing toggle, mic rows, on-air cards
 │   ├── ChecksWindow.xaml     # Everything needing attention; opens itself only when something does
 │   ├── DiagnosticsWindow.xaml # Ranked "why this mic?" table; own 10 Hz timer, off when closed
-│   ├── SettingsWindow.xaml   # Mic devices + split side, per-bus automix mode, leveler, low-cut
+│   ├── SettingsWindow.xaml   # Priority mic, mic devices + split side, per-bus mode, leveler, low-cut
 │   └── OperatorConverters.cs # Severity->brush, mic-dot colour, null/inverse visibility
 ├── Audio/
 │   ├── AudioEngine.cs        # Capture/render lifecycle, graph wiring, AutoMix tick + stall watchdog
@@ -85,7 +86,6 @@ AudioMixer/
 │   └── DeviceList.cs / RelayCommand.cs / ViewModelBase.cs
 ├── Models/MixerPreset.cs     # Serializable: device ids+names, volumes, mutes, delays, routes, automix
 ├── Services/
-│   ├── RouteGuard.cs         # PURE: refuses a mute/unroute that would leave a bus with no live mic
 │   ├── HealthMonitor.cs      # PURE alert rules for the banner. Unit-tested.
 │   ├── PersistedProperties.cs # The autosave allowlist, extracted so its invariant is testable
 │   ├── BindingErrorListener.cs # WPF binding failures -> the log (on with --log)
@@ -120,15 +120,15 @@ home, which is worth recording because the split cost real confusion: two places
 device pickers, two toolbars, and a window that could not be closed (only hidden) because it owned the
 view model.
 
-- **Operator panel** (`SimpleWindow`) — the Singing toggle and the priority-mic picker, one row per
+- **Operator panel** (`SimpleWindow`) — the Speaking/Singing toggle, one row per
   mic (state stripe, meter with the target band, level, mute, bus A/B that lights when the automixer
   picks it), on-air cards per bus with their own trim, and one toolbar. This is the mixer now, not a
   simplified view of one.
 - **Checks** — every warning and error, nothing that is merely fine. Opens itself only when something
   needs attention, so its appearance is the signal; never blocks.
 - **Diagnostics** — why this mic, the session record, calibration, devices. Never needed to run a service.
-- **Settings** — the rig: each strip's device and split side, automix mode per bus, the bus leveler,
-  the global low-cut, picker filters.
+- **Settings** — the rig: the priority mic, each strip's device and split side, automix mode per bus,
+  the bus leveler, the global low-cut, picker filters.
 
 `App` owns `MainViewModel` and disposes it in `OnExit`. `--advanced` / `--simple` are gone.
 
@@ -141,20 +141,43 @@ undone by the next scene change — "set it by hand" and "use scenes" did not co
 are trusted with per-strip mute and A/B and are comfortable mixing in OBS, so the presets were
 protecting people from controls they already use well.
 
-What survived is the knowledge an operator cannot re-derive, as two controls on the operator panel:
-- **Singing** — both buses to automix **Off** (tap again for Gate). Singing has no single talker, so
-  follow-the-talker must stop. It deliberately does *not* touch priority: `AutoMixer`'s Off branch
+What survived is the knowledge an operator cannot re-derive:
+- **Speaking | Singing**, a two-sided toggle on the operator panel with the current mode lit.
+  Speaking is both buses Gate; Singing is both buses **Off** — singing has no single talker, so
+  follow-the-talker must stop. Each side explains itself in a tooltip; an always-visible caption was
+  tried for an hour and dropped as noise once the lit side said the same thing. Singing It deliberately does *not* touch priority: `AutoMixer`'s Off branch
   sets unity gain and returns before the priority logic runs, so an armed lapel cannot duck anything
   while the buses are Off, and it is still armed when they go back to Gate. That early return is now
   the ONLY thing keeping a congregation on air during worship (the 2026-07-05 failure), so it is
   pinned by `AutoMixerTests.OffIgnoresAnActivePriorityMic_SoSingingCannotDuckTheRoom`. Unlike the
-  old scene it does not unroute room mics either: which mics are open is the operator's A/B call. A
-  third state, amber **mixed**, shows when the two buses disagree (the per-bus mode is still in
-  Settings), and a line under the button says in words what the automixer is doing right now.
-- **Priority mic** — the `LapelIndex` picker, moved out of Settings. See "Priority mics" below.
+  old scene it does not unroute room mics either: which mics are open is the operator's A/B call.
+  When the two buses disagree (the per-bus mode is still in Settings) **both sides go amber**:
+  lighting neither would read as a mode, and lighting one would claim a mode half the rig is not in.
+- **Priority mic** — the `LapelIndex` picker, in **Settings**. It is set once per rig; taking the
+  lapel out of a particular meeting is a **mute** on the operator panel, not a priority change. That
+  is sufficient: a strip's level is measured after its mute gate, so a muted priority lapel never
+  reads as speaking and cannot duck anyone. See "Priority mics" below.
+
+**Mutes persist, strip and bus alike.** Bus mutes used to reset on every launch, for fear a
+remembered one would leave the stream silent with nobody knowing why; since 2026-09-23 they save with
+the preset (`OutputPreset.Muted`), because the Checks window now flags a muted bus with an Unmute
+button and re-muting after every restart was the more real failure. Presets from before then carry
+no field and load unmuted, as they always did.
 
 Do not rebuild presets on top of this without solving the stomping problem first: any control that
 rewrites state the operator also sets by hand will silently undo their hand changes.
+
+**The route guard went the same day, for the same reason.** `RouteGuard` refused a mute or an
+unroute that would leave a bus with no live mic, snapping the button back with "Bus A would have no
+microphone". It existed because scenes had held that invariant for whole-rig changes and clickable
+A/B opened a path around it; with scenes gone and the operators trusted with A/B, a control that
+fights them was the wrong trade (the operator's call). It also had a cost of its own: a refusal
+raised the same `PropertyChanged` as a real change, which needed a `ChangeRefused` flag to stop the
+session log recording the opposite of what happened — all of that went with it. **What still
+catches an emptied bus is after the fact, not before**: `HealthMonitor`'s `out<N>.silent` rule goes
+Critical when a bus has been silent 10 s while any input is picking up sound, and the Checks window
+opens itself. In an empty room that rule is deliberately quiet, so a bus emptied before a service
+starts is only caught once people talk.
 
 ## Audio architecture
 
@@ -272,15 +295,15 @@ fixed 2026-07-26 (`ComputeFlux` accumulates → `ComputeFluxWindow` runs the FFT
 0.03→0.01 for the ~94 windows/s rate, `_fluxFill` reset in `Stop`). Live scale is now ~0.35–0.5 and
 **matches** the offline Python `flux_cv` (~0.4–0.6), so offline replays are faithful.
 
-**Priority mics** (`IsPriority`, the operator panel's PRIORITY MIC picker). A priority mic (the presenter's lapel) is
+**Priority mics** (`IsPriority`, the Priority mic picker in Settings). A priority mic (the presenter's lapel) is
 always full level and out of the competition, and while *active* (`PriorityActiveRms`, ~−40 dBFS) it
 ducks the room mics — otherwise that voice reaches the bus via both the clean lapel and a delayed
 room mic and comb-filters. **Exactly one mic is priority, and it is the lapel** (operator, 2026-09-20). Role
 and priority were two controls for one idea; the picker (`MainViewModel.LapelIndex`) sets both,
 exclusively, and is the only thing that does — the "Clear priority" health fix routes through it, and a
 preset load derives `IsPriority` from `Role` rather than loading it separately. They used to diverge
-(scenes cleared the flag and kept the role), which with the picker on the operator panel would have
-shown a priority mic that ducks nothing. `Role` is the persisted half. The engine has no hard limit, but nothing
+(scenes cleared the flag and kept the role), which would have made the picker name a priority mic
+that ducks nothing. `Role` is the persisted half. The engine has no hard limit, but nothing
 in the UI can arm a second priority mic, which also retires the hazard of one left armed on an unused
 strip. Two priority mics hearing one source would still double, since they do not duck each other. **Hazard:** an unused-but-open priority lapel that crosses −40 dBFS (bumped,
 drift) silently ducks every room mic off the stream. Unroute/clear the flag when not in use.
@@ -360,8 +383,7 @@ The app used to be unexercisable without a live congregation, which blocked all 
   a window that failed to open. (`PrintWindow` is no use either: it returns blank for WPF content.)
   Zero binding errors is *not* evidence the layout is right; it is also what a window that rendered
   garbage reports.
-- **Unit tests** (`AudioMixer.Tests`) cover only pure logic — health rules, the routing guard, the
-  automixer, the autosave allowlist invariant, the low-cut option mapping. Anything needing a device or a window is verified
+- **Unit tests** (`AudioMixer.Tests`) cover only pure logic — health rules, the automixer, the autosave allowlist invariant, the low-cut option mapping. Anything needing a device or a window is verified
   by a replay run instead. The one exception is `XamlResourceTests`, which reads the markup as *text*
   (no WPF instantiation, no devices) to check every `{StaticResource}` key resolves in its own file —
   see the UI gotcha for why a clean build does not.
@@ -1003,10 +1025,9 @@ later judgment.
   `{Binding Tag, RelativeSource={RelativeSource Self}}` (see `Views/SimpleWindow.xaml` and
   `MainViewModel.SingingState`, whose third value, "mixed", is a second reason it is a string).
 
-- **Alert and routing *rules* live in pure functions** (`Services/HealthMonitor`, `Services/RouteGuard`)
-  that take and return plain records, with the view models only marshalling values in and out. A wrong
-  routing rule drops the congregation off the stream silently; alert rules fire in situations nobody
-  can stage on demand. Keep new rules in the pure
+- **Alert *rules* live in pure functions** (`Services/HealthMonitor`) that take and return plain
+  records, with the view models only marshalling values in and out. They fire in situations nobody can
+  stage on demand, so a rule is only as good as its test. Keep new rules in the pure
   layer so they stay unit-testable — do NOT put judgement in the view models.
   **An alert names its remedy as a value, not a delegate** (`HealthAlert.Fix`, a `FixKind`, plus a
   `Target` strip/bus index); `MainViewModel.ApplyFix` carries it out and `SimpleWindow` handles the two

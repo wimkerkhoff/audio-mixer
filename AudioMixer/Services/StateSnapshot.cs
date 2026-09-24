@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using AudioMixer.Audio;
 using AudioMixer.ViewModels;
 

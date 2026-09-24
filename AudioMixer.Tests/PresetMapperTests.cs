@@ -153,6 +153,7 @@ public class PresetMapperTests
         vm.LevelerMaxGainDb = 9;
         vm.LevelerIdleFloorDb = -42;
         vm.LimiterCeilingDb = -1;
+        vm.Muted = true;
 
         var op = PresetMapper.FromViewModels(f.Channels, f.Outputs, Options).Outputs[0];
 
@@ -165,6 +166,7 @@ public class PresetMapperTests
         Assert.Equal(9, op.LevelerMaxGainDb);
         Assert.Equal(-42, op.LevelerIdleFloorDb);
         Assert.Equal(-1, op.LimiterCeilingDb);
+        Assert.True(op.Muted);
     }
 
     [Fact]
@@ -222,6 +224,32 @@ public class PresetMapperTests
 
         var missing = new List<string>();
         foreach (var field in typeof(ChannelPreset).GetProperties())
+        {
+            var vmName = byName.TryGetValue(field.Name, out var mapped) ? mapped : field.Name;
+            if (!PersistedProperties.Contains(vmName)) missing.Add($"{field.Name} (looked for '{vmName}')");
+        }
+
+        Assert.True(missing.Count == 0,
+            "saved by PresetMapper but nothing in the allowlist triggers a save: " + string.Join(", ", missing));
+    }
+
+    /// <summary>
+    /// The same invariant for the buses, which had no such test: a bus field that is written but never
+    /// triggers a save persists only on a clean exit, and this app is force-killed often.
+    /// </summary>
+    [Fact]
+    public void EveryOutputFieldWrittenHereHasAWayToTriggerASave()
+    {
+        var byName = new Dictionary<string, string>
+        {
+            [nameof(OutputPreset.DeviceId)] = nameof(ViewModels.OutputViewModel.SelectedDevice),
+            [nameof(OutputPreset.DeviceName)] = nameof(ViewModels.OutputViewModel.SelectedDevice),
+            [nameof(OutputPreset.AutoMixMode)] = nameof(ViewModels.OutputViewModel.AutoMixModeIndex),
+            [nameof(OutputPreset.Volume)] = nameof(ViewModels.OutputViewModel.VolumePercent),
+        };
+
+        var missing = new List<string>();
+        foreach (var field in typeof(OutputPreset).GetProperties())
         {
             var vmName = byName.TryGetValue(field.Name, out var mapped) ? mapped : field.Name;
             if (!PersistedProperties.Contains(vmName)) missing.Add($"{field.Name} (looked for '{vmName}')");

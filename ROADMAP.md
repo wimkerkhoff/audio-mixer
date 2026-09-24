@@ -9,12 +9,13 @@ Status key: 🔲 planned · 🔬 needs live data / validation · 🛠 doable now
 
 ## Operator experience
 
-### ❌ Scenes — REMOVED 2026-09-23, replaced by a Singing toggle and a priority picker
+### ❌ Scenes — REMOVED 2026-09-23, replaced by a Speaking / Singing toggle
 The four scene buttons and the voice-source override are gone; see CLAUDE.md ("The UI") for the
 full reasoning. In short: operators could not remember what each did, and because every scene
 rewrote every mute and route it silently undid their own changes — twice in one evening. What
-survived is the knowledge they cannot re-derive: **Singing** (both buses automix Off) and the
-**priority mic** picker, both on the operator panel. The entries below that mention scenes are kept as
+survived is the knowledge they cannot re-derive: a **Speaking / Singing** toggle (both buses Gate
+or Off) on the operator panel; the **priority mic** picker stays in Settings, and leaving the lapel
+out of a meeting is a mute. The route guard went the same day. The entries below that mention scenes are kept as
 the record of why things were built; where one still describes live work it has been retargeted.
 
 ### 🛠 Build queue as of 2026-09-20 — mostly built, three items open
@@ -29,7 +30,9 @@ A and B read as vertical tracks. Docked 360 px. A/B and mute are **clickable** �
 of the 2026-08 "no per-mic control in Simple" decision and hands a lone volunteer two ways to silence
 the stream, so it ships **with** the guard below, not before it.
 
-**2 · `RouteGuard` — the precondition for 1.** A pure rule, beside `SceneTransform` and
+**2 · `RouteGuard` — the precondition for 1.** *❌ Removed 2026-09-23 with the scenes: the
+operators are trusted with A/B, and a control that refuses them was the wrong trade. The
+`out<N>.silent` alert is the remaining backstop — after the fact, not before.* A pure rule, beside `SceneTransform` and
 `HealthMonitor`: given the channels and a proposed change, allow or refuse with a reason. The
 invariant is the one scenes already hold — **no operator action may leave a bus with nothing live on
 it** — extended to manual routing, which clickable A/B opens a path straight around. Mute routes
