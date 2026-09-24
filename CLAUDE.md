@@ -1005,6 +1005,20 @@ later judgment.
   `ToggleButton` + `Popup` in the column and every slider *inside* the popup, which is its own
   top-level window and unconstrained by the column. That is why the automix mode picker, the device
   picker and the leveler are all popups.
+- **Enumerating audio endpoints is SLOW and must never run on the UI thread.**
+  `AudioDeviceInfo.Enumerate` opens three COM property stores per endpoint (friendly name, bus,
+  container id); measured 2026-09-23 at **3.5-3.9 s for 30 endpoints** on the rig machine, which has
+  a lot of virtual devices (VB-CABLE, Voicemeeter, NDI webcams). `DeviceWatcher` correctly raises its
+  event on a threadpool thread, but the handler marshalled to the UI thread *first* and enumerated
+  there, so every unplug/replug froze the window for ~3 s -- and it is slowest during a plug event,
+  exactly when it runs. Enumerate off-thread and marshal only the rebuild (ObservableCollections and
+  the engine). Verified by polling `/state`, whose handler marshals to the UI thread and is therefore
+  a genuine UI-responsiveness probe: a real hot-plug went from ~3000 ms to a 60 ms max, matching the
+  idle baseline. Overlapping refreshes **coalesce to one trailing pass** rather than queueing -- a
+  second enumeration returns the same lists seconds later and rebuilds the pickers under the operator
+  twice. Note the app still enumerates synchronously once in the `MainViewModel` constructor, which
+  is the same ~3.5 s of startup cost, before any window is shown.
+
 - WPF's temporary XAML-compilation project (`*_wpftmp.csproj`) does not reliably honor
   `ImplicitUsings` for `System.IO` — add an explicit `using System.IO;` in any file using
   `Path`/`Directory`/`File`.
