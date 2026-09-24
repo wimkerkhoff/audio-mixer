@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using AudioMixer.Audio;
 using AudioMixer.Services;
 
@@ -46,7 +46,8 @@ public class StateSnapshotTests
         foreach (var key in new[]
                  {
                      "index", "label", "device", "source", "highPassHz", "inputDb", "postDb", "rmsDb",
-                     "speechDb", "floorDb", "calBuffers", "envDb", "fluxCv",
+                     "speechDb", "floorDb", "calBuffers", "calAgeMs", "endpointGainDb",
+                     "clippedSamples", "underruns", "envDb", "fluxCv",
                      "routes", "muted", "volumePercent", "isPriority", "isDucking", "isAutoMixActive",
                      "automixGain",
                  })
@@ -63,7 +64,7 @@ public class StateSnapshotTests
                  {
                      "index", "label", "device", "peakDb", "volumePercent", "recording", "mode",
                      "levelerEnabled", "levelerStrength", "levelerGainDb", "levelerIdleFloorDb",
-                     "winner", "winnerHold", "activeInput",
+                     "muted", "winner", "winnerHold", "activeInput",
                  })
             Assert.True(op.TryGetProperty(key, out _), $"output.{key} is missing from /state");
     }
@@ -98,6 +99,12 @@ public class StateSnapshotTests
         Assert.Equal(-1, root.GetProperty("outputs")[0].GetProperty("winner").GetInt32());
         var gains = root.GetProperty("channels")[0].GetProperty("automixGain");
         Assert.Equal(AudioEngine.OutputCount, gains.GetArrayLength());
+
+        // Same shape as automixGain: one entry per output bus. A consumer reading underruns[1] for
+        // the second bus must not silently get nothing when the array is short.
+        var under = Build(f).GetProperty("channels")[0].GetProperty("underruns");
+        Assert.Equal(JsonValueKind.Array, under.ValueKind);
+        Assert.Equal(AudioEngine.OutputCount, under.GetArrayLength());
     }
 
     /// <summary>A mic with no voiced audio yet has no median, and that must read as null rather than as

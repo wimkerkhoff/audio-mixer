@@ -1,4 +1,4 @@
-using NAudio.CoreAudioApi;
+﻿using NAudio.CoreAudioApi;
 using NAudio.Dsp;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -107,6 +107,9 @@ public sealed class InputChannel : IDisposable
     private readonly CalibrationHistogram _calibration = new();
 
     public CalibrationHistogram.Stats SnapshotCalibration() => _calibration.Snapshot();
+
+    /// <summary>How long this strip's calibration has been accumulating, in ms — see the histogram.</summary>
+    public long CalibrationAgeMs => _calibration.AgeMs;
 
     public void ResetCalibration() => _calibration.Reset();
 

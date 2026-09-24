@@ -39,6 +39,20 @@ public static class StateSnapshot
                 speechDb = float.IsNaN(cal.SpeechDb) ? (double?)null : Math.Round(cal.SpeechDb, 1),
                 floorDb = float.IsNaN(cal.FloorDb) ? (double?)null : Math.Round(cal.FloorDb, 1),
                 calBuffers = cal.TotalBuffers,
+                // How long these medians have been accumulating. A histogram older than the last gain
+                // change averages two rigs -- refuse to conclude anything from speechDb without it.
+                calAgeMs = input.CalibrationAgeMs,
+                // As of the last device-list refresh, not this request -- see AudioDeviceInfo.GainDb.
+                // A mismatch across a matched set is invisible in the levels and has twice been the
+                // root cause of "these mics are dead".
+                endpointGainDb = ch.SelectedDevice?.GainDb is float g ? Math.Round(g, 1) : (double?)null,
+                // Half of crackle triage: zero here means it is NOT clipping, whatever peakDb looks
+                // like. The other half is `underruns` below.
+                clippedSamples = input.ClippedSamples,
+                // Per output feed buffer. A CLIMBING count is the silent-hole crackle; a static one is
+                // history. Two samples a few seconds apart is the reading, never a single value.
+                underruns = Enumerable.Range(0, AudioEngine.OutputCount)
+                                      .Select(o => input.UnderrunsForOutput(o)).ToArray(),
                 envDb = i < diag.Env.Length ? ToDb(diag.Env[i]) : (double?)null,
                 fluxCv = i < diag.Cv.Length ? Math.Round(diag.Cv[i], 3) : (double?)null,
                 routes = ch.Routes.Select(r => r.IsOn).ToArray(),

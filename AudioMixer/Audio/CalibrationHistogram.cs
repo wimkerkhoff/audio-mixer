@@ -1,4 +1,4 @@
-namespace AudioMixer.Audio;
+﻿namespace AudioMixer.Audio;
 
 /// <summary>
 /// Speech-vs-floor level histogram, used to set transmitter gain against a target (RODE-PRO-RIG.md).
@@ -70,6 +70,16 @@ public sealed class CalibrationHistogram
         if (_recentCount < RecentWindow) _recentCount++;
     }
 
+    // A median that spans a gain change averages two rigs and is worse than no number: on 2026-09-23
+    // a stale speech=-40 (accumulated before the mic was worn) drove a 10 dB correction on a mic that
+    // was actually live at -21. Nothing in the medians themselves says how old they are, so the reset
+    // instant is published and every consumer can refuse to conclude anything from a histogram older
+    // than the last gain change.
+    private long _resetAtTicks = Environment.TickCount64;
+
+    /// <summary>Milliseconds of accumulation since the last reset.</summary>
+    public long AgeMs => Environment.TickCount64 - Interlocked.Read(ref _resetAtTicks);
+
     public void Reset()
     {
         Array.Clear(_voiced);
@@ -77,6 +87,7 @@ public sealed class CalibrationHistogram
         Array.Clear(_recent);
         _recentCount = 0;
         _recentNext = 0;
+        Interlocked.Exchange(ref _resetAtTicks, Environment.TickCount64);
     }
 
     /// <summary>

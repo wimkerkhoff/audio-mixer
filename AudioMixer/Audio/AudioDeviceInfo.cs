@@ -1,4 +1,4 @@
-using NAudio.CoreAudioApi;
+﻿using NAudio.CoreAudioApi;
 
 namespace AudioMixer.Audio;
 
@@ -7,8 +7,19 @@ namespace AudioMixer.Audio;
 /// not be read. This is how to tell a Bluetooth endpoint from a wired one — the friendly name cannot,
 /// because "Headset Microphone (Lync USB Headset)" is a USB device whose name says Headset.
 /// </param>
+/// <param name="GainDb">
+/// The Windows endpoint level in dB, as of the last enumeration, or null if it could not be read.
+/// Cached deliberately: this is read once per device-change refresh, never per request, because
+/// enumeration costs seconds and `/state` marshals to the UI thread. It therefore goes STALE when
+/// someone moves the Windows slider, since property-value notifications are ignored on purpose (they
+/// fire constantly). Treat it as "what it was when the device list was last built".
+///
+/// Worth having at all because a gain mismatch across a matched set is invisible from audio levels
+/// alone and has twice been the root cause of "these mics are dead": a receiver on a new USB port
+/// gets the 0 dB default while its twin sits 24 dB higher.
+/// </param>
 public sealed record AudioDeviceInfo(string Id, string FriendlyName, DataFlow Flow, string? Bus = null,
-                                     Guid? ContainerId = null)
+                                     Guid? ContainerId = null, float? GainDb = null)
 {
     public const string BluetoothBus = "BTHENUM";
 
@@ -33,9 +44,17 @@ public sealed record AudioDeviceInfo(string Id, string FriendlyName, DataFlow Fl
         foreach (var device in enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active))
         {
             result.Add(new AudioDeviceInfo(device.ID, device.FriendlyName, flow, ReadBus(device),
-                                           ReadContainer(device)));
+                                           ReadContainer(device), ReadGainDb(device)));
         }
         return result;
+    }
+
+    // Endpoint volume is a separate COM interface from the property store and is not present on every
+    // endpoint; a failure here must not cost us the device itself.
+    private static float? ReadGainDb(MMDevice device)
+    {
+        try { return device.AudioEndpointVolume.MasterVolumeLevel; }
+        catch { return null; }
     }
 
     // A property store that is missing the key or throws is not worth failing enumeration over; the
