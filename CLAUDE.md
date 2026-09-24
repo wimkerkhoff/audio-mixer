@@ -44,6 +44,8 @@ reading them:
 - **System.Text.Json** for preset persistence
 - MVVM pattern (ViewModels per channel + main)
 - Offline analysis (`tools/*.py`): `pip install numpy scipy soundfile matplotlib praat-parselmouth`
+  (+ `faster-whisper` for `tools/transcribe.py` — runs locally, on CPU here: the Quadro's CUDA path
+  needs NVIDIA's cuBLAS/cuDNN runtime, which is not installed)
 
 ## Project layout
 
@@ -104,6 +106,9 @@ tools/                        # Offline analysis + diagnostics — validate sele
 ├── VolProbe/                 # C#: read/set a capture endpoint's Windows gain (see the gain gotcha).
 │                             #     Lists ALL active capture endpoints; name+level args set one
 ├── wavfix.py                # repair WAV headers left at 0 frames by a killed recording
+├── transcribe.py            # local speech-to-text of a mix/diag WAV (faster-whisper). Keep its
+│                            #   VAD off: it silently dropped the last 6 min of speech once the mix
+│                            #   level fell 6-8 dB (2026-09-23)
 ├── gate_rate.py              # per-mic digital-silence rate + simultaneity (see finding 4)
 ├── naturalness.py            # flux-CV artifact ranking (the "natural" metric, offline)
 ├── comb_test.py / singing_vs_speech.py / find_singing.py / live_wav.py
