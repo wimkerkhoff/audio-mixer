@@ -1,9 +1,9 @@
 # AudioMixer
 
 A Windows desktop audio mixer: 1–10 configurable inputs (default 3) → 2 configurable outputs, with
-per-channel volume, mute, delay, routing toggles, VU meters, recording, and presets. Built to send a
-mix to a headset AND Zoom/OBS (via VB-CABLE) simultaneously, with delay compensation and an
-automixer for distributed room mics.
+per-channel level, mute, low-cut, routing toggles, VU meters, recording, and presets. Built to send a
+mix to a headset AND Zoom/OBS (via VB-CABLE) simultaneously, with an automixer that keeps one mic
+open at a time across distributed body-worn and room mics.
 
 Input count is runtime-configurable in Settings (`MainViewModel.InputCount` →
 `AudioEngine.SetInputCount`): the engine grows/shrinks its `Inputs` array (preserving existing
@@ -25,12 +25,14 @@ reading them:
   from the rig — findings 1-4 remain because they explain why the replacement looks as it does. Everything
   below about speakerphone DSP stays — it is why the replacement rig looks the way it does — but the
   S500s are no longer the target hardware.
-- **RØDE Wireless PRO** (2 transmitters per receiver) is becoming the primary rig. DSP-free: it does
-  not gate, which is the one thing that made the S500s unusable. See finding 5, and note it is a
-  *body-worn* mic — it covers people, not a room, so mic count and placement do the work that DSP
-  used to pretend to do.
-- **Rode lapel** on the presenter, used as a **priority** channel when present.
-- Room is ~60 ft wide; the furthest mic sits ~50 ft from the dongles — **at the edge of RF range**.
+- **The rig as of 2026-09-23:** two **RØDE Wireless PRO** receivers on USB, each carrying two
+  transmitters in Split mode (four strips), plus a **wired classic Rode lapel** on the Realtek aux jack
+  for the presenter, used as the **priority** mic. The Wireless PRO is DSP-free: it does not gate,
+  which is the one thing that made the S500s unusable (finding 5). It is *body-worn* — it covers
+  people, not a room, so mic count and placement do the work that DSP used to pretend to do. Gain is
+  set on each receiver (both its transmitters) at 0 dB, with the Windows endpoint at +3 dB.
+- Room is ~60 ft wide. In the Anker era the furthest mic sat ~50 ft from its dongle, at the edge of
+  the Soundsync link's RF range; the RF findings below come from that.
 - Outputs: a monitor headset + VB-CABLE feeding Zoom/OBS.
 - Usage: teaching (one talker), prayer meetings (turn-taking room mics, often led from the lapel),
   congregational singing (the automixer's one-talker assumption inverts — the Singing side of the
@@ -70,9 +72,9 @@ AudioMixer/
 │   │   ├── ReplaySource.cs   # IWaveIn over a (possibly unfinalized) diag WAV
 │   │   ├── ReplayRig.cs      # One clock pumping all sources in lockstep; drives the automix tick
 │   │   └── ReplayOptions.cs  # --replay sandbox semantics
-│   ├── InputChannel.cs       # capture → side split → taps → low-cut → mute → gain → delay → automix → push
+│   ├── InputChannel.cs       # capture → side split → taps → low-cut → mute → gain → automix → push
 │   ├── OutputBus.cs          # MixingSampleProvider → peak tap → volume → WasapiOut; optional recorder
-│   ├── AutoMixer.cs          # Per-output leader decision loop (level / lapel-corr / natural); off-thread
+│   ├── AutoMixer.cs          # Per-output leader: smoothed level + hold/hysteresis, priority duck; off-thread
 │   ├── AutoMixMode.cs        # enum Off/Gate
 │   ├── IAutoMixControl.cs    # Per-output automix setters — the VM's one dependency, not N delegates
 │   ├── AudioDeviceInfo.cs    # Device id + friendly name record
@@ -83,10 +85,10 @@ AudioMixer/
 │   └── AudioLog.cs           # Opt-in file log (AUDIOMIXER_LOG/--log → %TEMP%\AudioMixer.log)
 ├── ViewModels/
 │   ├── MainViewModel.cs      # Engine lifecycle, device pickers, presets, record state, meter tick
-│   ├── ChannelViewModel.cs   # Per-input: device, volume, mute, delay, routes, meter, priority, LEDs
-│   ├── OutputViewModel.cs    # Per-output: device, meter, volume, record, automix mode + selection opts
+│   ├── ChannelViewModel.cs   # Per-input: device, split side, level, mute, routes, meter, priority, row state
+│   ├── OutputViewModel.cs    # Per-output: device, meter, volume, mute, record, automix mode, leveler
 │   └── DeviceList.cs / RelayCommand.cs / ViewModelBase.cs
-├── Models/MixerPreset.cs     # Serializable: device ids+names, volumes, mutes, delays, routes, automix
+├── Models/MixerPreset.cs     # Serializable: devices (+ serial key), levels, mutes, routes, automix, leveler
 ├── Services/
 │   ├── HealthMonitor.cs      # PURE alert rules for the banner. Unit-tested.
 │   ├── PersistedProperties.cs # The autosave allowlist, extracted so its invariant is testable
@@ -238,7 +240,6 @@ decision.
   `DiscardOnBufferOverflow` semantics. If drift becomes audible, consider a small async resampler
   per channel.
 - WASAPI **shared mode** everywhere — exclusive mode would lock Zoom out of the headset.
-- Delay range 0–1000 ms: read offset into a ring buffer sized for max delay + headroom (~1500 ms).
 - Meters update at ~30 Hz from peak values latched in the audio thread and polled by a UI timer (do
   NOT marshal per-buffer).
 - Output **Volume** (`OutputBus.Volume` → `VolumeSampleProvider`) is applied *after* the
@@ -275,9 +276,7 @@ duck and Gate's non-leader level are now fixed at a hard mute, which is what str
 only setting this rig ever ran. Flux-CV is still computed and still worth reading — it rises on RF
 dropouts — it simply no longer selects.
 
-Gate's ~200 ms hold can clip the first syllable of a fast interjection. Share's strength slider only
-*attenuates* non-leaders — it can never remove comb echo, so Gate is the answer when several mics
-hear one voice.
+Gate's ~200 ms hold can clip the first syllable of a fast interjection.
 
 **Leader hold.** The selected leader is held with hysteresis (`HandoffHoldTicks` ~200 ms,
 `HandoffHysteresis` ~3 dB) so a brief louder moment elsewhere can't steal it. It is unconditional —
@@ -322,7 +321,7 @@ sentence gap released it and Gate handed the bus to a room mic. The envelope rel
 the lapel envelope just under −40 dBFS, to an S500 sitting on the presenter's own table (−28 dBFS in
 his pauses vs −17 while he spoke — no AGC pumping, every mic fell together). After the fix, 0 in 40 s
 with the duck verifiably held (gain 0.00 through every pause). The hold is **broken immediately** by
-a non-priority mic above `PriorityBreakInRms`, because at strength 100% `pduck` is a hard mute and a
+a non-priority mic above `PriorityBreakInRms`, because `pduck` is a hard mute and a
 blind hold would swallow an audience interjection. Two caveats: (a) break-in can only separate a real
 talker from the presenter's residual when **no room mic sits near the presenter** — one on his table
 reads −28 dBFS, louder than a genuine interjection across the room (−43); (b) margin is thin —
@@ -337,9 +336,11 @@ strips instead, one `ChannelSource.Left` and one `Right`. Device pickers are the
 and picking a half-claimed endpoint auto-takes the free side. A Stereo claim still takes the endpoint
 whole and keeps the bare device id as its `used` key, so pre-split presets resolve unchanged.
 
-**Diagnostic surface.** `InputChannel.IsDucking` (any routed output's gain < 0.85) drives a per-input
-amber LED; `InputChannel.IsAutoMixActive` (leader on any routed output, from `AutoMixer._activeInput`)
-drives a green LED — both polled on the meter timer. The crest-derived "Mic clarity" readout was
+**Diagnostic surface.** `InputChannel.IsAutoMixActive` (leader on any routed output, from
+`AutoMixer._activeInput`) turns a mic row's stripe green ("live now"), and each bus button on the row
+lights green when the automixer has that mic on that bus — polled on the meter timer.
+`InputChannel.IsDucking` (any routed output's gain < 0.85) is read by `/state` and Diagnostics; it
+has no light on the panel since the per-bus ducking LED was removed with the old strip layout. The crest-derived "Mic clarity" readout was
 removed 2026-09-21: crest failed as a proximity cue through DSP (finding 1) and on a DSP-free mic it
 is dominated by handling transients, so it was neither used for selection nor worth showing. `AudioEngine.AutoMixActiveInput(o)`
 exposes the per-output winner and `MainViewModel.LogAutoMixSelectionChanges` writes each hand-off to
@@ -508,7 +509,7 @@ coupling/proximity boom, a nearby vent or PA), so loudest-wins picks the bad mic
 offline on a labeled capture (operator confirmed In4 good / In5 loud-but-bad): level
 ranked In5 > In4 (picks bad); refSNR also failed (gating zeroes the noise floor, so it favored a
 distant quiet mic); **envelope-correlation-to-lapel ranked In4 (0.774) > In5 (0.706)** — the bad mic
-is loudest yet correlates *worst*, its envelope smeared by reverb/noise. Shipped as "Match lapel".
+is loudest yet correlates *worst*, its envelope smeared by reverb/noise. Shipped as "Match lapel" (removed 2026-09-20 — see finding 6).
 Caveats from the data: only **rejecting the loud-bad mic** is reliable — among several good mics the
 margins are noise (In2 0.778 ≈ In4 0.774) — and it needs an active lapel.
 
@@ -538,12 +539,12 @@ and its noise suppression reaches the same "this is noise" verdict at the same i
 live: switching Automix to Off changed nothing); (b) the mic-count question for singing is the **wrong
 variable** — single-mic and multi-mic fail identically; (c) the same mechanism nibbles at *speech*
 (341× simultaneity pre-service) but is invisible there because gate closures land in the natural pauses
-between words. Only fixes are upstream of the mixer: the S500's **Broadcast pickup mode** (untested —
+between words. Only fixes are upstream of the mixer: the S500's **Broadcast pickup mode** (since found removed from the firmware — see The rig —
 "restores original sounds by turning the speaker off", the only DSP-adjacent control Anker exposes; no
 noise-reduction or EQ toggle exists), the DSP-free Rode lapel, or a board feed. Do NOT attempt another
 selector/mix-topology fix for singing. Corollary for diagnostics: `winner = -1` has **three** causes
 (automix Off, priority-active, silent-room) — disambiguate by the logged `gains=[…]` (priority duck
-writes 0 at strength 100%; silent-room writes 1.0) before blaming a priority mic.
+writes 0; silent-room writes 1.0) before blaming a priority mic.
 
 **5. A DSP-free lapel does not gate at all — but its noise floor is NOT recoverable by filtering.**
 Measured 2026-08-23 on one capture of the same room and speech (`tools/gate_rate.py`, `compare_mics`/
@@ -581,15 +582,15 @@ again with them **on in a quiet room** (electrical + acoustic) — the gap is wh
 **6. On a homogeneous DSP-free rig, level selection gets BETTER and flux-CV stops discriminating.**
 Findings 1-3 are all consequences of speakerphone DSP; remove it and their conclusions move. With N
 identical Rode transmitters: (a) **level becomes a true proximity cue** rather than a survivor of
-AGC — identical capsules mean a level difference is distance, not device variation, so Gate/Share on
+AGC — identical capsules mean a level difference is distance, not device variation, so Gate on
 smoothed level with **stable hand-off** is the right selector and the hysteresis that fixed "far mic
 wins" is still exactly as necessary (a talker's pauses still let a neighbour momentarily win);
-(b) **Prefer natural should be OFF** — flux-CV measures *over-processing artifacts*, and with no DSP
+(b) **Prefer natural should be OFF** (it was removed outright 2026-09-20) — flux-CV measures *over-processing artifacts*, and with no DSP
 anywhere every mic reads ~0.29-0.33, so the metric has nothing to separate and its documented
 behavioural flaw (it pins the globally lowest-CV mic regardless of who is speaking) is all that is
 left. Observed live 2026-08-23: with two Rodes and two Ankers, prefer-natural hard-gated the *only*
 room mic hearing the talker because the Rodes scored cleaner. Flux-CV keeps **diagnostic** value —
-it still rises on RF dropouts — but not selection value. (c) **Match lapel** stays off for prayer:
+it still rises on RF dropouts — but not selection value. (c) **Match lapel** (also removed 2026-09-20) was useless for prayer:
 it engages only while a priority lapel is *speaking*, which is never the case when the room is.
 
 **7. Mixed device types cannot share one selector — AGC flattens the proximity cue the automixer
@@ -890,7 +891,7 @@ later judgment.
 
 
 - **Automix gain is applied AFTER the meter/analysis taps** (`InputPeak`/`PostPeak`/analysis recorder
-  all run before the per-output routing push). So VU meters and clap-test recordings show the
+  all run before the per-output routing push). So VU meters and the diag recordings show the
   *pre-automix* post-fader level — a channel can read hot while the automixer ducks its contribution.
   Intentional (the meter shows what the channel produces); don't "fix" it by moving the tap.
 - **An empty per-output feed buffer is a SILENT hole, and nothing upstream can see it.** The
@@ -934,10 +935,11 @@ later judgment.
   output is `transport_latency + standing backlog in its per-output BufferedWaveProvider`. That backlog
   is set nondeterministically at startup (a fast device accumulates a *larger* backlog before the bus
   drains it) and anti-correlates with transport latency, so the ordering scrambles — a low-latency
-  built-in mic can look *more* delayed than a Bluetooth one. Use "Detect Delays" (`DelayAnalyzer`),
-  which taps the per-channel analysis recorder *before* the output buffer. Re-measure after any output
-  restart.
-- **`DelayAnalyzer` cross-correlates onset envelopes, NOT a peak threshold.** A "first sample ≥ 50% of
+  built-in mic can look *more* delayed than a Bluetooth one. Measure from the per-channel diag
+  recordings instead, which are tapped *before* the output buffer (what the removed `DelayAnalyzer`
+  did), and re-measure after any output restart.
+- **To time a signal path, cross-correlate onset envelopes, NOT a peak threshold** (how the removed
+  `DelayAnalyzer` worked). A "first sample ≥ 50% of
   file peak" detector mislocates soft/vocal onsets: a spoken "T!" (used because the Ankers' noise
   suppression gates real claps) has its global peak in the *vowel*, so the detector skips the leading
   `[t]` on a clean mic (→ looks late) while a suppressed mic keeps only the `[t]` (→ looks early),
@@ -1027,12 +1029,8 @@ later judgment.
   as an obvious bug.** The low-cut was `Minimum=0 Maximum=200 TickFrequency=10` — 21 positions in a
   ~115 px column, ~5 px per tick — so which cutoffs you could land on depended on pixel rounding
   during the drag, and an operator reported reaching 70 and 90 Hz but not 80 on one strip and 60/80/100
-  on another. Anything with a small fixed set of meaningful values belongs in a `ListBox`
-  (`PopupList`) inside the popup, like the automix mode and leveler strength pickers.
-- **Popup text has its own styles for a reason — `Lbl` is the strip style and is too dim inside a
-  popup.** `Lbl` is 9 px `#B4B4BE`, sized to be glanced at in a narrow strip; `PopupLbl` (10 px
-  `#C7C7D2`) and `PopupHelp` exist because popup text sits on the darker `#1B1B22` surface and is
-  *read*. The leveler popup was built with `Lbl` throughout and the operator reported it as too dim.
+  on another. Anything with a small fixed set of meaningful values belongs in a list of named
+  choices, as the low-cut and leveler strength are in Settings.
 
 
 - **A `System.Threading.Timer`'s callback cannot tell itself apart from another caller unless you
