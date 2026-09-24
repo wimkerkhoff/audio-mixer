@@ -976,7 +976,24 @@ later judgment.
   minutes later, flush removed: **0 in 60 s**. The header did update perfectly every 10 s, so the
   idea is right and the thread is wrong: any header update must happen off the audio threads (a
   background timer writing the size fields through a separate handle, with the audio threads only
-  counting bytes). The attempt is in `git stash` as "periodic WAV flush on audio thread". True length
+  counting bytes). The attempt is in `git stash` as "periodic WAV flush on audio thread".
+  **Audio-thread audit (2026-09-23):** the capture callback takes no lock shared with the UI (state
+  swaps are volatile reference replacements) and rents its buffers from `ArrayPool`, so no per-buffer
+  GC; logging only happens on error paths. The ONLY disk I/O on the audio threads is the recorders'
+  `WriteSamples` (bus mixes on the render threads, per-mic diag files on the capture threads) — cheap,
+  since writes land in the OS cache, and measured at 0 underruns — plus a brief wait on the recorder
+  lock when the UI thread starts or stops a recording. The clean design, if ever needed, is one
+  background writer per recorder fed by a lock-free queue: it takes all disk I/O off the audio threads
+  AND makes the periodic header update safe.
+- **A mix recording DOES show underrun holes, and that is the way to prove crackle afterwards.** In
+  Gate only the leader is on the bus, so a starved feed buffer becomes exact digital silence in
+  `mix-*.wav`: count runs of >= 2 ms of exact zero per minute. 2026-09-23 19:38:38: from 0-3/min to
+  **1,600-2,250/min** (up to 90 ms), on **both buses within 0.1 s** — so the capture side, not an
+  output device — with RX A Left flickering to exact silence in `decisions-*.csv`, lasting until the
+  operator restarted the app. It is also what broke transcription (holes cut the level 6-8 dB and
+  Whisper's VAD dropped the speech). Trigger NOT identified: it coincided with the operator
+  replugging devices, but a replug on the later build did not reproduce it, and that run's log had
+  been deleted. Next time: keep the log, and count holes per minute before blaming anything else. True length
   mid-write: `[System.IO.File]::Open(path,'Open','Read','ReadWrite').Length`. Offline tools
   (`soundfile`) can't read it until stopped (header still claims 0 frames) — to analyze mid-session,
   parse the chunks and read raw float32 from the `data` offset to true EOF (`tools/live_wav.py`).
