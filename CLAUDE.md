@@ -373,7 +373,16 @@ The app used to be unexercisable without a live congregation, which blocked all 
   the automixer's absolute thresholds read** — so the number means what `PriorityActiveRms` and
   friends mean. A peak meter cannot do this job: a DSP-free wireless mic's crest factor is ~20 dB, so
   its peak says nothing about where speech sits, which is how a whole session's fixture once came out
-  30 dB low and unusable. Deliberately **cumulative** (a settling number is what makes gain-setting a
+  30 dB low and unusable. **A median that spans a gain change is worse than no number at all**: it
+  averages two rigs, and the quiet head of a session (mics not yet worn, transmitters not yet on)
+  drags it down hard — one 2026-09-23 lapel read `speech=-40` and raised a "17 dB below target"
+  alert while the mic was live at ~-21, and acting on that alert over-drove it to -3.8 dBFS peaks.
+  So **reset calibration, then re-measure, before trusting any `speech` value or any alert derived
+  from one** — and note the alert carries no indication that its input is stale, which is a real gap
+  rather than an operator error. Note also that **Resync resets calibration as a side effect**
+  (`RestartInputs` -> `Stop()` -> `ResetCalibration()`), as does changing a strip's `ChannelSource`;
+  *Reset calibration* is the button that does it without interrupting audio.
+  Deliberately **cumulative** (a settling number is what makes gain-setting a
   matching exercise), so it must be reset — Diagnostics → *Reset calibration* — after every
   transmitter gain change, or the pre-change buffers keep dragging the median.
 - **RF-link health** rides on the per-input log line: `rf=[lvl=<voiced mean dB> voiced=<%>
@@ -614,6 +623,21 @@ later judgment.
   `tools/VolProbe "Wireless PRO" 15` is the stopgap when it does reset. Corollary: any scheme that
   leans on a Windows **rename** to tell identical receivers apart needs a dedicated labelled port
   per unit.
+  **Adding a SECOND identical receiver is where this bites hardest** (measured 2026-09-23). A new RX
+  on a new port is a fresh endpoint at the **0 dB default**, while the incumbent sat at 24 dB — so
+  the new pair arrived ~24 dB down and was structurally unselectable, which looks exactly like two
+  dead mics. Check `VolProbe` before suspecting the hardware. The two RXs *are* permanently
+  distinguishable (serials `801D150D` / `802ECAEA`, both `IdentityKind.Serial`), so `DeviceKey`
+  resolves them correctly even though they share a friendly name — it is only the **gain** that does
+  not follow the unit.
+  **Wireless PRO gain is set on the RECEIVER and applies to both of its transmitters** — there is no
+  per-TX level in that menu, so a pair is inherently matched and two pairs are matched by setting two
+  numbers. That is the whole of finding 7's "compare only within a matched set" in practice.
+  Preferred split on this rig: **RX at 0 dB, Windows endpoint at +3 dB** — the same total as the old
+  −12/+15 but with the durable half in the receiver, so a replug costs 3 dB instead of 15.
+  A **wired** lapel on the aux jack has no transmitter, so Windows gain is its only lever and is
+  legitimate there; the onboard Realtek endpoint is fixed hardware and does not suffer the port
+  reset.
   Note the capture is float32, so the endpoint does not saturate: over-full-scale samples pass through
   and only clip at render, which is why a peak reading alone looks fine. Judge clipping by counting
   samples ≥ full scale plus flat-top runs, never by peak dBFS.
@@ -814,6 +838,15 @@ later judgment.
   looked damning — but post-prime the same bus still reads 0 ms in **3.1%** of samples with **zero**
   underruns over 65 s. The depth ratio between two buses is a drift signal, nothing more. Only
   `under=[]` distinguishes a hole from normal oscillation, which is the entire reason it exists.
+  **Triage for "I hear crackling", in this order** (2026-09-23, a live session where both causes were
+  plausible): capture the endpoint with `tools/RxProbe` and **count over-full-scale samples and
+  flat-top runs** — zero of both means it is *not* clipping, whatever the peak dBFS says, and no gain
+  change will help. Then read `under=[a,b]` from two log lines a few seconds apart: **climbing**
+  counters are the silent-hole crackle. That session read 0 over-FS with `under=` rising ~20/sec on
+  both buses, and an **app restart cured it** — a restart re-primes every feed buffer, which is also
+  why the cure is evidence for the diagnosis. Resync is the same fix without the restart. Do not
+  reach for the gain slider first: the operator's instinct is clipping, and the two crackles sound
+  alike.
 - **Per-channel delay and the clap test were removed 2026-09-20.** Both came from Anker-era delay
   compensation, which the automixer superseded: Gate hard-mutes every non-leader, so only one mic's
   copy of a voice reaches the bus and there is nothing left to time-align. `DelayAnalyzer`, the delay
@@ -841,6 +874,16 @@ later judgment.
   of finding 4; per minute it was **99%/62% in minutes 1-2 and then 0.0% for the rest of the session**.
   Always bucket the rate per minute (or skip the first 2-3 min) before concluding anything about
   gating. Same caveat for speech/floor medians: the silent head drags the floor toward -inf.
+
+- **A live meter is not a measurement — never verify a gain change by watching `envDb`/`inputDb` in a
+  room where people are talking.** The room's acoustic input is the uncontrolled variable, so a
+  before/after comparison across a gain change measures the room, not the change. Done twice on
+  2026-09-23: a 12 dB Windows cut "showed" three strips falling ~6 dB and a fourth *rising*, and a
+  lapel appeared to gain 11.8 dB from a transmitter change that had not happened (its endpoint was
+  verifiably untouched at 16 dB — somebody had simply started speaking near it). Both readings
+  produced confident, wrong conclusions about which transmitters had been set. Verify a gain change
+  by reading the **endpoint** back (`tools/VolProbe` with no args), or by `tools/RxProbe` against a
+  controlled sound, or by calibration medians **after** a reset — never by the meters.
 - **To prove a split receiver is really two transmitters, correlate at BOTH scales.** Sample-level
   correlation near 1.0 means one signal fanned to both sides (not split); near 0 means two capsules.
   Envelope correlation stays *high* either way, because both mics hear the same room — so envelope

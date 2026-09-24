@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using AudioMixer.Audio;
 using NAudio.CoreAudioApi;
 
@@ -73,6 +73,7 @@ public sealed class ChannelViewModel : ViewModelBase
             {
                 _onDeviceChanged(Index, value);
                 RaisePropertyChanged(nameof(IsStereoCapture));
+                RaisePropertyChanged(nameof(DeviceTooltip));
                 if (wasNull && value != null && Routes != null && Routes.Length > 0
                     && Routes.All(r => !r.IsOn))
                 {
@@ -210,6 +211,7 @@ public sealed class ChannelViewModel : ViewModelBase
                 RaisePropertyChanged(nameof(SourceRight));
                 RaisePropertyChanged(nameof(SourceSuffix));
                 RaisePropertyChanged(nameof(SideIndex));
+                RaisePropertyChanged(nameof(DeviceTooltip));
                 RaisePropertyChanged(nameof(HasAdvancedSettings));
             }
         }
@@ -253,6 +255,17 @@ public sealed class ChannelViewModel : ViewModelBase
 
     // A side selection only means something on a stereo endpoint; on a mono mic it is ignored.
     public bool IsStereoCapture => _channel.CaptureChannels >= 2;
+
+    // The strip label is renameable, so it can say "Rode B R" while the strip is bound to something
+    // else entirely -- which is exactly how an unnoticed remap survives a whole service. The tooltip
+    // names the endpoint actually feeding it, with the side, since two strips routinely share one.
+    // A strip whose device has gone away still reports what it is waiting for: that is the durable
+    // operator intent (DesiredDeviceName), and "waiting" and "unassigned" need to look different.
+    public string DeviceTooltip => _selectedDevice != null
+        ? _selectedDevice.FriendlyName + SourceSuffix
+        : DesiredDeviceName != null
+            ? "Waiting for " + DesiredDeviceName + SourceSuffix
+            : "No microphone assigned";
 
     // Fixed-band high-pass, 0 = off. Removes the rumble/HVAC/handling energy that dominates a
     // DSP-free mic's floor without making any level-dependent decision — see the gear popup's note.

@@ -340,7 +340,9 @@
 
                                     <TextBlock Grid.Column="0" Text="{Binding CustomLabel}" FontSize="11"
                                                FontWeight="SemiBold" Foreground="#D8D8E2"
-                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               ToolTipService.ShowOnDisabled="True"
+                                               ToolTip="{Binding DeviceTooltip}"/>
 
                                     <!-- Target band drawn behind the level: "too quiet" becomes a shape
                                          (bar short of the stripe), not a number nobody reads. -->
