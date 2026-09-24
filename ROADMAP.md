@@ -9,6 +9,15 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
 
 ---
 
+## Chosen next (operator, 2026-09-23)
+
+1. **Calibrate the rig and record a labelled service** — the first four items of the next section,
+   next time the rig is set up. Most 🔬 items wait on this recording.
+2. **Crash-proof recordings** — the background writer per recorder (Recording and robustness).
+3. **Code health** — split `MainViewModel` and add the listed tests (Code health).
+
+2 and 3 are desk work and can go first; 1 needs the room.
+
 ## Next time the rig is set up
 
 - 🏛 **Calibrate the four-transmitter rig to −24 dBFS.** On 2026-09-23 the Rode strips read 13–17 dB
