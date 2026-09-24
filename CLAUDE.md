@@ -963,7 +963,15 @@ later judgment.
   `tools/wavfix.py DIR...` reports such files and `--apply` rewrites only the size fields (RIFF, data,
   and the `fact` count NAudio adds for float) — `--skip STAMP` for a recording still in progress. The
   gap is not that the writer cannot update mid-recording: NAudio's `WaveFileWriter.Flush()` documents
-  that it "also updates header", and `MixRecorder` simply never calls it before `Stop`. True length
+  that it "also updates header", and `MixRecorder` simply never calls it before `Stop`.
+  **Do NOT call that `Flush()` from `WriteSamples`** — measured 2026-09-23, it was tried at a 10 s
+  interval and caused **24 underruns/min on routed pairs**, 23 of 24 phase-locked to the flush cycle
+  (17 at 3-4 s after the mix flush, where the per-mic diag recorders' flushes fall — they run on the
+  CAPTURE threads, and a stalled capture drains the buses' feed buffers). Control on the same rig
+  minutes later, flush removed: **0 in 60 s**. The header did update perfectly every 10 s, so the
+  idea is right and the thread is wrong: any header update must happen off the audio threads (a
+  background timer writing the size fields through a separate handle, with the audio threads only
+  counting bytes). The attempt is in `git stash` as "periodic WAV flush on audio thread". True length
   mid-write: `[System.IO.File]::Open(path,'Open','Read','ReadWrite').Length`. Offline tools
   (`soundfile`) can't read it until stopped (header still claims 0 frames) — to analyze mid-session,
   parse the chunks and read raw float32 from the `data` offset to true EOF (`tools/live_wav.py`).
