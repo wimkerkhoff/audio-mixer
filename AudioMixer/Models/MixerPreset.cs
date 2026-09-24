@@ -19,7 +19,6 @@ public sealed class MixerPreset
     public string Name { get; set; } = "Default";
     public ChannelPreset[] Channels { get; set; } = Array.Empty<ChannelPreset>();
     public OutputPreset[] Outputs { get; set; } = Array.Empty<OutputPreset>();
-    public bool VbCablePromptDismissed { get; set; }
 
     // Settings-window options. Persisted because a picker filter the operator has to re-tick on every
     // launch is not a setting. Absent in older presets, where the defaults below apply.

@@ -21,6 +21,7 @@ public enum FixKind
     SplitSides,
     ResetCalibration,
     Resync,
+    InstallVbCable,
     OpenSettings,
     OpenDiagnostics,
 }
@@ -69,10 +70,12 @@ public sealed record OutputHealth(
     /// <summary>Defaults true so a caller that cannot tell is not reported as broken.</summary>
     bool Playing = true);
 
+/// <param name="VbCableInstalled">Defaults true so a caller that cannot tell raises no false alarm.</param>
 public sealed record HealthSnapshot(
     IReadOnlyList<ChannelHealth> Channels,
     IReadOnlyList<OutputHealth> Outputs,
-    bool IsReplaying);
+    bool IsReplaying,
+    bool VbCableInstalled = true);
 
 /// <summary>
 /// The productised version of the human-in-the-loop these sessions have needed: an operator watching
@@ -115,6 +118,17 @@ public static class HealthMonitor
     public static IReadOnlyList<HealthAlert> Evaluate(HealthSnapshot s)
     {
         var alerts = new List<HealthAlert>();
+
+        // Zoom and OBS hear this mixer only through VB-CABLE, so without it the stream has no path in
+        // at all, and nothing else on the panel says so: bus A just offers other devices. A warning,
+        // not critical, because a rig can legitimately send bus A somewhere else.
+        if (!s.VbCableInstalled)
+        {
+            alerts.Add(new HealthAlert("vbcable.missing", AlertSeverity.Warning,
+                "VB-CABLE is not installed. Zoom and OBS hear this mixer through it. " +
+                "Install it, then restart Windows.",
+                "Download VB-CABLE", FixKind.InstallVbCable));
+        }
         var live = s.Channels.Where(c => c.Routed && !c.Muted && c.DeviceName != null).ToList();
         bool anyInputSound = s.Channels.Any(c => c.LevelDb > SilenceDb);
 

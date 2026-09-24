@@ -340,22 +340,22 @@
              lit. Scenes used to wrap it in four presets that also rewrote every mute and route,
              silently undoing hand changes; everything else, the operator does on the rows below. -->
         <UniformGrid Rows="1" Columns="2" Margin="0,0,0,6">
-            <Button Margin="0,0,3,0" Command="{Binding SetSpeakingCommand}" Padding="0,6"
+            <Button Margin="0,0,3,0" Command="{Binding SetSpeakingCommand}" Height="36"
                     Style="{StaticResource SceneBtn}" Tag="{Binding SpeakingState}"
                     ToolTip="One mic at a time. The automixer follows whoever is talking and switches the other mics off, so one voice is never heard through several mics at once. Use for teaching, prayer and discussion.">
-                <StackPanel>
-                    <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="20"
-                               HorizontalAlignment="Center" Margin="0,0,0,3"/>
-                    <TextBlock Text="Speaking" HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="Speaking" VerticalAlignment="Center" FontSize="13"/>
                 </StackPanel>
             </Button>
-            <Button Command="{Binding SetSingingCommand}" Padding="0,6"
+            <Button Command="{Binding SetSingingCommand}" Height="36"
                     Style="{StaticResource SceneBtn}" Tag="{Binding SingingState}"
                     ToolTip="Every mic stays open and nothing switches. Congregational singing has no single talker to follow, so switching would chop it.">
-                <StackPanel>
-                    <TextBlock Text="&#xE8D6;" FontFamily="Segoe MDL2 Assets" FontSize="20"
-                               HorizontalAlignment="Center" Margin="0,0,0,3"/>
-                    <TextBlock Text="Singing" HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE8D6;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="Singing" VerticalAlignment="Center" FontSize="13"/>
                 </StackPanel>
             </Button>
         </UniformGrid>

@@ -17,7 +17,6 @@ namespace AudioMixer.Tests;
 public class PresetMapperTests
 {
     private static PresetMapper.AppOptions Options => new(
-        VbCablePromptDismissed: true,
         HideVirtualInputs: true,
         HideVoicemeeterOutputs: false,
         WarnOnBluetoothMics: true,
@@ -176,7 +175,6 @@ public class PresetMapperTests
 
         var p = PresetMapper.FromViewModels(f.Channels, f.Outputs, Options);
 
-        Assert.True(p.VbCablePromptDismissed);
         Assert.True(p.HideVirtualInputs);
         Assert.False(p.HideVoicemeeterOutputs);
         Assert.True(p.WarnOnBluetoothMics);

@@ -34,8 +34,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand RefreshDevicesCommand { get; }
     public RelayCommand RecordCommand { get; }
     public RelayCommand ResyncAudioCommand { get; }
-    public RelayCommand DownloadVbCableCommand { get; }
-    public RelayCommand DismissVbCablePromptCommand { get; }
     public RelayCommand OpenDocumentationCommand { get; }
     public RelayCommand ResetCalibrationCommand { get; }
 
@@ -65,10 +63,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private const string VbCableUrl = "https://vb-audio.com/Cable/";
     private const string DocsUrl = "https://github.com/wimkerkhoff/audio-mixer";
     private bool _vbCableInstalled;
-    private bool _vbCablePromptDismissed;
 
     // Shown when VB-CABLE isn't among the enumerated endpoints and the user hasn't dismissed the hint.
-    public bool ShowVbCablePrompt => !_vbCableInstalled && !_vbCablePromptDismissed;
 
     private string _statusText = "Idle";
     public string StatusText
@@ -169,8 +165,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         RefreshDevicesCommand = new RelayCommand(RefreshDevices);
         RecordCommand = new RelayCommand(ToggleRecording);
         ResyncAudioCommand = new RelayCommand(ResyncAudio);
-        DownloadVbCableCommand = new RelayCommand(OpenVbCableDownload);
-        DismissVbCablePromptCommand = new RelayCommand(DismissVbCablePrompt);
         OpenDocumentationCommand = new RelayCommand(() => OpenUrl(DocsUrl));
         ResetCalibrationCommand = new RelayCommand(ResetCalibration);
         ApplyFixCommand = new RelayCommand<HealthAlert>(ApplyFix, a => a.Fix != FixKind.None);
@@ -650,7 +644,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.SelectedDevice == null || vm.IsPlaying));
         }
 
-        return new HealthSnapshot(channels, outputs, IsReplaying);
+        return new HealthSnapshot(channels, outputs, IsReplaying, _vbCableInstalled);
     }
 
     private readonly long[] _lastOutputSound = new long[AudioEngine.OutputCount];
@@ -725,6 +719,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     if (ch == null) { ResetCalibration(); return; }
                     _engine.Inputs[ch.Index].ResetCalibration();
                     StatusText = $"{Label(ch)}'s calibration cleared. It will settle again as the mic is used.";
+                    break;
+
+                case FixKind.InstallVbCable:
+                    OpenVbCableDownload();
+                    StatusText = "Opening the VB-CABLE download page. Restart Windows after installing it.";
                     break;
 
                 case FixKind.Resync:
@@ -1261,18 +1260,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private int _refreshInFlight;
     private int _refreshQueued;
 
-    // VB-CABLE installs "CABLE Input" (render) + "CABLE Output" (capture); detect either by the VB-Audio vendor tag.
-    private static bool IsVbCableInstalled(IEnumerable<AudioDeviceInfo> a, IEnumerable<AudioDeviceInfo> b) =>
-        a.Concat(b).Any(d =>
-            d.FriendlyName.Contains("VB-Audio", StringComparison.OrdinalIgnoreCase) ||
-            d.FriendlyName.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase) ||
-            d.FriendlyName.Contains("CABLE Output", StringComparison.OrdinalIgnoreCase));
-
-    private void UpdateVbCableStatus()
-    {
-        _vbCableInstalled = IsVbCableInstalled(_allInputDevices, _allOutputDevices);
-        RaisePropertyChanged(nameof(ShowVbCablePrompt));
-    }
+    // Read by the health rule on the next meter tick; see VirtualDeviceFilter.IsVbCable for why this
+    // is not a "VB-Audio" match.
+    private void UpdateVbCableStatus() =>
+        _vbCableInstalled = _allInputDevices.Concat(_allOutputDevices)
+            .Any(d => VirtualDeviceFilter.IsVbCable(d.FriendlyName));
 
     private void OpenVbCableDownload() => OpenUrl(VbCableUrl);
 
@@ -1286,14 +1278,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             StatusText = $"Couldn't open browser: {ex.Message}";
         }
-    }
-
-    private void DismissVbCablePrompt()
-    {
-        if (_vbCablePromptDismissed) return;
-        _vbCablePromptDismissed = true;
-        RaisePropertyChanged(nameof(ShowVbCablePrompt));
-        QueueAutosave();
     }
 
     // The allowlist lives in Services.PersistedProperties so the "meter tick must never trigger
@@ -1373,7 +1357,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (Audio.Replay.ReplayOptions.Current?.SuppressAutosave == true) return;
 
         var preset = PresetMapper.FromViewModels(Channels, Outputs, new PresetMapper.AppOptions(
-            _vbCablePromptDismissed, _hideVirtualInputs, _hideVoicemeeterOutputs, _warnOnBluetoothMics,
+            _hideVirtualInputs, _hideVoicemeeterOutputs, _warnOnBluetoothMics,
             _lowCutHz));
         RunGuarded("Save", () =>
         {
@@ -1393,8 +1377,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _suppressRebuild = true;
         try
         {
-            _vbCablePromptDismissed = preset.VbCablePromptDismissed;
-            UpdateVbCableStatus();
 
             // Straight to the backing fields: the public setters call RefreshDevices(), which rebuilds
             // the pickers mid-apply, before the channels have been given their devices. RefreshDevices

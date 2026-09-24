@@ -35,6 +35,17 @@ public static class VirtualDeviceFilter
     /// </summary>
     public static readonly string[] OutputTags = { "Voicemeeter" };
 
+    /// <summary>
+    /// VB-CABLE specifically, by the interface name Windows shows in parentheses. NOT "VB-Audio": that
+    /// is the vendor, and Voicemeeter's own devices carry it too — the rig machine has 19 VB-Audio
+    /// endpoints of which 3 are VB-CABLE, so a vendor match reports VB-CABLE installed on any
+    /// machine with Voicemeeter alone. The parenthesised part also survives a Windows rename, which
+    /// only changes the prefix. The A+B / C+D editions name themselves "VB-Audio Cable A" and so on.
+    /// </summary>
+    public static readonly string[] VbCableTags = { "VB-Audio Virtual Cable", "VB-Audio Cable " };
+
+    public static bool IsVbCable(string? friendlyName) => Matches(friendlyName, VbCableTags);
+
     public static bool IsVirtualInput(string? friendlyName) => Matches(friendlyName, InputTags);
 
     public static bool IsVirtualOutput(string? friendlyName) => Matches(friendlyName, OutputTags);

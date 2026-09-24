@@ -465,6 +465,10 @@ dotnet run --project AudioMixer
 - **VB-CABLE** (https://vb-audio.com/Cable/) — virtual audio cable. After install + reboot, "CABLE
   Input" appears as a render device (mixer outputs to it) and Zoom selects "CABLE Output" as its
   microphone.
+  If it is missing, Checks raises a warning with a download button (`vbcable.missing`). Detection
+  matches the interface name in parentheses, `(VB-Audio Virtual Cable)`, never the vendor "VB-Audio":
+  Voicemeeter's endpoints carry that vendor too — 16 of the rig machine's 19 VB-Audio endpoints are
+  Voicemeeter — so the old vendor match reported VB-CABLE present on any machine with Voicemeeter.
 
 ## Measured findings — dead ends, don't re-litigate
 
@@ -1058,6 +1062,10 @@ later judgment.
   second enumeration returns the same lists seconds later and rebuilds the pickers under the operator
   twice. Note the app still enumerates synchronously once in the `MainViewModel` constructor, which
   is the same ~3.5 s of startup cost, before any window is shown.
+
+- **`SceneBtn` (and `SmallBtn`, based on it) ignore `Padding`** — the template's `Border` never binds
+  it, so the style's own `Padding="0,7"` has never done anything and setting it on a button changes
+  nothing. Size those buttons with `Height`, as the Speaking/Singing toggle does.
 
 - WPF's temporary XAML-compilation project (`*_wpftmp.csproj`) does not reliably honor
   `ImplicitUsings` for `System.IO` — add an explicit `using System.IO;` in any file using

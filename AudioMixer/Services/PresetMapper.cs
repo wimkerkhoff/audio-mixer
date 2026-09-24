@@ -9,7 +9,6 @@ public static class PresetMapper
 {
     /// <summary>App-level state that is not per-channel or per-output.</summary>
     public readonly record struct AppOptions(
-        bool VbCablePromptDismissed,
         bool HideVirtualInputs,
         bool HideVoicemeeterOutputs,
         bool WarnOnBluetoothMics,
@@ -22,7 +21,6 @@ public static class PresetMapper
         {
             Name = "Default",
             Version = MixerPreset.CurrentVersion,
-            VbCablePromptDismissed = options.VbCablePromptDismissed,
             HideVirtualInputs = options.HideVirtualInputs,
             HideVoicemeeterOutputs = options.HideVoicemeeterOutputs,
             WarnOnBluetoothMics = options.WarnOnBluetoothMics,

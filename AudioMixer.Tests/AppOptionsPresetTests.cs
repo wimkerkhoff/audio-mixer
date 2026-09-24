@@ -17,7 +17,6 @@ public class AppOptionsPresetTests
     {
         var preset = new MixerPreset
         {
-            VbCablePromptDismissed = true,
             HideVirtualInputs = true,
             HideVoicemeeterOutputs = true,
             WarnOnBluetoothMics = false,
@@ -25,7 +24,6 @@ public class AppOptionsPresetTests
 
         var back = JsonSerializer.Deserialize<MixerPreset>(JsonSerializer.Serialize(preset))!;
 
-        Assert.True(back.VbCablePromptDismissed);
         Assert.True(back.HideVirtualInputs);
         Assert.True(back.HideVoicemeeterOutputs);
         Assert.False(back.WarnOnBluetoothMics);
@@ -39,6 +37,8 @@ public class AppOptionsPresetTests
     [Fact]
     public void AnOlderPresetGetsTheSafeDefaults()
     {
+        // VbCablePromptDismissed is a field that no longer exists (the banner became a Checks alert,
+        // 2026-09-23); every preset saved before then carries it, so this also proves they still load.
         const string json = """{"Name":"Default","Channels":[],"Outputs":[],"VbCablePromptDismissed":true}""";
 
         var back = JsonSerializer.Deserialize<MixerPreset>(json)!;
@@ -113,7 +113,7 @@ public class AppOptionsPresetTests
         using var f = new VmFixture();
 
         var p = PresetMapper.FromViewModels(f.Channels, f.Outputs, new PresetMapper.AppOptions(
-            false, false, false, false, 80));
+            false, false, false, 80));
 
         Assert.Equal(MixerPreset.CurrentVersion, p.Version);
     }
