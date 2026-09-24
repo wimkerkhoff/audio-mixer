@@ -103,6 +103,7 @@ tools/                        # Offline analysis + diagnostics — validate sele
 │                             #     sample level (corr + scalar-fit) after any remap
 ├── VolProbe/                 # C#: read/set a capture endpoint's Windows gain (see the gain gotcha).
 │                             #     Lists ALL active capture endpoints; name+level args set one
+├── wavfix.py                # repair WAV headers left at 0 frames by a killed recording
 ├── gate_rate.py              # per-mic digital-silence rate + simultaneity (see finding 4)
 ├── naturalness.py            # flux-CV artifact ranking (the "natural" metric, offline)
 ├── comb_test.py / singing_vs_speech.py / find_singing.py / live_wav.py
@@ -955,7 +956,14 @@ later judgment.
   flush the directory-entry size + last-write-time during a long buffered write, and `WaveFileWriter`
   only finalizes the RIFF header on Dispose. So Explorer/`Get-ChildItem` show a live capture as 0 bytes
   with the mtime stuck at creation — it's fine. Don't judge a live capture by the folder view and don't
-  stop/restart it in a panic (that's the only thing that *would* lose buffered data). True length
+  stop/restart it in a panic (that's the only thing that *would* lose buffered data).
+  **A kill leaves that header at zero permanently** — the app never got to write it. A normal close
+  and a stopped recording both finalise correctly (verified 2026-09-23); a force-kill, crash or power
+  cut does not, and normal players then read the file as empty although every sample is on disk.
+  `tools/wavfix.py DIR...` reports such files and `--apply` rewrites only the size fields (RIFF, data,
+  and the `fact` count NAudio adds for float) — `--skip STAMP` for a recording still in progress. The
+  gap is not that the writer cannot update mid-recording: NAudio's `WaveFileWriter.Flush()` documents
+  that it "also updates header", and `MixRecorder` simply never calls it before `Stop`. True length
   mid-write: `[System.IO.File]::Open(path,'Open','Read','ReadWrite').Length`. Offline tools
   (`soundfile`) can't read it until stopped (header still claims 0 frames) — to analyze mid-session,
   parse the chunks and read raw float32 from the `data` offset to true EOF (`tools/live_wav.py`).
