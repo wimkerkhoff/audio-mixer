@@ -309,7 +309,8 @@ public sealed class InputChannel : IDisposable
     public ISampleProvider GetProviderForOutput(int outputIndex)
     {
         var buffer = _outBuffers[outputIndex];
-        var tracker = new TrackingSampleProvider(buffer.ToSampleProvider(), buffer);
+        var tracker = new TrackingSampleProvider(buffer.ToSampleProvider(), buffer,
+            () => IsCapturing && GetRoute(outputIndex));
         _outTrackers[outputIndex] = tracker;
         return tracker;
     }

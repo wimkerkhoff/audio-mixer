@@ -294,6 +294,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             op.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName != nameof(OutputViewModel.AutoMixModeIndex)) return;
+                // Timed from the moment BOTH buses are Off, for the forgot-to-switch-back reminder. A
+                // preset that loads in Singing starts the clock at launch, which is the right answer:
+                // nobody in the room chose it this session.
+                if (!IsSinging) _singingSinceTicks = 0;
+                else if (_singingSinceTicks == 0) _singingSinceTicks = Environment.TickCount64;
                 RaisePropertyChanged(nameof(IsSpeaking));
                 RaisePropertyChanged(nameof(IsSinging));
                 RaisePropertyChanged(nameof(SpeakingState));
@@ -301,6 +306,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             };
         }
     }
+
+    private long _singingSinceTicks;
+
+    private double SingingSeconds =>
+        _singingSinceTicks == 0 ? 0 : (Environment.TickCount64 - _singingSinceTicks) / 1000.0;
 
     private void SetAllModes(AutoMixMode mode)
     {
@@ -644,7 +654,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.SelectedDevice == null || vm.IsPlaying));
         }
 
-        return new HealthSnapshot(channels, outputs, IsReplaying, _vbCableInstalled);
+        return new HealthSnapshot(channels, outputs, IsReplaying, _vbCableInstalled, SingingSeconds);
     }
 
     private readonly long[] _lastOutputSound = new long[AudioEngine.OutputCount];
@@ -719,6 +729,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     if (ch == null) { ResetCalibration(); return; }
                     _engine.Inputs[ch.Index].ResetCalibration();
                     StatusText = $"{Label(ch)}'s calibration cleared. It will settle again as the mic is used.";
+                    break;
+
+                case FixKind.SwitchToSpeaking:
+                    SetAllModes(AutoMixMode.Gate);
+                    StatusText = "Switched to Speaking.";
                     break;
 
                 case FixKind.InstallVbCable:

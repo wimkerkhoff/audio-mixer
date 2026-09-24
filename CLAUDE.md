@@ -903,13 +903,12 @@ later judgment.
   why the cure is evidence for the diagnosis. Resync is the same fix without the restart. Do not
   reach for the gain slider first: the operator's instinct is clipping, and the two crackles sound
   alike.
-  **⚠ Read `under=` only for pairs that are ROUTED** (found 2026-09-23, hours after the paragraph above
-  was written). The counter compares buffer depth to each bus read, and an unrouted strip's feed buffer
-  is empty by design — correct silence, not a hole — so every (strip, bus) pair that is *not* routed
-  climbs ~100/s forever. Measured on a fresh launch: five unrouted pairs at 5175 after ~50 s, the two
-  routed pairs at 3-5. Filter by `routes` in `/state` before reading a climb as crackle. The evening
-  that produced the triage above did not, so its "climbing" evidence is uncertain; the restart cure
-  still stands.
+  **The counter only counts a pair that should be feeding** — routed, with a live capture (fixed
+  2026-09-23, hours after the paragraph above was written). Before that, an unrouted strip's feed
+  buffer, empty by design, counted an underrun on every bus read: ~100/s forever, five unrouted pairs
+  at 5175 after ~50 s beside routed pairs at 3-5. So in any log or capture from before then, filter by
+  `routes` before reading a climb as crackle; the evening that produced the triage above did not, and
+  its "climbing" evidence is uncertain, though the restart cure still stands.
 - **Per-channel delay and the clap test were removed 2026-09-20.** Both came from Anker-era delay
   compensation, which the automixer superseded: Gate hard-mutes every non-leader, so only one mic's
   copy of a voice reaches the bus and there is nothing left to time-align. `DelayAnalyzer`, the delay

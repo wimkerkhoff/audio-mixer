@@ -22,6 +22,7 @@ public enum FixKind
     ResetCalibration,
     Resync,
     InstallVbCable,
+    SwitchToSpeaking,
     OpenSettings,
     OpenDiagnostics,
 }
@@ -75,7 +76,8 @@ public sealed record HealthSnapshot(
     IReadOnlyList<ChannelHealth> Channels,
     IReadOnlyList<OutputHealth> Outputs,
     bool IsReplaying,
-    bool VbCableInstalled = true);
+    bool VbCableInstalled = true,
+    double SingingSeconds = 0);
 
 /// <summary>
 /// The productised version of the human-in-the-loop these sessions have needed: an operator watching
@@ -98,6 +100,13 @@ public static class HealthMonitor
     public const double IdleLapelSeconds = 60.0;
 
     public const double OutputSilentSeconds = 10.0;
+
+    /// <summary>
+    /// Longer than a worship set, shorter than a sermon. Time is the whole rule because singing cannot
+    /// be detected from the audio (measured, see ROADMAP "Singing auto-detect") -- but forgetting to
+    /// switch back can be inferred from how long the mode has been on.
+    /// </summary>
+    public const double SingingReminderSeconds = 15 * 60;
 
     private const double SpeechDb = -40.0;
     private const double SilenceDb = -80.0;
@@ -128,6 +137,17 @@ public static class HealthMonitor
                 "VB-CABLE is not installed. Zoom and OBS hear this mixer through it. " +
                 "Install it, then restart Windows.",
                 "Download VB-CABLE", FixKind.InstallVbCable));
+        }
+
+        // Singing opens every routed mic with no switching. Left on into the talking, one voice
+        // reaches the stream through several mics at once -- the echo Speaking exists to prevent --
+        // and nothing sounds broken enough in the room for anyone to notice.
+        if (s.SingingSeconds > SingingReminderSeconds)
+        {
+            alerts.Add(new HealthAlert("singing.long", AlertSeverity.Warning,
+                $"Singing has been on for {s.SingingSeconds / 60:F0} min. If the singing has finished, " +
+                "switch back to Speaking, or every mic stays open through the talking.",
+                "Switch to Speaking", FixKind.SwitchToSpeaking));
         }
         var live = s.Channels.Where(c => c.Routed && !c.Muted && c.DeviceName != null).ToList();
         bool anyInputSound = s.Channels.Any(c => c.LevelDb > SilenceDb);

@@ -130,6 +130,21 @@
             </Style.Triggers>
         </Style>
 
+        <!-- Singing lights PURPLE, not the green every other "on" uses. It is the mode you can forget to
+             leave (a sermon run in it has every mic open), so it must not look like "all is well"
+             from across the room. Purple because it is the one colour with no meaning here yet:
+             green is live, blue is routed, amber is a disagreement or warning, red is muted. -->
+        <Style x:Key="SingingBtn" TargetType="Button" BasedOn="{StaticResource SceneBtn}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="on">
+                    <Setter Property="Background" Value="#5E3A91"/>
+                    <Setter Property="BorderBrush" Value="#A777F0"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="SmallBtn" TargetType="Button" BasedOn="{StaticResource SceneBtn}">
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="Padding" Value="6,3"/>
@@ -350,7 +365,7 @@
                 </StackPanel>
             </Button>
             <Button Command="{Binding SetSingingCommand}" Height="36"
-                    Style="{StaticResource SceneBtn}" Tag="{Binding SingingState}"
+                    Style="{StaticResource SingingBtn}" Tag="{Binding SingingState}"
                     ToolTip="Every mic stays open and nothing switches. Congregational singing has no single talker to follow, so switching would chop it.">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE8D6;" FontFamily="Segoe MDL2 Assets" FontSize="18"
