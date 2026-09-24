@@ -455,6 +455,16 @@ The app used to be unexercisable without a live congregation, which blocked all 
   via `AUDIOMIXER_STATE` (port number, default 7077) or `--state[=PORT]`. Read-only, loopback only;
   `MainViewModel.BuildStateJson` marshals to the UI thread. Fastest way to watch the automixer's
   *reasoning* (env vs corr vs cv vs the selected leader) without the GUI.
+- **Never delete, empty, truncate, overwrite or move a log or a recording without the operator's
+  explicit permission** (operator's rule, 2026-09-23). That covers `%TEMP%\AudioMixer*.log`, the crash
+  log, `Documents\AudioMixer\recordings`, `analysis\` (diag WAVs, decisions CSVs), `sessions\` and
+  transcripts. They are the only evidence a later diagnosis has and cannot be recreated: emptying the
+  live log "to make a test run easier to read" destroyed the one record of a 2026-09-23 capture
+  failure, and its trigger could never be identified. Give test and sandbox runs their OWN log by
+  setting `TEMP`/`TMP` for that process; find a run's lines by the `=== AudioMixer started` banner, not
+  by clearing the file. Repairing recordings in place (`tools/wavfix.py --apply`) likewise needs an OK
+  first, with the dry run shown. The app's own retention (`RecordingRetention`) is the one deliberate
+  exception.
 - **Single instance**: `App.xaml.cs` holds a named mutex — a second launch signals the first (raises
   its window) and exits, so two instances never fight over the same WASAPI capture devices.
 
