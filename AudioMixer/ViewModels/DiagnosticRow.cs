@@ -29,7 +29,7 @@ public sealed class DiagnosticRow
     public string SpeechBrush { get; init; } = "#8A8A94";
 
     // The level every absolute-RMS threshold in AutoMixer was fitted at (the Ankers' -24.6 dBFS p50),
-    // and the tolerance the operator has to land inside. See RODE-PRO-RIG.md "Levelling".
+    // and the tolerance the operator has to land inside. See CLAUDE.md, "Gain calibration".
     public const double SpeechTargetDb = -24.0;
     public const double SpeechToleranceDb = 3.0;
 

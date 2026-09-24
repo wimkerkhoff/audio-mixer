@@ -229,6 +229,8 @@ lock-free; `InputChannel` ramps them within a buffer.
   NOT sandbox preset loading, and until 2026-09-21 every fixture silently inherited the live preset
   (the `presentation` fixture re-run at its own recording commit gave 60 hand-offs vs its stored 14),
   so a changed fixture preset is reported as configuration drift before numbers are compared.
+  **No baselines are committed yet**: `tools/baselines/` does not exist, and the two original
+  fixtures' WAVs were pruned by retention. Recording one is on the roadmap.
 - **Binding errors** are swallowed at runtime; a clean build proves nothing about the UI. `--log`
   logs them (`BindingErrorListener`); `--open-all` opens every window. Zero binding errors is also
   what a window that rendered garbage reports — look at it.
@@ -236,9 +238,11 @@ lock-free; `InputChannel` ramps them within a buffer.
   off-screen or with the workstation locked (a screen grab returns the lock screen; `PrintWindow`
   returns blank for WPF).
 - **Unit tests** cover pure logic (health rules, automixer, allowlist, recorder, mapping). Anything
-  needing a device or window is verified by a replay run. **Nothing runs on push** —
-  `release.yml` builds only on a version tag and never runs `dotnet test`; that is how a window that
-  crashed on open shipped and stayed broken for weeks.
+  needing a device or window is verified by a replay run. **CI** (`.github/workflows/ci.yml`) builds
+  and runs `dotnet test` on every push and pull request since 2026-09-21; before that only
+  `release.yml` existed (build on a version tag, no tests), which is how a window that crashed on open
+  shipped and stayed broken for weeks. CI cannot catch a runtime binding or layout fault — only
+  `--open-all --log` and `--shots` can.
 
 ## Conventions
 
@@ -401,6 +405,16 @@ operator's own later judgement.
   right — it looks like a split on a meter and carries no second mic. Mode: long-press both Nav
   buttons, or RODE Central. **Prove a split by sample-level correlation** (two capsules ≈ 0.07; one
   signal fanned out ≈ 1.0) — envelope correlation stays high either way (`tools/RxProbe`).
+- **Placement is the whole signal-to-noise budget** — the room floor is constant, and every halving
+  of mic-to-mouth distance is +6 dB. Keep room mics **10–15 ft from the lectern** (a rule about the
+  position, not the person — in prayer the presenter sits at a table like everyone else): measured
+  2026-08-30, a mic on the presenter's own table read −30.6 dBFS median in his *pauses* while a real
+  interjection 15 ft away landed at −43.2, so its residual beat a genuine question in **71%** of
+  pause samples and no threshold or break-in can separate them. Otherwise: ≤3 ft from the nearest
+  talker, on a low stand rather than flat on the table (it combs against the table and picks up every
+  knock), mic-to-mic ≥ 3× mic-to-mouth, the same transmitter on the same tape-marked spot every week
+  (so a preset and a "mic 4 sounds bad" report stay meaningful), and the strip of an empty table
+  muted.
 - **A Wireless PRO in its charging case enumerates as USB storage, not audio** — two "RODE Wireless PRO
   USB Device" drives (the transmitters) and no RX endpoint. Connect the RX directly by its own USB-C.
 - **Each transmitter records 32-bit float on board** (unclippable, 40+ h): a gain-proof backup, and

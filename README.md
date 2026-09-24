@@ -31,7 +31,9 @@ thing not obvious enough to leave to memory is a two-sided toggle at the top of 
 - **Singing** — follow-the-talker **off**. A congregation singing has no single talker, so switching
   would chop it; every routed mic stays open.
 
-Both sides go amber if the two buses have been set to different modes in Settings.
+Singing lights purple, because it is the mode that is easy to forget to leave: if it is still on
+after 15 minutes, Checks asks whether the singing has finished and offers to switch back. Both sides
+go amber if the two buses have been set to different modes in Settings.
 
 The **priority mic** (normally the presenter's lapel) is never switched off and ducks the others
 while it is speaking. It is chosen once in Settings; to leave the lapel out of a meeting, mute it.
@@ -40,6 +42,42 @@ All mutes, mic and bus, are remembered across a restart.
 There used to be four scene buttons (Standby, Teaching, Prayer, Singing). They were removed in
 2026-09: nobody could remember what each did, and because a scene rewrote every mute and route it
 silently undid the operator's own changes.
+
+## Running a service
+
+**Before people arrive**
+
+- Take each Wireless PRO receiver out of its charging case and connect it **directly** by its own
+  USB-C, to its own labelled port. In the case it shows up as a USB drive and no microphone.
+- Put each transmitter on its marked spot, on a small stand rather than flat on the table, and keep
+  room mics **10–15 ft from the lectern**.
+- Check every mic row shows level and Checks is clear. For a service whose recording matters, arm
+  on-board recording on the transmitters too — it cannot clip and is the backup if anything goes wrong.
+- Choose **Speaking**.
+
+**During**
+
+- Mute the mic of any table nobody is sitting at, and mute the lapel if the presenter takes it off.
+- Switch to **Singing** for congregational singing and back to **Speaking** afterwards.
+- Watch Checks, not the meters — it opens itself when something needs you.
+
+**After**
+
+- Close the mixer with the window's **×**, never from Task Manager: a forced close leaves the
+  recording in progress unreadable (repairable with `tools\wavfix.py`, but avoid it).
+- Note anything that sounded wrong and roughly when — that note is what makes the recording useful
+  for improving the mixer.
+
+**Symptom → first thing to check**
+
+| Symptom | Check |
+| --- | --- |
+| A mic shows no level | Is its receiver still in the case, or unplugged? Is the transmitter on? |
+| Remote attendees can't hear the room, the headset can | Is the lapel open and loud while unused? It ducks the room — mute it |
+| The stream crackles or sounds gritty | Not the mic gain. Resync (or close and reopen the mixer) |
+| One mic is always quiet | The receiver's gain on the device, then Settings — the level slider can only turn down |
+| The mix switches between two mics too often | Normal between two people taking turns; if it happens with one talker, note the time |
+| Zoom/OBS hear nothing but bus A is moving | The problem is after the mixer: check OBS/Zoom's microphone is "CABLE Output" |
 
 ## Choosing the microphone
 

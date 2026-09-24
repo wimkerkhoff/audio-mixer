@@ -1,733 +1,112 @@
 # AudioMixer Roadmap
 
-Planned work and ideas. `CLAUDE.md` documents how the code works *today*; this file is what's *next*.
-Keep forward-looking TODOs here (not in `CLAUDE.md`). Rough priority order within each section.
+Open work only. `CLAUDE.md` says how things work *today* and records every removed feature and dead
+end, so finished and dropped items are not kept here — the git history has them. Rough priority order
+within each section.
 
-Status key: 🔲 planned · 🔬 needs live data / validation · 🛠 doable now (no room needed) · 💡 idea
-
----
-
-## Operator experience
-
-### ❌ Scenes — REMOVED 2026-09-23, replaced by a Speaking / Singing toggle
-The four scene buttons and the voice-source override are gone; see CLAUDE.md ("The UI") for the
-full reasoning. In short: operators could not remember what each did, and because every scene
-rewrote every mute and route it silently undid their own changes — twice in one evening. What
-survived is the knowledge they cannot re-derive: a **Speaking / Singing** toggle (both buses Gate
-or Off) on the operator panel; the **priority mic** picker stays in Settings, and leaving the lapel
-out of a meeting is a mute. The route guard went the same day. The entries below that mention scenes are kept as
-the record of why things were built; where one still describes live work it has been retargeted.
-
-### 🛠 Build queue as of 2026-09-20 — mostly built, three items open
-
-Everything below was settled with the operator this session. Mockups:
-[operator panel](https://claude.ai/code/artifact/8bb734fe-35a1-4723-b88d-9f30592e555b) ·
-[advanced tools](https://claude.ai/code/artifact/bb821a90-91f3-473a-98a3-24c89e1c136a).
-
-**1 · Operator panel — channel rows.** Replaces the status dots in `SimpleWindow`. One row per mic:
-state stripe, name, meter **with the target band**, level, mute, and a **bus column pinned right** so
-A and B read as vertical tracks. Docked 360 px. A/B and mute are **clickable** — which is a reversal
-of the 2026-08 "no per-mic control in Simple" decision and hands a lone volunteer two ways to silence
-the stream, so it ships **with** the guard below, not before it.
-
-**2 · `RouteGuard` — the precondition for 1.** *❌ Removed 2026-09-23 with the scenes: the
-operators are trusted with A/B, and a control that refuses them was the wrong trade. The
-`out<N>.silent` alert is the remaining backstop — after the fact, not before.* A pure rule, beside `SceneTransform` and
-`HealthMonitor`: given the channels and a proposed change, allow or refuse with a reason. The
-invariant is the one scenes already hold — **no operator action may leave a bus with nothing live on
-it** — extended to manual routing, which clickable A/B opens a path straight around. Mute routes
-through it too, or it is the same hole with a different button. A dead or muted mic does not count as
-covering a bus.
-
-**3 · Session aggregates.** The largest item, and the one the design review argues for. Accumulate
-continuously: hand-off rate, winner occupancy (including `winner = -1`), per-mic level median vs the
-−24 dBFS target, duck time, underruns, clipped samples. These are exactly the figures computed by
-hand on 2026-09-20; the app has no time dimension today except `CalibrationHistogram`. Persist one
-record per service, **always — not only when audio recording was armed**, since the failure case is
-nobody being in the room. Aggregates carry no speech content, so they do not have recorded audio's
-privacy weight, and they are ~20-50 KB against 2.4 GB. **Keep every run, prune at 90 days.**
-Always-on file logging with rotation folds in here (see "Log rotation / size cap").
-
-**4 · Preflight readiness check.** One verdict before the service: every routed mic bound and
-delivering, speech within ~10 dB of target, both outputs alive, a scene chosen, no armed idle
-priority lapel. Ranked **above** the session timeline despite the operator preferring the timeline,
-because volunteers run services alone: detection after the fact serves the reviewer, prevention
-before the service serves the person actually in the room. **Open:** what it does on failure — refuse
-to leave Standby, or warn-and-proceed. A warning a volunteer can click past is the same as no check.
-
-**5 · Health alert on level.** The 2026-09-20 fault ran a whole meeting 22 dB under target with
-nothing said. The data is already in `CalibrationHistogram`; the rule belongs in `HealthMonitor`.
-Must be phrased so a volunteer can act — "check the transmitter is on and its gain is set", not a
-number they cannot fix.
-
-**6 · Wire the banner's action buttons.** Still labels. For a lone volunteer an unactionable alert is
-noise, and noise teaches people to ignore the banner that will one day matter.
-
-**7 · Diagnostics window → four tabs.** Why this mic (ranked, deciding metric bolded, per-mic "why
-not") · Session · Calibration (target bars in the same visual language as the operator panel) ·
-Devices (endpoint, **bus type from the enumerator**, gain, bound strip, side).
-
-**8 · Device identity for multiple receivers.** Two Wireless PRO receivers share a friendly name, so
-`DeviceResolver` currently picks an arbitrary free one — the Anker never-greedy-fill failure, and the
-hole in the port-change fix shipped today. Three parts: **(a)** confirm on live hardware that the RX
-carries a serial (`tools/device-identity.ps1`; the evidence so far is from PnP history, the RX was in
-its case); **(b)** make `Resolve` **refuse on ambiguity** rather than guess, and raise an alert naming
-it; **(c)** an **identify flow** — tap a transmitter, the app shows which strip jumped. (c) is worth
-building regardless, as the recovery path whenever identity cannot be resolved.
-
-**9 · Endpoint gain that follows the device.** Windows keys gain to the endpoint, so a new port resets
-it to 0 dB — the trap that has now bitten twice. If the serial holds, remember gain per serial and
-restore it. **Opt-in and visible only:** on 2026-09-20 an endpoint raised to +24 dB clipped the
-capture while speech was still 14 dB low, so silently re-applying a remembered boost over a corrected
-transmitter gain would re-create that. The transmitter's own gain stays the real setting.
-
-**10 · ✅ Moot — the Advanced window is gone (2026-09-20).** It was made resizable first; retiring it
-removed the whole class. Kept for the lesson: Fixed-size `CanMinimize` with no scrollbar has caused
-three silent-clipping incidents (the leveler row, the 10-input width, `UniformGrid` ignoring
-`MinWidth`). Removing the constraint removes the class and retires the width arithmetic and
-`WindowSizingTests` with it.
-
-**11 · Strip-count discoverability.** The 1-10 picker exists in the Advanced toolbar and was never
-found. Label it, and mirror it into Settings beside the other persisted options.
-
-**Built 2026-09-20** (1, 2, 3, 5, 7, 10, 11 complete; 4 and 6 partly; 8 and 9 open):
-
-- `RouteGuard` + the channel-row operator panel with the target band, bus column and clickable A/B.
-- `SessionAggregator` / `SessionStore` / `SessionRecorder` — continuous aggregates, checkpointed every
-  two minutes and written on every service, pruned at 90 days.
-- Five new health rules: level off target, output at zero volume, routed strip with no device, a
-  receiver shared by two strips with neither set to a side; clipping is counted in `InputChannel`.
-- The Checks window, opening itself only when something is wrong, showing passing checks too.
-- Diagnostics gained Session, Calibration and Devices tabs.
-- Advanced is resizable and vertically scrollable; the strip-count picker is labelled and mirrored
-  into Settings.
-- `DeviceResolver` now refuses ambiguous name matches instead of binding an arbitrary twin.
-
-**Still open, and why:**
-
-- **The soundcheck** (part of 4). The walked "speak into each mic" flow that verifies level *and*
-  confirms which strip a transmitter landed on. It is the only preflight check that needs a human,
-  the only one that would have caught 2026-09-20 before the meeting, and it doubles as the identify
-  flow below. Not started; **deferred by the operator 2026-09-21.**
-- ✅ **Actions are buttons** (6, done 2026-09-21). Ten alerts act: unmute a bus, turn one up, clear an
-  idle priority lapel, put an off-air presenter back on air, split a shared receiver L/R, reset one
-  strip's calibration, resync a stalled mic, re-apply Singing, open Settings for a missing device.
-  Three deliberately stayed text — a dead mic and a level under target need a physical fix, and a
-  silent bus could be routing, the device or the far end. A button that cannot help is worse than a
-  sentence.
-- 🛠 **Device identity** (8a done, 8c/9 open). **8a is confirmed**: with every device plugged in on
-  2026-09-21 the RX reported a real serial, and the container-id version nibble gives the same answer
-  from the audio api with no WMI — so the app now matches on it and two identical receivers are
-  distinguishable. See the gotcha in CLAUDE.md. What remains:
-    - **The replug test.** The cross-port claim is inferred from the GUID generation scheme, not
-      measured. Note the RX's container id, move it to another USB port, look again. 30 seconds, and
-      it is the last thing between this and being trusted.
-    - **8c, the identify flow.** Much less urgent now that serials work — it is the recovery path for
-      when identity *cannot* be resolved, which on this rig now means the Soundsync dongles only.
-    - **9, per-serial endpoint gain.** Waits on the replug test by design. Note the standing hazard:
-      on 2026-09-20 an endpoint raised to +24 dB clipped the capture while speech was still 14 dB low,
-      so silently re-applying a remembered boost over a corrected transmitter gain would re-create
-      that. Opt-in and visible only.
-
-**Risk that was weighed against all of the above, and acted on 2026-09-21:** 15 commits shipped in
-one session — device resolution, routing, output buffers, health rules — against 173 unit tests and
-**no working end-to-end gate**. The golden baselines would have caught the Advanced-window crash and
-were not run because they themselves were broken by it. They are hermetic now (each fixture owns its
-preset), and the unit suite is 380. The baselines still need **re-recording** against their own
-presets before a diff means anything — the stored goldens were all taken under whatever preset was
-live that day.
-
-### 🔲 Design review 2026-09-20 — the operating model, and what follows from it
-
-Reviewed after a live prayer meeting in which every finding that mattered came from parsing
-`%TEMP%\AudioMixer.log` offline, and none from the app. Operator answers that set the constraints:
-**volunteers run services alone** (Wim may not be in the room), the strip-count picker was simply
-undiscovered rather than missing, the Advanced window should become resizable + scrollable, and an
-in-app session timeline is wanted.
-
-**The diagnosis.** Every readout in the UI is *instantaneous*; every insight that session was an
-*aggregate*. "The lapel is at −39 dBFS" is a number; "the lapel sat 1 dB above the duck threshold, so
-the duck released 12 times a minute for 15 minutes" is the finding. The app has no time dimension
-except `CalibrationHistogram` — which is, not coincidentally, the one feature that answered a question
-live. The only surface that *does* accumulate is the log, and it is opt-in and off by default, so the
-richest diagnostic in the product is a file most runs never write.
-
-**The constraint that reorders everything: volunteers alone.** That session shipped a whole meeting
-~22 dB under the calibration target and nobody noticed. A volunteer would not have either — and could
-not have fixed it, since the remedy is transmitter gain. So for this population an alert that only
-*describes* a fault is close to worthless. The honest options are to correct automatically, or to
-block before the service while someone can still act. **Preflight therefore outranks monitoring**,
-even though monitoring was the stated preference.
-
-**Corollary for the timeline:** if the operator is a volunteer and the reviewer is elsewhere, the
-timeline is not a live dashboard — it is a **session record read afterwards**. That merges it with
-"make the log always-on" rather than competing: accumulate aggregates continuously, render them in
-Diagnostics when someone is looking, and persist them so a missed service can still be reviewed.
-
-Ranked, with the reasoning rather than just the order:
-
-1. **Preflight readiness check** — one verdict before the service: every routed mic bound and
-   delivering, speech level within ~10 dB of −24 dBFS, both outputs alive, a scene chosen, no armed
-   idle priority lapel. The failures it must catch are all ones that have actually happened. It is the
-   only item on this list that helps someone who cannot diagnose.
-2. **Wire the health banner's actions.** They are still labels. For a volunteer an unactionable alert
-   is noise, and noise trains people to ignore the banner that will one day matter.
-3. **Persisted session aggregates**, surfaced in Diagnostics and written to disk: hand-off rate,
-   winner occupancy (including `winner = -1`), per-mic level median vs target, duck time, underruns.
-   Exactly the figures computed by hand on 2026-09-20. Make the log always-on with rotation as part
-   of this — it is the same data.
-4. **Advanced resizable + scrollable.** Fixed-size `CanMinimize` with no scrollbar has now caused
-   three silent-clipping incidents (the leveler row, the 10-input width, and the strip `MinWidth`
-   being ignored by `UniformGrid`). Removing the constraint removes the whole class, and retires the
-   width arithmetic and its tests with it.
-5. **Discoverability of the strip-count picker** — it exists in the Advanced toolbar and was never
-   found. Label it, and mirror it into Settings beside the other persisted options.
-6. Mic dots click through to their strip; always-on-top persists. Both were in the 2026-08 plan.
-
-**Open question that changes the design:** whether the timeline is genuinely read live or only after
-the fact. Live means it must be glanceable while operating; after-the-fact means it should optimise
-for a durable, diffable record instead.
-
-### 🛠 Live automix diagnostics panel ("why this mic?")
-An optional, toggleable telemetry view that surfaces the automixer's live reasoning **in-app**, so
-diagnosing a bad selection no longer means reading the `/state` JSON endpoint from an external tool
-(exactly the human-in-the-loop this took on 2026-07-26 — an operator had to have Claude poll
-`/state` to explain why each talker was on the wrong mic). Off by default / hidden in Easy mode —
-regular operation never needs it — but one click gives real-time insight into **why a mic is (or
-isn't) selected**.
-
-Per output, show the decision as it happens:
-- The **held leader** + current **winner**, the hold countdown (`_winnerHold`), and which
-  **mode/margin** is deciding — level (+3 dB), natural (flux-cv ×0.85), or correlation (+0.05).
-- A live per-mic row: **env level**, **flux-cv**, **ref-corr**, automix **gain**, route/mute,
-  priority/ducking — deciding metric highlighted, and the challenger being *blocked* called out
-  (e.g. "#2 louder but held off by the 3 dB margin + 140 ms hold").
-- **Rank the non-winners** by selection score — #2 is who takes over if the leader drops; mics out
-  of the running (Bluetooth / muted for singing / idle lapel) marked "—". (Operator asked for this.)
-- Opens as a **separate resizable window** (Diagnostics), alongside a Devices tab (endpoints/BT/dongles).
-- A one-line plain-English verdict per output: e.g. "#1 winning: lowest flux-cv (0.38) among mics
-  within −8 dB; #2 louder (−22 dB) but blocked by hold."
-
-*Why:* the data already exists — `MainViewModel.BuildStateJson` / the `--state` endpoint expose
-env/cv/corr/winner/hold — so this is mostly a **presentation** task: bind a hidden in-app view to the
-same snapshot on the existing ~30 Hz meter timer (NOT per-buffer). Newly worthwhile because
-`CurrentFluxCv` is now genuinely live (the 2026-07-26 cross-buffer-windowing fix — before that the cv
-column would have shown a frozen value). Pairs with the clarity→flux-cv readout unification and
-operator overrides below.
-
-### ✅ Simple mode, scenes, health banner, Diagnostics + Settings — shipped 2026-08-09
-Shipped opt-in via `--simple`, promoted to the default on 2026-08-16, and became the ONLY mixer
-window on 2026-09-20 when Advanced was retired — its flags are gone with it.
-Simple mode binds the **same `MainViewModel` instance** as Advanced, so the two views cannot disagree —
-which also makes running them side by side a valid comparison. `MainWindow.xaml` was not touched.
-- **Scenes** are a pure transform (`Services/SceneTransform`) with 20 unit tests, including the safety
-  property that no scene/override combination can leave the stream with nothing routed.
-- **Health banner** is a pure evaluator (`Services/HealthMonitor`, 15 tests) covering the failures
-  these sessions actually hit: stream silent, no output device, idle armed lapel, priority mic during
-  Singing, presenter off-air, stalled mic, Anker on Bluetooth, long-silent mic.
-- **Diagnostics** ranks mics by the metric the output is actually deciding on and states the verdict in
-  one line, including which of the three causes of `winner = -1` applies.
-- Verified: all four windows open with live data and **zero binding errors** (`--open-all --log`), all
-  four scenes assert correctly from `/state` (`--scene=`), and both golden baselines still PASS.
-
-**Still open from the original design:** the mic dots don't yet click through to that input in
-Advanced; there's no always-on-top persistence (the Pin button is per-session); Settings' hide-virtual
-and BT-warn options are runtime-only (not persisted); and the alert banner's action buttons are labels,
-not yet wired to actions.
-
-### 🔲 "Easy UI" mode — *original design notes; superseded by the entry above*
-A simplified, operator-proof default view for non-technical volunteers, with progressive disclosure
-to everything else.
-
-**Simple mode surfaces exactly four things:**
-1. **Scene selector** — Standby / Teaching / Prayer / Singing (see Scene control). The one control that matters.
-2. **Output "on-air" cards** — per output (Zoom/OBS, Headset): a live meter, an On-air / Off-air / Muted pill, a mute button. Answers "is audio flowing?"
-3. **Mic health dots** — one chip per mic: green live · amber idle/ducked · red dead/Bluetooth · grey off. Click a dot → jump to that input in Advanced.
-4. **Health/alert banner** — the productized in-app monitor (below). One color-coded line, dismissible, with an action button where possible.
-
-Plus **one** operator override: a coarse **Voice source** toggle — **Lapel vs Room mics** — shown only in Teaching & Singing. Operators get NO per-mic control in Simple mode (explicit call); to touch a mic they drop into Advanced.
-
-**Compact footprint (hard requirement):** the operator runs on a *single monitor* shared with YouTube, SermonAudio, OBS, and Zoom — screen space is tight. Simple mode must be **small and dockable** — a narrow, always-usable panel, not a full-width console; design to a compact minimum width and consider an always-on-top option. (The mockup shows the full layout; the shipped panel should be tighter.)
-
-**Progressive disclosure:**
-- **Advanced** toggle → today's full per-channel mixer, unchanged. Nothing hidden is more than one click away.
-- **Diagnostics** and **Settings** open as **separate resizable windows** (the main window is fixed-size).
-
-**Alert banner = the monitor, productized.** These sessions are its spec — it surfaces exactly what a human had to watch `/state` for: unrouted-lapel-while-priority (off-air presenter), stream silent, dead/stalled mic, **Anker on Bluetooth**, priority ducking the room during singing, mic reconnected → reassigned. Action buttons where possible ("How to fix →", "Switch to Singing?").
-
-**Clickable mockup (2026-08):** https://claude.ai/code/artifact/5e1b4b40-43f0-4a1a-95c2-56c60658b164 — scenes, source override, health banner, live meters, and the separate Diagnostics (ranked "why this mic" table) + Settings windows.
-
-**Suggested build order:** (1) Simple shell + scene buttons, (2) alert/health banner, (3) Settings window + device behaviors (hide-virtual, BT-warn, auto-readd), (4) Diagnostics window.
-
-*Why:* operators aren't audio-savvy; the common path has to "just work," and on a crowded single screen it has to stay small.
-
-### ❌ Scene control — Standby / Teaching / Prayer / Singing — *built 2026-08-09, removed 2026-09-23*
-One operator control that switches the whole behavior:
-- **Standby** — outputs muted, so pre-service chatter never reaches Zoom/recording.
-- **Teaching** — the current follow-the-talker automix (priority-lapel ducks the room; correct for
-  one coherent talker).
-- **Prayer** — turn-taking room mics, no lapel: Gate, Prefer-natural OFF, lapel muted/unrouted (it's
-  a priority-duck hazard). See the prayer-meeting-scene memory.
-- **Singing** — **open the good room mics at flat/equal gain and suspend priority-ducking.** Do NOT
-  collapse to one mic and do NOT follow-the-talker.
-  1. Suspend priority-ducking — stop the lapel gating the room out (the 2026-07-05 bug: worship
-     reached the stream as pastor-only because the priority lapel ducked every room mic to 0).
-  2. Automix Off / flat — room mics pass at unity, not winner-take-all.
-  3. Keep the lapel in if the pastor leads on it, at normal (non-dominating) level — operator taste.
-  4. Optionally exclude a known-bad/dead mic.
-
-*Why single-mic was rejected for Singing:* measured on the 2026-07-05 singing capture, the two live
-room Ankers had waveform coherence of only **0.13** and summing them added **zero comb ripple** (6.5
-vs 6.7 dB). Comb-filtering is a *coherence* phenomenon — high for one talker (teaching → duck to
-one) but low for a congregation, a distributed source where each mic hears different nearby singers.
-So the anti-comb reason to duck-to-one **does not transfer to singing**; several mics give better
-coverage with no comb penalty. The real tradeoff for singing is coverage (favors more mics) vs
-accumulated room tone / reverb / Anker gate-chatter (favors fewer) — hence "the *good* room mics,"
-not literally all. See CLAUDE.md gotchas and the singing-scene memory. Caveat: one room, ~3 min, one
-of three room mics dead — re-check 4+-mic summing on a fuller capture.
-
-**Update — measured 2026-08-09: mic count is the WRONG VARIABLE.** Both earlier positions above are
-superseded. The Ankers gate congregational singing to **true digital silence, and they do it in
-unison** — 13–21% of frames each, all four simultaneously 4.6% of frames, **51× more than
-independence predicts**; 71 total-stream dropouts in 170 s (median 60 ms, max 780 ms). Operator
-verdict live: "interrupted constantly, can't follow it at all." Summing more mics **cannot** fill the
-holes because the holes exist in every source at the same instant — confirmed live, switching Automix
-to Off changed nothing. So single-mic and multi-mic fail identically, and the earlier "compounded DSP
-artifacts → collapse to one" reasoning was measuring texture while the real defect was dropouts. See
-CLAUDE.md finding 4 for the numbers.
-
-**What the Singing scene can therefore actually do:** nothing clever with selection. Its only honest
-job is (1) suspend priority-ducking, (2) stop follow-the-talker, (3) prefer the **Rode lapel** if it
-is in use — a real mic with no speakerphone DSP, and the only in-house source that doesn't gate. Fixing
-worship audio properly is upstream of this app: S500 Broadcast mode (below), the lapel, or a board feed.
-
-*Why manual, not auto-detected:* the automix assumes one talker at a time; singing and pre-session
-chatter break that, and the *desired action differs per scene*. Auto-detection is unproven — on the
-2026-07-05 data no reference-free signal separated singing from teaching (room-mic flux-cv rose only
-~0.1, lapel duty-cycle and lapel↔room correlation shifted but every margin overlapped teaching's own
-variation; raw multi-mic activity was useless — 3–4 mics hot for the entire 15 min). A manual
-control is reliable. Pairs naturally with Easy UI.
-
-### 🔬 Singing auto-detect → operator prompt → auto-revert
-*Retargeted 2026-09-23: the scene is gone, so this now prompts to turn the Singing toggle on (both
-buses Off) and back. The mic policy below is Anker-era and does not survive: the toggle leaves which
-mics are open to the operator.*
-A semi-automatic layer over the Singing toggle: best-effort **detect** likely singing, **prompt** the
-operator ("Singing? Switch to a single mic until it's over") rather than auto-switching, apply the
-toggle on confirm, and **auto-revert** to the prior mode when singing ends. Mic policy in the scene:
-**if the lapel is in use, just use the lapel** (a real mic; skip the Ankers entirely); **if no
-lapel, pin the single cleanest Anker** (lowest live flux-cv) — not several (compounded speakerphone
-DSP artifacts, see the Singing scene note above).
-- *Why suggest-not-switch:* auto-detection is unproven — no reference-free signal cleanly separated
-  singing from teaching on the 2026-07-05 data (every margin overlapped teaching's own variation),
-  and a wrong auto-switch mid-service is worse than the problem. A confirm prompt keeps the operator
-  in control while removing the "notice it and reconfigure by hand" burden the operator hit live.
-- *Detector candidates (need labeled captures; flux-cv now works so replays are faithful):*
-  **room-to-room envelope correlation** (congregation unison → all room mics track each other;
-  teaching → they don't — an untested angle, unlike the lapel-based signals that failed),
-  sustained-pitch / harmonic energy, and low silent-gap fraction over a multi-second window.
-- *Revert:* detector quiet for N seconds → prompt or auto-return to regular mode.
-Pairs with Scene control + Easy UI.
-
-### 🔲 Test-tone / output preflight
-A "send test tone to A / B" button that plays a short tone (or looped noise) out each output bus, so
-the operator can confirm the *downstream* capture is receiving before the service — watch OBS's
-CABLE Output meter move, or hear it on the headset. *Why:* 2026-07-05 the opening ~10–15 min never
-reached OBS even though output A was live the whole time (mixer log + mix-A recording both hot from
-minute one) — the fault was entirely on the OBS/VB-CABLE capture side. The mixer can't force OBS to
-capture, but a one-click tone makes the end-to-end check trivial and talker-free. Rule of thumb to
-document in the UI: if the mixer's A meter moves but OBS is flat, the fault is downstream, not the
-mixer.
+Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture first · 🛠 doable at a desk ·
+💡 idea
 
 ---
 
-## Device management
+## Next time the rig is set up
 
-### 🔲 Replace the room mics — 6× RØDE Wireless PRO transmitters via 3 receivers
-The path forward, decided 2026-08-23 once Broadcast mode turned out to be gone. Target layout:
-**3 transmitters per row of tables (6 room mics) + 1 lapel on the primary speaker** = 7 inputs
-against a 10-input ceiling. Three 2-channel Wireless PRO receivers cover the room mics and the
-presenter's lapel arrives on its own receiver; the operator has chosen 2-channel
-devices deliberately, so the `ChannelSource` widening a >2-in interface would need stays unbuilt
-(see CLAUDE.md gotcha).
+- 🏛 **Calibrate the four-transmitter rig to −24 dBFS.** On 2026-09-23 the Rode strips read 13–17 dB
+  under target after the gain moved from Windows to the receivers — unverified, because the
+  calibration medians spanned several gain changes. Reset calibration, speak at each mic at working
+  distance, adjust the **receiver** gain until Diagnostics' `speech` goes green, reset after each
+  change. Everything in finding 8 depends on it.
+- 🏛 **Read the room floor before anyone arrives** (a quiet minute, Diagnostics `floor`): it sets
+  `SilenceFloorRms` and the leveler's idle hold (~6 dB above the bus floor).
+- 🏛 **Record a labelled fixture.** "Record all inputs" for a whole service while someone notes when
+  the wrong mic was on and when it sounded bad; move it to `analysis\keep\` the same day. **No golden
+  baselines exist in the repo** (`tools/baselines/` was never committed, and the original fixtures'
+  WAVs were pruned) — record them from this capture with its own preset. Every 🔬 item below waits on
+  it.
+- 🏛 **Use Speaking/Singing as intended for a few services.** Each tap lands in the decisions CSV as a
+  per-bus mode change, so the operators produce the singing/speaking labels the auto-detect needs.
+- 🏛 **The 30-second replug test**: note a receiver's container id, move it to another USB port, look
+  again. The serial-derived identity is inferred, not observed, until this is done.
+- 🏛 **If the 19:38 capture failure recurs** (sustained crackle on both buses, cured by a restart):
+  keep the log, note the time and what was being done (a replug?), and count holes per minute in the
+  mix. The trigger is unknown.
 
-Why this shape, in one line each — the detail is in CLAUDE.md findings 4-6:
-- **DSP-free is the whole point.** The S500s gated congregational singing to digital silence in
-  unison; the Rodes measured **0.0%** gating over 9 minutes. Nothing else on the shortlist changes.
-- **Proximity is the room fix, not directionality.** More transmitters wins *because* each sits
-  nearer a mouth — every halving of mic-to-mouth distance is +6 dB against a constant room floor,
-  worth more than any processing (finding 5b). Note only the teaching lapel is actually *body-worn*;
-  in every other scene these are **table mics** on stands using the TX's own capsule, so distance is
-  a placement problem to re-solve every week, not one solved by construction (see the deployment
-  strategy below).
-- **Not shotguns.** Turn-taking prayer wants wide coverage; a shotgun favours whoever it is aimed at
-  and rejects the people beside them, and its interference tube does not extend reach indoors. The
-  Wireless PRO TX *does* take a 3.5 mm TRS mic with plug-in power if a directional capsule is ever
-  wanted — buy **one** and A/B it before six.
+## Automixer and levels
 
-Setup checklist (each item is a bug that has already bitten this rig once):
-- Connect receivers over **USB-C**, not the 3.5 mm jack. Two fewer conversions and no hidden Realtek
-  boost. Expect a few dB, not the 15 dB the raw S/N gap suggests (finding 5b).
-- **Rename every RX endpoint in Windows** (`RODE #1`…) before building a preset. Four devices all
-  reporting "Desktop Microphone (Wireless PRO RX)" is exactly the identical-name mis-binding the
-  Ankers caused; the resolver's name fallback then self-heals across replugs.
-- **GainAssist OFF on every transmitter** — it is AGC, and it destroys the level cue the automixer
-  depends on (CLAUDE.md gotcha).
-- Get capsules **off the table surface** on a small stand — a TX lying flat combs against the table
-  reflection and picks up every knock.
-- Space table mics per the **3:1 rule** (mic-to-mic ≥ 3× mic-to-mouth) to limit comb when two mics
-  hear one voice.
+- 🔬 **Relative thresholds.** `PriorityActiveRms` (−40), `PriorityBreakInRms` (−50) and
+  `SilenceFloorRms` (−55) are absolute and assume speech near −24; the rig's level has moved 20+ dB
+  between sessions, and when it is off the mix chops (finding 8). Candidate: derive speech/silence
+  from each channel's own settled calibration median. Needs a cold-start rule and a reset after gain
+  changes.
+- 🔬 **Hand-off chatter between near-equal mics.** Two mics a median 3.1 dB apart — right at
+  `HandoffHysteresis` — produced 72 leader switches in 179 s (2026-08-30), each a hard mute/unmute
+  under Gate. Four or six matched mics hearing one questioner will sit in that band more. Retune hold
+  and hysteresis offline against the fixture; never by de-matching transmitter gains.
+- 🔬 **A single-tick transient takes the bus** (pinned by
+  `AutoMixerTests.ASingleTickSpikeCurrentlyDoesTakeTheBus`): a cough can mute the real talker for
+  200 ms. Candidate: the challenger must hold its margin for several ticks. Find real instances in the
+  decisions CSV (a winner that changes and changes straight back ~200 ms later).
+- 🔬 **Keep or remove flux-CV.** It no longer selects anything, and costs an FFT per voiced window per
+  mic on the capture thread. Its remaining claim — that it rises on RF dropouts — was measured on the
+  Anker links only. If a Rode session shows `fluxCv` tracking `drops=`, keep it as a diagnostic;
+  otherwise remove it with its `/state` key, Diagnostics column and `naturalness.py`.
+- 🛠 **The level alert should not trust a stale median.** On 2026-09-23 it said a live lapel was 17 dB
+  low because the histogram still held pre-session silence. `calAgeMs` now exists; the rule could
+  require a median younger than the last gain change or reset.
 
-Automix settings to start from: **Gate + stable hand-off on level**, prefer-natural **off**, match
-lapel **off**. See finding 6 for why, and re-validate `HandoffHysteresis` against a labelled 6-mic
-capture — with identical capsules the level spread between adjacent table mics may be under the
-current ~3 dB margin, which would make the held leader sticky.
+## Operator safety and autopilot
 
-### 🔬 Scene-driven noise reduction — spectral subtraction, never a gate
-Operator-requested 2026-08-23: cut background noise during prayer without hurting singing. The toggle
-already exists — the Singing toggle (originally `Scene.Singing`, removed 2026-09-23) — so this is a
-strength property keyed off "both buses Off", not new UI.
+- 🛠 **Soundcheck / preflight** (deferred by the operator 2026-09-21): a walked "speak into each mic"
+  pass that checks level *and* which strip each transmitter landed on, plus both buses alive, bus
+  mutes, Speaking/Singing and no idle priority lapel. The only check that would have caught
+  2026-09-20 before the meeting. Open question: warn-and-proceed or block.
+- 🛠 **Test tone per bus.** One click plays a tone out bus A or B so the operator can see OBS/Zoom
+  receive it before the service. On 2026-07-05 the first 10–15 min never reached OBS while bus A was
+  live — the fault was downstream.
+- 🔬 **Suggest Singing automatically.** Detect likely singing and *prompt* ("Switch to Singing?"),
+  never switch. Untested candidate: room-to-room envelope correlation (a congregation in unison moves
+  every mic together; one talker doesn't). The Anker-era test found nothing reliable; the DSP-free rig
+  and the operators' toggle labels make it worth a second look. The 15-minute reminder already covers
+  forgetting to switch back.
+- 💡 **Noise reduction by spectral subtraction, never a gate** — to lower HVAC during prayer. Cap the
+  attenuation (6–12 dB) so it cannot mute anyone. Ship gate: offline on a labelled capture, `flux_cv`
+  and `hf_burst` must not rise (musical noise).
 
-**Technique is the whole decision.** A gate or expander attenuates based on level over time and
-punches holes in sustained material; that is the S500 failure mode and it is also what silences a
-quiet pray-er, so it is out. **Spectral subtraction** attenuates per frequency bin against a
-stationary noise estimate — it lowers the constant floor (HVAC, fans) and, with a hard cap on maximum
-attenuation, *cannot* mute anyone. Constraints: cap attenuation (6-12 dB, operator-adjustable),
-smooth the gain across frequency and time, and update the noise estimate only during confirmed
-non-speech.
+## Recording and robustness
 
-**Ship gate:** run it offline over a labelled capture first and confirm `flux_cv` and `hf_burst` do
-**not** rise (`tools/naturalness.py`). Musical noise from over-subtraction is the same artifact that
-makes the bad Anker sound scratchy — if the numbers rise, it does not ship. Note the automixer
-already provides most of the available win (N open mics = N× floor; Gate/Share keeps it near 1×), so
-settle mic count and automix settings before tuning this.
+- 🛠 **A background writer per recorder.** Audio threads hand buffers to a queue; one thread per
+  recorder writes them and rewrites the WAV header every ~10 s. Removes the only disk I/O from the
+  audio threads and makes a crash or power cut lose seconds instead of the whole file. The naive
+  version (flushing from the audio thread) caused 24 underruns/min — it is in `git stash`; verify the
+  new one with the same flush-phase test.
+- 🛠 **Log rotation / size cap.** Nothing rotates `%TEMP%\AudioMixer.log` (8.6 MB in one evening,
+  ~285 MB over six days once). Rotate per launch, keep the last few — never delete without the
+  retention rule being the operator's decision.
+- 🛠 **RF drop edges into `/state` and the session record** (`InputSummary` has underruns and clipping
+  but not `DropEdges`). On a non-gating mic, exact silence mid-speech can only be an RF drop or a
+  transmitter switched off.
+- 🛠 **Resync off the UI thread** (optional): it freezes the window ~1 s while every device restarts.
 
-### ❌ Test S500 "Broadcast" pickup mode — DEAD 2026-08-23, feature removed from firmware
-**Do not attempt this.** Anker support confirmed Broadcast pickup mode was removed from the S500
-firmware; there is no longer any DSP-adjacent control on the unit. They offered a refund, which is
-being taken — see "Replace the room mics" below. Everything after this paragraph is kept only so the
-reasoning isn't re-derived by a future session.
+## The rig
 
-Highest-value cheap experiment on the rig. The AnkerWork app offers two voice pickup modes: **Standard**
-("picks up all sounds from the near end") and **Broadcast** ("restores and deliver original sounds by
-turning the speaker off"). Broadcast is the *only* DSP-adjacent control that exists — there is **no**
-noise-reduction toggle, no EQ, no music mode. Its documented downside (you can't hear the far end) costs
-us nothing: the mixer only captures from the Ankers and monitoring is on the headset, so their speakers
-are dead weight. Plausible mechanism: speaker off → no acoustic echo to cancel → much of the DSP chain
-has nothing to do. Anker also recommends it specifically for USB connections, which is how the dongles
-present.
+- 🏛 **A third receiver (six transmitters).** Check with RØDE how many Wireless PRO systems coexist in
+  one room first. Placement (see CLAUDE.md), battery logistics for 6 TX + 3 RX, and a labelled capture
+  to decide where the transmitters actually go.
+- 💡 **Presenter on a Wireless PRO transmitter with a lav** instead of the wired Classic on the aux jack,
+  if that separate gain path keeps being a nuisance — it would make every mic identical.
+- 🛠 **Per-serial endpoint gain** (waits on the replug test): remember Windows gain per receiver serial
+  and restore it on a new port. Opt-in and visible only — silently re-applying a boost over a
+  corrected transmitter gain clipped the capture once.
+- 🛠 **An identify flow**: tap a transmitter, the app shows which strip jumped. The recovery path when
+  identity cannot be resolved (port-derived devices).
 
-- **Test design (do NOT flip all four):** set **one** unit to Broadcast, leave the other three on
-  Standard as a control, then record all inputs over sustained singing/music and compare per-unit
-  digital-silence rates (`tools/` gate-rate analyzer, from `scratchpad/gate_check.py`). Same acoustic
-  input, built-in control group. If the Broadcast unit's gating rate doesn't drop, the hypothesis is dead.
-- **Config path:** desktop AnkerWork software (software.ankerwork.com) over **USB-C** avoids Bluetooth
-  entirely — try this first; docs only confirm firmware update this way, so pickup mode needs hands-on
-  checking. The phone app is **Bluetooth-only**.
-- **Bluetooth caveat (load-bearing):** an S500 holds its Soundsync link *and* a BT link at once, so the
-  phone app works without unplugging anything — but an active BT link is a second 2.4 GHz radio that
-  garbles the **weakest** dongle in the room, not necessarily the unit being configured. So: configure,
-  then **disconnect and re-forget the pairing**, confirm the dongle link is healthy, and only *then*
-  record the test. A BT link left up during the test produces dropouts indistinguishable from the gating
-  we're measuring and would invalidate the result.
-- Check/refresh **firmware** on all four while connected — NR behaviour can change between versions.
+## Code health
 
-*Why:* CLAUDE.md finding 4 shows no mixer-side fix for singing exists. This is the last cheap software
-lever before the answer becomes "buy a real mic."
-
-### ✅ Hide VoiceMeeter / virtual devices from input pickers — shipped
-Settings → "Hide virtual inputs" filters virtual capture devices out of the **input** lists only;
-VB-CABLE stays selectable for **outputs** (the Zoom path), and a device already bound is never
-hidden, or a working channel would show an empty picker. Tags live in `Services/VirtualInputFilter`
-so they are unit-tested: NDI's four webcam audio sources were added 2026-09-20. The tests pin both
-directions, because a tag that accidentally matches a real endpoint silently removes a working
-microphone from every picker.
-
-### 🔲 In-app audio device diagnostics
-Fold `tools/audio-device-diag.ps1` into the app as a diagnostics panel: list audio endpoints as
-active vs ghost, capture vs render (classified by the MMDEVAPI dataflow id, not the friendly name),
-show which devices are on Bluetooth, and flag the "output up but no mic" Soundsync half-link. *Why:*
-when an Anker goes dead-but-"connected" the operator needs a one-glance answer for *what's actually
-live*; prefix-shuffle and half-links make Windows' own Sound panel misleading.
-
-### 🔲 Prefer Soundsync dongles; warn on Bluetooth
-Policy: the Ankers must run over their 2.4 GHz USB Soundsync dongles, never Bluetooth (BT drops to
-HSP/HFP quality and steals the device from the dongle link). The app should surface/warn when an
-Anker is connected via Bluetooth, and ideally avoid selecting BT ("PowerConf S500 Hands-Free")
-capture endpoints as inputs — pairs with hiding virtual/BT devices from the input pickers.
-
-### ✅ Auto-(re)add devices to inputs — SHIPPED 2026-09-20/21, differently
-Superseded by the `Desired*` memory rather than built as specified. A strip now REMEMBERS the device
-it wants even while that device is unplugged (the autosave used to overwrite that memory with nulls,
-which is why every replug cost a manual remap), and `ReattachDesiredDevices` re-binds it the moment
-it reappears — inputs and, since 2026-09-21, output buses too. Auto-*assigning* an unbound strip to a
-discovered device was deliberately not built: it is the greedy-fill the Ankers taught us not to do,
-and with serial-derived identity the right unit can be named instead of guessed.
-
----
-
-## Automix validation & tuning
-
-### 🔬 A single-tick transient can take the bus — found by the first AutoMixer unit tests
-
-Pinned by `AutoMixerTests.ASingleTickSpikeCurrentlyDoesTakeTheBus`, which documents the behaviour
-rather than changing it.
-
-One 10 ms tick ~15 dB above the leader hands over the bus. The envelope's attack is 8 ms, so a single
-tick moves it most of the way, and neither guard catches this shape: `HandoffHysteresis` (+3 dB) is
-cleared instantly, and `HandoffHoldTicks` only blocks a change *while it is counting down* — once it
-has expired the very next tick may flip. Under Gate that hard-mutes whoever is actually speaking for
-the following 200 ms, so a cough, a dropped hymnbook or a chair scrape can swallow a syllable on the
-stream.
-
-This is not the failure finding 1 describes. That one was **sustained** — a distant mic's AGC make-up
-gain rising through a talker's pause — and hold + hysteresis do fix it, which is why the live
-hand-off rate came down. A transient is a different shape and is simply not guarded, which is
-invisible in every aggregate we collect: it costs one or two hand-offs, so it cannot be seen in
-`HandoffsPerMinute`.
-
-Candidate fix: require the challenger to hold its margin for several consecutive ticks before the
-hand-off, rather than beating it on the one tick the hold happens to have expired on. That is a
-selector change, so per CLAUDE.md it needs a labelled capture replayed offline with hand-off count
-and winner occupancy before and after — not a live impression. The decision track now records enough
-to find real instances: look for a winner that changes and changes straight back ~200 ms later.
-
-### 🔬 Verify recent fixes at the next live session
-Now verifiable from the logged transcript (gains/cv/winner):
-- ✅ **Bounce fix (multiplicative natural hysteresis) — VALIDATED live 2026-08-09.** 155 hand-offs over
-  26.7 min (5.8/min), median dwell **7.0 s**, 11 under 2 s, **zero** under 1 s. Compare the pre-fix
-  offline replay's 113 flips. Occupancy stayed spread (37.5 / 36.5 / 21.2 / 4.8%) rather than pinning
-  one mic, and the winner tracked a real room change (#3 dominant pre-service → #4 during the
-  presentation). Prefer-natural was ON all session and did *not* reproduce the 2026-07-26 global-pin
-  failure. **Still open:** whether it picks the mic *nearest the talker* — occupancy is distribution,
-  not correctness, and no operator labels were captured. Needs a labeled Q&A segment.
-- ❌ Share quality-weighting, Prefer natural and Match lapel — all three removed 2026-09-20 along
-  with Share itself. Nothing left to verify. (The quality-weighting had also been silently inert
-  since the 2026-07-26 flux-CV rescale, which is its own lesson: a measurement fix can invalidate
-  constants tuned to the broken scale, and nothing tells you.)
-
-### 🔬 Verify the 2026-08-02 refactor at the next launch
-A code-quality pass (commits `11acf2b`…`4b53877`) landed with **no behavior change intended**. Only
-the first commit has ever run: the app stayed up on the `11acf2b` build for the rest of that session,
-so `7a24649`, `5a71672`, `645b8cc` and `4b53877` are **build-verified only**. First launch is the
-verification session — do it at a desk, not five minutes before a service.
-**✅ Verified 2026-08-09 against the replay rig** (build `1.0.0+34188d4`, 20 s of 5-channel replayed
-audio). The 09:28 service itself still ran `11acf2b`, so this was the first execution of all four:
-- **Per-bus LEDs (`4b53877`)** — `Services/BindingErrorListener` (new, on with `--log`) routes WPF
-  binding failures into the log; the run reported **zero**, so every LED path (`IsOn`, `IsDucking`,
-  `LedTooltip`, `ShortLabel` on `RouteToggleViewModel`) resolves at runtime. This is now permanent
-  coverage — a broken binding in the *new* UI will show up as a log line instead of a blank control.
-- **Capture callback (`5a71672`)** — 5 channels × 20 s through `OnDataAvailable`, no
-  `push to output … failed`, no `AutoMixer.Tick failed`.
-- **Preset load (`7a24649`)** — `DeviceResolver` ran at startup and bound the saved channels.
-- **Autosave (`645b8cc`)** — allowlist extracted to `Services/PersistedProperties` and covered by
-  `AudioMixer.Tests/PersistedPropertiesTests` (4 tests): the meter tick and the persisted set are
-  asserted disjoint, `RefreshLed` is asserted not to raise `IsOn`, and every allowlisted name is
-  asserted to exist. **Still worth one manual pass** — move a fader, wait for "Saved HH:MM:SS", kill
-  the process, relaunch — since the test covers the mechanism, not the end-to-end write.
-- **Per-bus LEDs (`4b53877`) — the one real risk.** The A/B LED markup was replaced by an
-  `ItemsControl` over `Routes`, and WPF resolves binding paths at *runtime*, so a clean build proves
-  nothing. Look at the input strips: each should show a lettered LED per bus — green routed+passing,
-  amber routed+ducked, dim not routed — with a tooltip naming the bus. If they're dead or blank,
-  `git revert 4b53877` restores the old markup; nothing else depends on it.
-- **Autosave (`645b8cc`)** — it had never fired while running (the meter tick reset its debounce
-  every 33 ms); only a clean exit saved. Test: change a volume/route, wait ~2 s for "Saved HH:MM:SS"
-  in the status bar, then **kill** the process (not File→Exit) and relaunch — the change should
-  survive. Under the old code it would not have.
-- **Preset load (`7a24649`)** — device resolution moved to `Services/DeviceResolver`. Confirm all
-  four Ankers + lapel + both outputs still bind by name after a reboot that reshuffles endpoint GUIDs.
-- **Capture callback (`5a71672`)** — `OnDataAvailable` was split into three methods. Watch for any
-  new dropout/glitch and check the log for `push to output … failed` (newly logged; it used to be
-  swallowed silently, as did a throwing `AutoMixer.Tick`).
-
-### ✅ Decide: the green "selected" LED — RESOLVED 2026-09-20/21
-The operator panel's bus A/B badges now light when the automixer picks that mic, so "which mic is on
-the stream" is visible again — and `RowState` carries live/open/dead/off per row. `IsAutoMixActive`
-and `IsDucking` are no longer raised on the meter tick (RowState reads them itself). Original note:
-CLAUDE.md documents `IsAutoMixActive` driving a per-input **green "this mic is the winner" LED**, but
-nothing in `MainWindow.xaml` binds it — `ChannelViewModel.IsAutoMixActive` *and* `IsDucking` are
-raised 30x/second and consumed by no view. So either the LED was lost in an earlier UI edit (a
-regression worth restoring — knowing which mic the automixer picked is the single most useful thing
-to see live) or the docs describe an intent that never shipped. Left in place rather than guessing.
-Decide, then either bind it or delete both properties and correct CLAUDE.md. Note the per-bus LEDs
-now show routed/ducked but *not* "winner", so the information really is missing from the UI today.
-
-### 🔲 Code-quality leftovers (from the 2026-08-02 audit)
-Lower priority than anything above; none of it is user-visible.
-- `MainViewModel` is still ~660 lines and calls `MessageBox.Show` directly in four places (the
-  delay-detection flow), which makes that flow untestable and is the last real MVVM leak.
-- The crest→`Clarity` path (~40 lines across `AutoMixer`, `AutoMixDiag`, three VM properties) feeds
-  one gear-popup bar using a metric CLAUDE.md documents as *not* predictive through the Anker DSP.
-  Keep it as an operator readout or delete it — a product call, not a cleanup.
-- `OutputViewModel.Label`/`ShortLabel` were deleted as dead; if a future UI wants bus names, use
-  `OutputViewModel.Tag(index)` rather than reintroducing A/B ternaries.
-
-### 🔬 Singing capture & analysis
-First singing captured 2026-07-05 (~3 min, one room, one of three room mics dead). Findings: (1) no
-reference-free signal cleanly separated singing from teaching → manual scene control, not
-auto-detect; (2) room mics don't *acoustically* comb when summed (coherence 0.13) — BUT summing
-multiple Anker speakerphones stacks their independent DSP artifacts and sounds *worse* by ear (real
-worship 2026-08), so the Singing scene is **lapel-first, else a single Anker**, not several (see the
-Operator-experience Singing note). Still needed: a *fuller* capture — longer, all room mics live,
-ideally a loud full-congregation song — to re-test any singing-vs-speech discriminator (esp.
-room-to-room correlation) and confirm the mic-count call. Analysis lives in scratchpad (`singing_vs_speech.py`,
-`comb_test.py`, `find_singing.py`); fold the keepers into `tools/`.
-
----
-
-## Testability (foundation for the UI work)
-
-The blocker on all UI work is that the app can't be exercised without a room full of people. Every
-session already leaves five sample-aligned `diag-input*.wav` files — replaying those as capture sources
-turns "need a congregation" into "replay 2026-08-09 09:31".
-
-### 🛠 WAV replay capture source + rig
-Abstract the capture behind NAudio's `IWaveIn` (which `WasapiCapture` already implements), add a
-replay implementation over the diag WAVs, and everything downstream — automixer, hold/hysteresis,
-flux-cv, meters, LEDs, ducking, scenes — runs unmodified.
-- **Deliver ~480-frame buffers**, not 512/1024. WASAPI shared mode gives <512, which is the whole reason
-  the flux-cv accumulation path exists; replaying at 512 would silently bypass it and test different code.
-- The diag WAVs are written **pre-gain, pre-delay, post-conversion** (48 kHz stereo float32), so replay
-  re-runs gain/mute/delay/flux/automix on exactly the samples the live selector saw.
-- **One clock pumping all N sources in lockstep** — independent per-file timers would drift and desync
-  the automix decision.
-- Reader must tolerate **unfinalized WAVs** (header claims 0 frames while recording) — same trick as
-  `tools/live_wav.py`.
-- Real-time clock for eyeballing the UI; faster-than-real-time for batch regression runs.
-- `--replay` is a **sandbox**: separate mutex name (so it can run alongside the operator's mixer, which
-  the single-instance guard would otherwise block), **no preset autosave**, and **no output devices by
-  default** (two instances must not both open CABLE Input and double audio into Zoom).
-- Complementary **synthetic** generator — talker A/B/overlap/silence, a lapel bump crossing −40 dBFS.
-  Deterministic, tiny, and can produce situations the recordings don't contain.
-
-### 🔲 Refine the operator UI after the first Rode live test
-Requested 2026-08-30, before the test: the current surfaces (calibration columns in Diagnostics, the
-leveler popup in the output column) were designed against a rig nobody has run yet. Revisit once
-there is real operating experience — what the operator actually reached for, what they had to hunt
-for, and whether the leveler's Gentle/Medium/Strong split is the right first knob. Do not
-pre-emptively redesign; collect the session first.
-
-### 🔲 Make the automixer's level thresholds relative, not absolute
-
-`PriorityActiveRms` (−40 dBFS), `PriorityBreakInRms` (−50) and `SilenceFloorRms` (−55) are absolute
-constants tuned for speech at the −24 dBFS calibration target. Finding 8 is what happens when the rig
-is not there: on 2026-09-20 every mic ran ~22 dB low, the presenter's lapel sat 1 dB above
-`PriorityActiveRms`, and the duck released on every soft syllable — 12 winner changes/min and no
-winner at all 28–29% of the session, heard as a chopped, gritty mix. Correct gain staging fixes the
-symptom, but the rig's level has moved 20+ dB between sessions (Anker AGC → Rode at 0 dB → Rode at
-+15 dB → aux lapel), so this will recur.
-
-Candidate: derive the speech/silence decision from each channel's own settled `CalibrationHistogram`
-median rather than a fixed dBFS, so "speaking" means "loud relative to this mic's own floor". Risks:
-the histogram is cumulative and needs a reset after any gain change, and a mic that has never heard
-speech has no median yet — needs a defined cold-start.
-
-**Do not tune this from a live impression** (see "Validating a selector change"). It needs a labeled
-capture where the operator marked who was talking, replayed offline, with the hand-off count and
-winner=−1 occupancy compared before/after. Today's `diag-input*-20260920-094253.wav` is a usable
-fixture for the failure case — it is the session the numbers above came from.
-
-**Related smaller fix:** a health-banner alert when a routed channel's settled `speechDb` is more than
-~10 dB from −24. The data is already in `CalibrationHistogram`; the rule belongs in `HealthMonitor`
-(pure, unit-testable). That would have surfaced this in minute one instead of at the end of a meeting.
-
-### 🛠 Make the golden baselines hermetic — they currently gate nothing
-Found 2026-08-30. `--replay` is a sandbox for autosave and output devices but **not for preset
-loading**: `MainViewModel.TryLoadInitialPreset()` runs unconditionally before
-`StartReplayIfRequested()`, so every fixture inherits the operator's live
-`%APPDATA%\AudioMixer\preset.json` — routing, low-cut, split `ChannelSource`, automix mode. Proof:
-the `presentation` fixture fails against its own baseline **at `5c597e9`, the commit that recorded
-it** (60 hand-offs vs 14; output B occupancy 51.3%/32.8% → 0%/80%), which is precisely what that
-day's preset predicts. Every `DRIFT` seen so far has been configuration, not code, and `-Update`
-launders it away.
-
-*Fix:* add `--preset=<path>`, store a preset beside each baseline JSON, have `replay-baseline.ps1`
-pass it and `-Update` snapshot it. `--no-preset` alone is not enough — the defaults route only
-channel 0, so the fixture would exercise no selection at all. Until this lands, treat a baseline diff
-as **unproven**: check the preset's mtime before blaming the selector, and do not re-record to make
-it green (that destroys the only evidence).
-
-### ✅ `/state` golden-baseline regression harness — shipped 2026-08-09
-`tools/replay-baseline.ps1 -Name <fixture> -Stamp <session> -Seek <s> -For <s> [-Update]`. Baselines in
-`tools/baselines/`. Two recorded so far from the 2026-08-09 session: **singing** (seek 95) and
-**presentation** (seek 300); both re-run PASS.
-- It compares **aggregates, not raw samples** — mode, hand-off count, winner occupancy, median flux-cv.
-  Hand-off count proved exactly reproducible and is the sensitive signal. `medianEnv` is recorded but
-  only loosely checked (±4 dB): env moves fast and `/state` is polled at arbitrary phase, so tightening
-  it yields false alarms, not earlier warnings.
-- Samples are gridded in **replay-position space**, not wall-clock. Polling is wall-clock, so without
-  this a `-Speed 4` run captures half as many samples and the diff measures the poll rate.
-- **Record and check at the same `-Speed`, and stay at 1–2.** Higher speeds saturate the process:
-  `/state` polls get starved and the rig's catch-up cap starts dropping audio.
-- Found and fixed a real bug while building it: the automix tick ran on a wall clock, so `--speed`
-  changed selector behaviour (at speed 2 the automixer saw half as many ticks per audio-second,
-  halving every hold). The rig now drives the tick from the audio clock — one tick per 480-frame
-  chunk — which makes replay both deterministic and speed-independent.
-
-Still to add: a **prayer** fixture from 2026-07-26, and a synthetic generator for cases the recordings
-don't contain.
-
-### ❌ Scenes as a pure transform — *removed with the scenes 2026-09-23; the allowlist warning below still holds*
-Implement a scene as a testable function (`Scene` → list of property assignments) separate from the code
-that applies it, so scene behaviour is unit-testable with no audio. Scenes are the riskiest new surface
-because they *write* operator state. **Check every new persisted VM property against
-`PersistedProperties`** — the autosave allowlist fails silently in both directions (see the UI gotcha).
-
-## Tooling
-
-### 🛠 Log rotation / size cap
-The log is append-only; a long-running session grew to ~285 MB over ~6 days. Rotate per launch or
-cap the file size so it can't balloon.
-
-### 🛠 Keep the validation harness current
-`tools/`: `naturalness.py`, `voice_quality.py`, `replay_natural.py`, `review_natural.py`,
-`replay_share.py`, `scene4.py`/`scene5.py`, plus the singing set (`live_wav.py`, `find_singing.py`,
-`singing_vs_speech.py`, `comb_test.py`). Re-run after each captured session. (Live and offline
-`flux_cv` now share a scale after the 2026-07-26 fix, so replays are faithful to the engine.) Note
-`live_wav.py` reads in-progress diag WAVs that `soundfile` can't — reuse it for any tool that runs
-mid-recording.
-
----
-
-## UI nice-to-haves
-
-### ❌ Unify the "Mic clarity" readout to naturalness — MOOT 2026-09-21
-
-The crest-derived clarity readout was removed: crest fails as a proximity cue through DSP (finding 1)
-and on a DSP-free mic is dominated by handling transients, so it was neither used for selection nor
-worth showing. Nothing to unify.
-
-### 💡 Operator overrides
-Per output: pin a mic always-on, or exclude a known-bad mic from the competition — a manual escape
-hatch when the automix picks wrong. **Evidence 2026-08-09:** Anker #2 won only **4.8%** of the session
-(3.6% during the presentation) while carrying by far the highest flux-cv (0.53 vs the pack's ~0.42) and
-the lowest level — never wins, but stays in the competition every tick. That combination (never selected
-+ high instability) is the signature of a badly-placed or RF-marginal unit; excluding it is exactly the
-escape hatch this item is for. Check which physical area #2 covers before excluding it.
-
----
-
-## Hardware (not software)
-
-The Anker speakerphones cap the ceiling: their AGC + noise-suppression over-process speech and mangle
-sustained music. For worship especially, a sound-board feed or a proper overhead/room mic would
-improve quality more than any selection algorithm can.
-
----
-
-## Recently shipped (context)
-
-**2026-09-20/21:** the operator panel became the only mixer window · route guard · session records,
-decision track and always-on recording with retention · Checks window with alert fixes that act ·
-serial-derived device identity · hermetic replay fixtures (`--preset`) · CI running the tests · the
-nine bugs and the Anker-era dead code from the 2026-09-21 review.
-
-**Earlier:** single-instance guard · build-stamped log banner · live JSON state endpoint (`--state`)
-· file logging flag (`--log`) · per-bus A/B LEDs + dynamic route tooltips · wider outputs ·
-gains/winner logging · desktop shortcut → latest build with diagnostics on · cross-buffer flux-CV
-windowing (live CV unfrozen, now on the offline scale).
-
-Removed 2026-09-20/21 and recorded here so nobody rebuilds them: Share and its strength slider,
-"Stable hand-off" (now unconditional), reference-guided "Match lapel", reference-free "Prefer
-natural", quality-weighted Share, the per-channel delay stage and clap test, and the crest-derived
-"Mic clarity" readout.
+- 🛠 **Split `MainViewModel`** (1,639 lines, twice the next file): device binding, recording, alerts,
+  and a `PresetApplier` mirroring `PresetMapper` so the load/save round-trip is testable.
+- 🛠 **Tests worth adding**: `DiagnosticRow.Build` state precedence, `OutputViewModel.RefreshVerdict`
+  (the three causes of `winner = −1`), `DeviceList.Sync`, the stale-calibration health rule,
+  `SessionRecorder`'s >5 s gap rule, and `RecordingRetention`'s oldest-first loop (needs an injectable
+  free-space source).
+- 🛠 **A synthetic replay source** — talker A/B/overlap/silence, a lapel bump over −40 dBFS — for
+  situations no recording contains. Tiny and deterministic.

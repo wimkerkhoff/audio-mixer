@@ -1,7 +1,7 @@
 namespace AudioMixer.Audio;
 
 /// <summary>
-/// Speech-vs-floor level histogram, used to set transmitter gain against a target (RODE-PRO-RIG.md).
+/// Speech-vs-floor level histogram, used to set transmitter gain against a target (CLAUDE.md, "Gain calibration").
 ///
 /// A peak meter cannot answer "is this mic at the right level": a DSP-free wireless mic's crest
 /// factor is ~20 dB, so its peak says almost nothing about where speech sits. Every capture buffer's
