@@ -26,7 +26,6 @@ public sealed class ReplaySource : IWaveIn
     public string Path { get; }
     public long TotalFrames { get; private set; }
     public long PositionFrames { get; private set; }
-    public bool EndOfFile => PositionFrames >= TotalFrames;
 
     private bool _running;
 

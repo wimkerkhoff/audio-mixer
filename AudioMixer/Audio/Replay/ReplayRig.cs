@@ -68,14 +68,6 @@ public sealed partial class ReplayRig : IDisposable
         _timer = new Timer(Tick, null, Timeout.Infinite, Timeout.Infinite);
     }
 
-    /// <summary>
-    /// Where a capture goes to survive retention. Recordings are pruned at 28 days and this folder is
-    /// not walked (EnumerateFiles is top-level only), so a fixture worth keeping is moved here — which
-    /// is exactly what the two golden baselines needed and did not have.
-    /// </summary>
-    public static string KeepDirectory =>
-        Path.Combine(DefaultDirectory, Services.RecordingRetention.KeepFolder);
-
     /// <summary>Lists the session stamps available in <paramref name="dir"/> and its keep/ folder,
     /// newest first.</summary>
     public static IReadOnlyList<string> ListSessions(string? dir = null)

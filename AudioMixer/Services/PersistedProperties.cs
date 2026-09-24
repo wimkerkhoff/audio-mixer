@@ -32,7 +32,7 @@ public static class PersistedProperties
         // Also matched by the channel entry of the same name (the set holds bare names), but listed
         // for itself so a rename of either side cannot quietly stop bus mutes being saved.
         nameof(OutputViewModel.Muted),
-        // Leveler SETTINGS only. LevelerGainDb / LevelerGainText / LevelerLiftBar are raised 30x/s by
+        // Leveler SETTINGS only. LevelerGainDb / LevelerGainText are raised 30x/s by
         // RefreshMeters — allowlisting one would restart the 500 ms debounce every 33 ms and autosave
         // would silently never fire.
         nameof(OutputViewModel.LevelerEnabled),

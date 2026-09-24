@@ -191,21 +191,9 @@ public sealed class OutputViewModel : ViewModelBase
             if (SetField(ref _autoMixModeIndex, value))
             {
                 _autoMix.SetAutoMixMode(Index, (AutoMixMode)value);
-                RaisePropertyChanged(nameof(AutoMixEnabled));
-                RaisePropertyChanged(nameof(CurrentAutoMixLabel));
             }
         }
     }
-
-    public bool AutoMixEnabled => _autoMixModeIndex != (int)AutoMixMode.Off;
-    public string CurrentAutoMixLabel =>
-        AutoMixModeOptions[Math.Clamp(_autoMixModeIndex, 0, AutoMixModeOptions.Length - 1)];
-
-
-    // Reference-guided selection: pick the room mic whose envelope best matches the priority/lapel mic
-    // instead of the loudest. Experimental, off by default. Needs an active priority mic as reference.
-
-    // Reference-free: among mics within a level floor of the loudest, prefer the most natural (lowest
 
     public OutputViewModel(
         int index,
@@ -239,7 +227,6 @@ public sealed class OutputViewModel : ViewModelBase
         {
             if (!SetField(ref _levelerEnabled, value)) return;
             _bus.Leveler.Enabled = value;
-            RaiseLevelerDisplay();
         }
     }
 
@@ -261,7 +248,6 @@ public sealed class OutputViewModel : ViewModelBase
             RaisePropertyChanged(nameof(LevelerThresholdDb));
             RaisePropertyChanged(nameof(LevelerRatio));
             RaisePropertyChanged(nameof(LevelerMaxGainDb));
-            RaiseLevelerDisplay();
         }
     }
 
@@ -280,7 +266,6 @@ public sealed class OutputViewModel : ViewModelBase
             if (!SetField(ref _levelerThresholdDb, value)) return;
             _bus.Leveler.ThresholdDb = value;
             _levelerThresholdDb = _bus.Leveler.ThresholdDb;
-            RaiseLevelerDisplay();
         }
     }
 
@@ -293,7 +278,6 @@ public sealed class OutputViewModel : ViewModelBase
             if (!SetField(ref _levelerRatio, value)) return;
             _bus.Leveler.Ratio = value;
             _levelerRatio = _bus.Leveler.Ratio;
-            RaiseLevelerDisplay();
         }
     }
 
@@ -320,7 +304,6 @@ public sealed class OutputViewModel : ViewModelBase
             if (!SetField(ref _levelerMaxGainDb, value)) return;
             _bus.Leveler.MaxGainDb = value;
             _levelerMaxGainDb = _bus.Leveler.MaxGainDb;
-            RaiseLevelerDisplay();
         }
     }
 
@@ -338,22 +321,9 @@ public sealed class OutputViewModel : ViewModelBase
         set { if (SetField(ref _limiterCeilingDb, value)) { _bus.Leveler.CeilingDb = value; _limiterCeilingDb = _bus.Leveler.CeilingDb; } }
     }
 
-    // Settings-derived display. Raised from the setters ONLY — never from RefreshMeters, or it would
-    // restart the autosave debounce 30x/second and autosave would never fire.
-    public string LevelerState => _levelerEnabled ? "on" : "off";
-    public string LevelerSummary => _levelerEnabled ? $"{_levelerStrength} {_levelerRatio:F0}:1" : "Leveler off";
-
-    private void RaiseLevelerDisplay()
-    {
-        RaisePropertyChanged(nameof(LevelerState));
-        RaisePropertyChanged(nameof(LevelerSummary));
-    }
-
     // Display-only, polled at 30 Hz. MUST NOT be added to PersistedProperties.
     public float LevelerGainDb => _bus.LevelerGainDb;
     public string LevelerGainText => !_levelerEnabled ? "—" : $"{_bus.LevelerGainDb:+0.0;-0.0;0.0} dB";
-    public double LevelerLiftBar =>
-        Math.Clamp(_bus.LevelerGainDb / Math.Max(1f, _levelerMaxGainDb), 0, 1);
 
     public void RefreshMeters()
     {
@@ -361,7 +331,6 @@ public sealed class OutputViewModel : ViewModelBase
         RaisePropertyChanged(nameof(OutputPeakHoldDb));
         RaisePropertyChanged(nameof(LevelerGainDb));
         RaisePropertyChanged(nameof(LevelerGainText));
-        RaisePropertyChanged(nameof(LevelerLiftBar));
     }
 
     public void RefreshDevices(IEnumerable<AudioDeviceInfo> devices)

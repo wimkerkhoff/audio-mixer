@@ -123,20 +123,8 @@ public sealed class ChannelViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Meter scale: -60 dBFS at the left, 0 at the right.</summary>
-    public const double MeterFloorDb = -60;
-
-    /// <summary>Where speech should sit, and how wide the "right" zone is on that scale.</summary>
+    /// <summary>Where speech should sit. VuMeter draws the band around it from its own copy.</summary>
     public const double TargetDb = -24;
-    public const double TargetHalfWidthDb = 6;
-
-    public static double FractionFor(double db) =>
-        Math.Clamp((db - MeterFloorDb) / -MeterFloorDb, 0, 1);
-
-
-    /// <summary>Left edge and width of the target band, as fractions of the meter.</summary>
-    public static double TargetBandStart => FractionFor(TargetDb - TargetHalfWidthDb);
-    public static double TargetBandWidth => FractionFor(TargetDb + TargetHalfWidthDb) - TargetBandStart;
 
     /// <summary>Settled medians plus how far speech is from target — the number that makes it actionable.</summary>
     public string CalibrationText
@@ -151,9 +139,6 @@ public sealed class ChannelViewModel : ViewModelBase
         }
     }
 
-    public double BandStart => TargetBandStart;
-    public double BandWidth => TargetBandWidth;
-
     private bool _isPriority;
     public bool IsPriority
     {
@@ -163,7 +148,6 @@ public sealed class ChannelViewModel : ViewModelBase
             if (SetField(ref _isPriority, value))
             {
                 _channel.IsPriority = value;
-                RaisePropertyChanged(nameof(HasAdvancedSettings));
             }
         }
     }
@@ -179,13 +163,9 @@ public sealed class ChannelViewModel : ViewModelBase
             if (SetField(ref _source, value))
             {
                 _channel.Source = value;
-                RaisePropertyChanged(nameof(SourceStereo));
-                RaisePropertyChanged(nameof(SourceLeft));
-                RaisePropertyChanged(nameof(SourceRight));
                 RaisePropertyChanged(nameof(SourceSuffix));
                 RaisePropertyChanged(nameof(SideIndex));
                 RaisePropertyChanged(nameof(DeviceTooltip));
-                RaisePropertyChanged(nameof(HasAdvancedSettings));
             }
         }
     }
@@ -198,24 +178,6 @@ public sealed class ChannelViewModel : ViewModelBase
     {
         get => (int)_source;
         set { if (value >= 0 && value <= 2) Source = (ChannelSource)value; }
-    }
-
-    public bool SourceStereo
-    {
-        get => _source == ChannelSource.Stereo;
-        set { if (value) Source = ChannelSource.Stereo; }
-    }
-
-    public bool SourceLeft
-    {
-        get => _source == ChannelSource.Left;
-        set { if (value) Source = ChannelSource.Left; }
-    }
-
-    public bool SourceRight
-    {
-        get => _source == ChannelSource.Right;
-        set { if (value) Source = ChannelSource.Right; }
     }
 
     // Disambiguates the two strips that share one endpoint, in the device button and the log.
@@ -241,7 +203,8 @@ public sealed class ChannelViewModel : ViewModelBase
             : "No microphone assigned";
 
     // Fixed-band high-pass, 0 = off. Removes the rumble/HVAC/handling energy that dominates a
-    // DSP-free mic's floor without making any level-dependent decision — see the gear popup's note.
+    // DSP-free mic's floor without making any level-dependent decision. Set for every strip at once
+    // by the global low-cut in Settings.
     private int _highPassHz;
     public int HighPassHz
     {
@@ -252,9 +215,6 @@ public sealed class ChannelViewModel : ViewModelBase
             if (SetField(ref _highPassHz, clamped))
             {
                 _channel.HighPassHz = clamped;
-                RaisePropertyChanged(nameof(HighPassText));
-                RaisePropertyChanged(nameof(HighPassIndex));
-                RaisePropertyChanged(nameof(HasAdvancedSettings));
             }
         }
     }
@@ -264,30 +224,18 @@ public sealed class ChannelViewModel : ViewModelBase
         ? "Level: full (normal)"
         : $"Level: {_volumePercent:F0}% — the fader can only attenuate, never boost";
 
-    public string HighPassText => _highPassHz <= 0 ? "off" : $"{_highPassHz} Hz";
-
     // A discrete list, not a slider. The cutoff used to be a 0-200 Hz slider with 10 Hz snap ticks:
     // 21 positions in a ~115 px strip column is ~5 px per tick, so which values you could land on
     // depended on pixel rounding as you dragged, and operators reported cutoffs they simply could not
     // select. These are the cutoffs finding 5 actually measured, plus 90 because shipped presets use
-    // it. A value outside the list (hand-edited preset) reports index -1 and stays visible in
-    // HighPassText rather than being silently snapped to a neighbour.
+    // it. A value outside the list (hand-edited preset) reports index -1 rather than being silently
+    // snapped to a neighbour.
     public static readonly int[] HighPassOptions = { 0, 60, 80, 90, 100, 120, 150 };
 
     public static int HighPassIndexOf(int hz) => Array.IndexOf(HighPassOptions, hz <= 0 ? 0 : hz);
 
-    public string[] HighPassChoices { get; } =
-        HighPassOptions.Select(hz => hz <= 0 ? "off" : $"{hz} Hz").ToArray();
-
-    public int HighPassIndex
-    {
-        get => HighPassIndexOf(_highPassHz);
-        set { if (value >= 0 && value < HighPassOptions.Length) HighPassHz = HighPassOptions[value]; }
-    }
-
-    // What this channel IS, independent of how the current scene has configured it. Scenes need a
-    // stable "which mic is the lapel" that survives Prayer clearing the priority flag, so this must
-    // not be inferred from IsPriority at apply time.
+    // Which strip is the lapel: the persisted half of "the priority mic". Set together with
+    // IsPriority by MainViewModel.LapelIndex, so the two cannot disagree.
     private Models.ChannelRole _role = Models.ChannelRole.Room;
     public Models.ChannelRole Role
     {
@@ -316,19 +264,13 @@ public sealed class ChannelViewModel : ViewModelBase
     public bool HasDevice => SelectedDevice != null;
     public bool IsRoutedAnywhere => Routes.Any(r => r.IsOn);
 
-    // Drives the gear icon's "customized" highlight.
-    public bool HasAdvancedSettings =>
-        _isPriority || _source != ChannelSource.Stereo || _highPassHz != 0;
-
     public RelayCommand ClearDeviceCommand { get; }
 
     public RouteToggleViewModel[] Routes { get; }
 
     public float InputPeakDb => _channel.InputPeak.CurrentDb;
     public float PostPeakDb => _channel.PostPeak.CurrentDb;
-    public float InputPeakHoldDb => _channel.InputPeak.HoldDb;
     public float PostPeakHoldDb => _channel.PostPeak.HoldDb;
-    public bool IsDucking => _channel.IsDucking;
     public bool IsAutoMixActive => _channel.IsAutoMixActive;
 
     // Wires the output strips' (renameable) labels into this channel's route toggles, so the toggle
@@ -423,7 +365,6 @@ public sealed class RouteToggleViewModel : ViewModelBase
 
     private OutputViewModel? _output;
 
-    public int OutputIndex => _outputIndex;
     public string ShortLabel => OutputViewModel.Tag(_outputIndex);
     public string Tooltip => $"Route to {OutputLabel}";
 
@@ -432,14 +373,9 @@ public sealed class RouteToggleViewModel : ViewModelBase
         ? $"Output {ShortLabel}"
         : _output!.CustomLabel;
 
-    // Per-bus LED: green when routed and passing, amber when routed but ducked by the automixer,
-    // dim when not routed. Polled from the meter tick via RefreshLed.
-    public bool IsDucking => _channel.IsDuckingOn(_outputIndex);
-    public string LedTooltip => $"{OutputLabel}: green = live, amber = ducked, dim = not routed";
-
-    // Only IsDucking is polled. IsOn must NOT be raised here: it is a persisted property, so a
-    // 30 Hz notification would reset the autosave debounce forever (see PersistedProperties). It
-    // changes only via the toggle or ApplyPreset, both of which already raise it.
+    // IsOn must NOT be raised from the meter tick: it is a persisted property, so a 30 Hz
+    // notification would reset the autosave debounce forever (see PersistedProperties). It changes
+    // only via the toggle or ApplyPreset, both of which already raise it.
     // Lets the toggle's tooltip follow the (renameable) output label.
     public void AttachOutput(OutputViewModel output)
     {
@@ -463,7 +399,6 @@ public sealed class RouteToggleViewModel : ViewModelBase
     private void RaiseLabels()
     {
         RaisePropertyChanged(nameof(Tooltip));
-        RaisePropertyChanged(nameof(LedTooltip));
     }
 
     public bool IsOn

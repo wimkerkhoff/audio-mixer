@@ -52,7 +52,7 @@ public sealed class VuMeter : Control
         set => SetValue(OrientationProperty, value);
     }
 
-    /// <summary>Matches ChannelViewModel.TargetDb / TargetHalfWidthDb — change them together.</summary>
+    /// <summary>The target band is ChannelViewModel.TargetDb ± this — change the two together.</summary>
     private const double TargetDb = -24.0;
     private const double TargetHalfWidthDb = 6.0;
 

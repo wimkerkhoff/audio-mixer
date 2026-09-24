@@ -202,14 +202,6 @@ public sealed class InputChannel : IDisposable
         }
     }
 
-    // Per-output duck state for the per-bus LEDs: routed to this output AND attenuated there.
-    public bool IsDuckingOn(int outputIndex)
-    {
-        if (outputIndex < 0 || outputIndex >= _outputCount) return false;
-        if ((Volatile.Read(ref _routeMask) & (1 << outputIndex)) == 0) return false;
-        return Volatile.Read(ref _autoMixGain[outputIndex]) < 0.85f;
-    }
-
     // Watchdog state: true while a capture is supposed to be running, plus the tick of the last
     // buffer the device delivered. A capture that stops firing DataAvailable (Anker USB/BT hiccup)
     // leaves IsCapturing true but LastDataTicks stale — that's what AudioEngine restarts on.
@@ -238,8 +230,6 @@ public sealed class InputChannel : IDisposable
     public PeakMeter PostPeak { get; } = new();
 
     private MixRecorder? _analysisRecorder;
-    public string? AnalysisRecordingPath => _analysisRecorder?.CurrentPath;
-    public bool IsAnalysisRecording => _analysisRecorder?.IsRecording == true;
 
     /// <summary>
     /// Captures this mic, pre-fader and pre-filter, for offline analysis.
