@@ -175,6 +175,55 @@
             </Setter>
         </Style>
 
+        <!-- The bus's on-air state IS its mute button. They used to be a status pill beside a small
+             speaker toggle, and the operator kept clicking the pill: the state you read is the thing
+             you want to change. Fixed width so ON AIR / MUTED / OFF AIR do not shove the label about.
+             The glyph changes with the state as well as the colour, so it reads without colour. -->
+        <Style x:Key="OnAirBtn" TargetType="ToggleButton">
+            <Setter Property="Width" Value="96"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#2F6F3E"/>
+            <Setter Property="BorderBrush" Value="#3FB950"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="3">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock x:Name="glyph" Text="&#xE767;" FontFamily="Segoe MDL2 Assets"
+                                           FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="{Binding OnAirState}" FontSize="11" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <DataTrigger Binding="{Binding OnAirState}" Value="MUTED">
+                                <Setter TargetName="glyph" Property="Text" Value="&#xE74F;"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding OnAirState}" Value="MUTED">
+                    <Setter Property="Background" Value="#8B1E26"/>
+                    <Setter Property="BorderBrush" Value="#E2564D"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding OnAirState}" Value="OFF AIR">
+                    <Setter Property="Background" Value="#44484F"/>
+                    <Setter Property="BorderBrush" Value="#5A5F68"/>
+                    <Setter Property="Foreground" Value="#C9CCD2"/>
+                </DataTrigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.88"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="MuteBtn" TargetType="ToggleButton" BasedOn="{StaticResource BusBtn}">
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
             <Setter Property="FontSize" Value="10"/>
@@ -291,12 +340,24 @@
              lit. Scenes used to wrap it in four presets that also rewrote every mute and route,
              silently undoing hand changes; everything else, the operator does on the rows below. -->
         <UniformGrid Rows="1" Columns="2" Margin="0,0,0,6">
-            <Button Content="Speaking" Margin="0,0,3,0" Command="{Binding SetSpeakingCommand}"
+            <Button Margin="0,0,3,0" Command="{Binding SetSpeakingCommand}" Padding="0,6"
                     Style="{StaticResource SceneBtn}" Tag="{Binding SpeakingState}"
-                    ToolTip="One mic at a time. The automixer follows whoever is talking and switches the other mics off, so one voice is never heard through several mics at once. Use for teaching, prayer and discussion."/>
-            <Button Content="Singing" Command="{Binding SetSingingCommand}"
+                    ToolTip="One mic at a time. The automixer follows whoever is talking and switches the other mics off, so one voice is never heard through several mics at once. Use for teaching, prayer and discussion.">
+                <StackPanel>
+                    <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="20"
+                               HorizontalAlignment="Center" Margin="0,0,0,3"/>
+                    <TextBlock Text="Speaking" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Command="{Binding SetSingingCommand}" Padding="0,6"
                     Style="{StaticResource SceneBtn}" Tag="{Binding SingingState}"
-                    ToolTip="Every mic stays open and nothing switches. Congregational singing has no single talker to follow, so switching would chop it."/>
+                    ToolTip="Every mic stays open and nothing switches. Congregational singing has no single talker to follow, so switching would chop it.">
+                <StackPanel>
+                    <TextBlock Text="&#xE8D6;" FontFamily="Segoe MDL2 Assets" FontSize="20"
+                               HorizontalAlignment="Center" Margin="0,0,0,3"/>
+                    <TextBlock Text="Singing" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Button>
         </UniformGrid>
 
         <!-- Channel rows: what a physical desk shows, at a width that fits beside OBS and Zoom.
@@ -401,7 +462,6 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -410,36 +470,19 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding TaggedLabel}"
-                                       Foreground="#D8D8DE" FontSize="12"/>
-                            <Border Grid.Row="0" Grid.Column="1" CornerRadius="3" Padding="5,1" Margin="4,0">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#2F6F3E"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding OnAirState}" Value="MUTED">
-                                                <Setter Property="Background" Value="#8B1E26"/>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding OnAirState}" Value="OFF AIR">
-                                                <Setter Property="Background" Value="#44484F"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <TextBlock Text="{Binding OnAirState}" Foreground="White" FontSize="9"/>
-                            </Border>
-                            <ToggleButton Grid.Row="0" Grid.Column="2" Width="20" Height="18"
-                                          ToolTip="Mute this output"
-                                          IsChecked="{Binding Muted}"
-                                          Style="{StaticResource MuteBtn}"/>
+                                       Foreground="#D8D8DE" FontSize="12" VerticalAlignment="Center"/>
+                            <ToggleButton Grid.Row="0" Grid.Column="1" IsChecked="{Binding Muted}"
+                                          Style="{StaticResource OnAirBtn}"
+                                          ToolTip="Mute or unmute this output. A mute is remembered after a restart."/>
 
-                            <ctrl:VuMeter Grid.Row="1" Grid.ColumnSpan="3" Height="7" Margin="0,4,0,0"
+                            <ctrl:VuMeter Grid.Row="1" Grid.ColumnSpan="2" Height="7" Margin="0,4,0,0"
                                           PeakDb="{Binding OutputPeakDb}"
                                           HoldDb="{Binding OutputPeakHoldDb}"
                                           Orientation="Horizontal"/>
 
                             <!-- Device trim, applied after the meter and recorder taps, so turning it
                                  down changes what is heard without changing what is measured. -->
-                            <Slider Grid.Row="2" Grid.ColumnSpan="3" Minimum="0" Maximum="100"
+                            <Slider Grid.Row="2" Grid.ColumnSpan="2" Minimum="0" Maximum="100"
                                     Height="14" Margin="0,2,0,0"
                                     Value="{Binding VolumePercent, Mode=TwoWay}"
                                     ToolTip="Output level for this bus. Does not affect the recording."
