@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using AudioMixer.Audio;
 
 namespace AudioMixer.ViewModels;
@@ -114,6 +114,10 @@ public sealed class OutputViewModel : ViewModelBase
         {
             if (!SetField(ref _muted, value)) return;
             _bus.Volume = value ? 0f : _volumePercent / 100f;
+            // Logged because every scene except Standby clears this on BOTH buses, so a mute can
+            // vanish without the operator touching it -- and "I muted it and still hear audio" is
+            // otherwise unanswerable after the fact. The caller is what matters, not the value.
+            AudioLog.Write($"Output {Index} {(value ? "muted" : "unmuted")}.");
             RaisePropertyChanged(nameof(OnAirState));
         }
     }

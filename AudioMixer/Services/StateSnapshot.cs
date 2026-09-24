@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using AudioMixer.Audio;
 using AudioMixer.ViewModels;
 
@@ -62,6 +62,10 @@ public static class StateSnapshot
                 device = op.SelectedDevice?.FriendlyName,
                 peakDb = Math.Round(op.OutputPeakDb, 1),
                 volumePercent = Math.Round(op.VolumePercent, 0),
+                // Mute was only ever inferable from the alert list, which made "I muted it and still
+                // hear audio" unanswerable after the fact: the one reading that separates "the mute
+                // did not take" from "something else is feeding the headset" was the one not exposed.
+                muted = op.Muted,
                 recording = op.IsRecording,
                 mode = o < diag.Mode.Length ? diag.Mode[o].ToString() : "Off",
                 levelerEnabled = op.LevelerEnabled,
