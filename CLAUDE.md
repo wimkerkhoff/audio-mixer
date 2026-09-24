@@ -3,1174 +3,553 @@
 A Windows desktop audio mixer: 1–10 configurable inputs (default 3) → 2 configurable outputs, with
 per-channel level, mute, low-cut, routing toggles, VU meters, recording, and presets. Built to send a
 mix to a headset AND Zoom/OBS (via VB-CABLE) simultaneously, with an automixer that keeps one mic
-open at a time across distributed body-worn and room mics.
+open at a time across distributed body-worn and room mics. Used by volunteers running church services
+alone, so the app should run on autopilot and report what it cannot fix.
 
-Input count is runtime-configurable in Settings (`MainViewModel.InputCount` →
-`AudioEngine.SetInputCount`): the engine grows/shrinks its `Inputs` array (preserving existing
-channels, stop+dispose on shrink) and restarts the output buses to re-collect providers. `Channels`
-is an `ObservableCollection`; the operator panel is a fixed 330 px wide with one row per mic and
-`SizeToContent="Height"`, so more mics grow it downward (see the window-sizing gotcha).
+## Working on this rig — rules
 
-## The rig (why the gotchas look the way they do)
+The mixer is a **live tool** on the operator's machine, often mid-service. These rules each cost
+something to learn.
 
-Almost every hard-won finding below comes from one real deployment — assume this context when
-reading them:
+- **Never delete, empty, truncate, overwrite or move a log or a recording without the operator's
+  explicit permission.** That covers `%TEMP%\AudioMixer*.log`, the crash log, and everything under
+  `Documents\AudioMixer\` (recordings, `analysis\`, `sessions\`, transcripts). They are the only
+  evidence a later diagnosis has: emptying the live log "to make a test run easier to read" destroyed
+  the one record of a 2026-09-23 capture failure, and its trigger could never be identified. Find a
+  run's lines by its `=== AudioMixer started` banner, not by clearing the file. Repairing recordings in
+  place (`tools/wavfix.py --apply`) also needs an OK first, with the dry run shown. The app's own
+  retention (`RecordingRetention`) is the one deliberate exception.
+- **Before restarting the mixer, check that nothing is on air** (`obs64` running is a hint; a live
+  stream does not show as a separate process, so ask). Standing permission to restart exists, but not
+  mid-stream.
+- **Close it, never force-kill it.** `$p = Get-Process AudioMixer; $p.CloseMainWindow();
+  $p.WaitForExit(20000)`. A kill leaves every recording in progress with a zero-length WAV header
+  (82 files broken this way in one evening; `tools/wavfix.py` repairs them). Relaunch with the same
+  arguments it had — read them from `Win32_Process` first; normally `--log --state 7077`.
+- **Test without touching the live mixer.** `--replay` has its own single-instance mutex, no autosave
+  and no output devices, so it runs beside a live session; give it a preset *copy* (`--preset=`) and
+  its own log (set `TEMP`/`TMP` for that process). `--shots` + `--open-all` renders every window.
+- **Measure before concluding.** Tonight-style mistakes, each made once:
+  - a live meter measures the *room*, not a gain change — read the endpoint back (`tools/VolProbe`);
+  - a calibration median spanning a gain change averages two rigs — reset, then re-measure;
+  - `-120` is the app's silence clamp and what a strip reads for seconds after a restart — sample
+    twice before calling a channel dead;
+  - underruns: read `/state` `underruns` twice, a few seconds apart, and only for routed pairs;
+  - crackle after the fact: count exact-zero runs per minute in `mix-*.wav` (see gotchas);
+  - UI responsiveness: poll `/state` (its handler runs on the UI thread) and take the max latency.
+- **Nothing that can wait may run on an audio thread** — no disk flush, device call or lock the UI
+  also takes. A 10 s WAV-header flush from `WriteSamples` caused 24 underruns/min (see gotchas).
+- **Never tune the selector from a live impression** — capture with labels, replay offline first
+  (see "Validating a selector change").
+- Git: commit straight to `main`; push only when asked.
 
-- **4× Anker PowerConf S500 speakerphones** as distributed room mics, each on its own **2.4 GHz USB
-  "Soundsync" dongle** (never Bluetooth — see gotchas). They are *speakerphones*: aggressive AGC,
-  noise suppression, and gating to true digital silence sit between the room and every sample we
-  see. This single fact invalidates most textbook mic-selection metrics (see "Measured findings").
-  **Returned (2026-08-30):** Anker confirmed Broadcast pickup mode was *removed from the
-  firmware*, which was the last remaining lever against finding 4, and refunded them. They are gone
-  from the rig — findings 1-4 remain because they explain why the replacement looks as it does. Everything
-  below about speakerphone DSP stays — it is why the replacement rig looks the way it does — but the
-  S500s are no longer the target hardware.
-- **The rig as of 2026-09-23:** two **RØDE Wireless PRO** receivers on USB, each carrying two
-  transmitters in Split mode (four strips), plus a **wired classic Rode lapel** on the Realtek aux jack
-  for the presenter, used as the **priority** mic. The Wireless PRO is DSP-free: it does not gate,
-  which is the one thing that made the S500s unusable (finding 5). It is *body-worn* — it covers
-  people, not a room, so mic count and placement do the work that DSP used to pretend to do. Gain is
-  set on each receiver (both its transmitters) at 0 dB, with the Windows endpoint at +3 dB.
-- Room is ~60 ft wide. In the Anker era the furthest mic sat ~50 ft from its dongle, at the edge of
-  the Soundsync link's RF range; the RF findings below come from that.
-- Outputs: a monitor headset + VB-CABLE feeding Zoom/OBS.
-- Usage: teaching (one talker), prayer meetings (turn-taking room mics, often led from the lapel),
-  congregational singing (the automixer's one-talker assumption inverts — the Singing side of the
-  Speaking/Singing toggle).
-  Per-meeting setup guidance lives in session memory, not here.
+## The rig
+
+- **Now (2026-09-23):** two **RØDE Wireless PRO** receivers on USB, each carrying two transmitters in
+  **Split** mode (four strips), plus a **wired classic Rode lapel** on the Realtek aux jack for the
+  presenter, used as the **priority** mic. The Wireless PRO is DSP-free and does not gate (finding 5).
+  It is *body-worn*: it covers people, not a room, so mic count and placement do the work DSP used to
+  pretend to do. Gain: each receiver at **0 dB** (applies to both its transmitters), Windows endpoint
+  **+3 dB**; the wired lapel's only lever is its Windows endpoint (~16 dB).
+- **Outputs:** bus A = VB-CABLE → Zoom/OBS (the remote attendees — the listener that matters);
+  bus B = the operator's USB headset.
+- **Usage:** teaching (one talker), prayer meetings (turn-taking, often led from the lapel),
+  congregational singing (the automixer's one-talker assumption inverts — the Singing mode).
+- **History:** until 2026-08-30 the room mics were **4× Anker PowerConf S500 speakerphones** on
+  2.4 GHz Soundsync dongles, ~60 ft room, furthest mic ~50 ft from its dongle. Their AGC, noise
+  suppression and gating to digital silence explain findings 1–4 and most device gotchas; they were
+  returned once Anker confirmed the only mitigating control had been removed from the firmware.
+- Per-meeting setup guidance lives in session memory, not here.
 
 ## Stack
 
-- **.NET 8** + **WPF** (single-window desktop app)
-- **NAudio** 2.2.1 for audio I/O (WASAPI shared mode)
-- **System.Text.Json** for preset persistence
-- MVVM pattern (ViewModels per channel + main)
-- Offline analysis (`tools/*.py`): `pip install numpy scipy soundfile matplotlib praat-parselmouth`
-  (+ `faster-whisper` for `tools/transcribe.py` — runs locally, on CPU here: the Quadro's CUDA path
-  needs NVIDIA's cuBLAS/cuDNN runtime, which is not installed)
+- **.NET 8** + **WPF**, MVVM (view model per channel + main)
+- **NAudio** 2.2.1, WASAPI **shared mode** everywhere (exclusive would lock Zoom out of the headset)
+- **System.Text.Json** for presets and session records
+- Offline analysis (`tools/*.py`): `pip install numpy scipy soundfile matplotlib praat-parselmouth`,
+  plus `faster-whisper` for `tools/transcribe.py` (runs on CPU here: the Quadro's CUDA path needs
+  NVIDIA's cuBLAS/cuDNN runtime, not installed)
 
-## Project layout
+## Where things are
 
 ```
-AudioMixer.sln
-ROADMAP.md                    # Planned work and the decisions behind it. Not a spec of what IS.
-RODE-PRO-RIG.md               # The 6x Wireless PRO replacement rig: plan, watch-list,
-                              #   commissioning checklist. Fold results here, then delete it.
-publish.ps1                   # Single-file publish
-AudioMixer.Tests/             # xunit. Pure-logic only (no devices/WPF): health, automixer, autosave allowlist
-AudioMixer/
-├── App.xaml / App.xaml.cs    # Single-instance mutex; OWNS MainViewModel; ApplyCliFlags (see Conventions)
-├── Views/                    # The whole UI. Four windows, no Advanced — see below.
-│   ├── SimpleWindow.xaml     # THE mixer: Speaking/Singing toggle, mic rows, on-air cards
-│   ├── ChecksWindow.xaml     # Everything needing attention; opens itself only when something does
-│   ├── DiagnosticsWindow.xaml # Ranked "why this mic?" table; own 10 Hz timer, off when closed
-│   ├── SettingsWindow.xaml   # Priority mic, mic devices + split side, per-bus mode, leveler, low-cut
-│   └── OperatorConverters.cs # Severity->brush, mic-dot colour, null/inverse visibility
-├── Audio/
-│   ├── AudioEngine.cs        # Capture/render lifecycle, graph wiring, AutoMix tick + stall watchdog
-│   ├── Replay/               # Replay a recorded session instead of live mics (see "Testing")
-│   │   ├── ReplaySource.cs   # IWaveIn over a (possibly unfinalized) diag WAV
-│   │   ├── ReplayRig.cs      # One clock pumping all sources in lockstep; drives the automix tick
-│   │   └── ReplayOptions.cs  # --replay sandbox semantics
-│   ├── InputChannel.cs       # capture → side split → taps → low-cut → mute → gain → automix → push
-│   ├── OutputBus.cs          # MixingSampleProvider → peak tap → volume → WasapiOut; optional recorder
-│   ├── AutoMixer.cs          # Per-output leader: smoothed level + hold/hysteresis, priority duck; off-thread
-│   ├── AutoMixMode.cs        # enum Off/Gate
-│   ├── IAutoMixControl.cs    # Per-output automix setters — the VM's one dependency, not N delegates
-│   ├── AudioDeviceInfo.cs    # Device id + friendly name record
-│   ├── ChannelSource.cs      # Stereo/Left/Right — which transmitter of a split receiver a strip takes
-│   ├── PeakMeter.cs          # Peak dBFS per buffer, peak-hold decay
-│   ├── TapSampleProvider.cs / TrackingSampleProvider.cs   # Non-consuming taps in the graph
-│   ├── MixRecorder.cs        # WaveFileWriter wrapper, thread-safe start/stop
-│   └── AudioLog.cs           # Opt-in file log (AUDIOMIXER_LOG/--log → %TEMP%\AudioMixer.log)
-├── ViewModels/
-│   ├── MainViewModel.cs      # Engine lifecycle, device pickers, presets, record state, meter tick
-│   ├── ChannelViewModel.cs   # Per-input: device, split side, level, mute, routes, meter, priority, row state
-│   ├── OutputViewModel.cs    # Per-output: device, meter, volume, mute, record, automix mode, leveler
-│   └── DeviceList.cs / RelayCommand.cs / ViewModelBase.cs
-├── Models/MixerPreset.cs     # Serializable: devices (+ serial key), levels, mutes, routes, automix, leveler
-├── Services/
-│   ├── HealthMonitor.cs      # PURE alert rules for the banner. Unit-tested.
-│   ├── PersistedProperties.cs # The autosave allowlist, extracted so its invariant is testable
-│   ├── BindingErrorListener.cs # WPF binding failures -> the log (on with --log)
-│   ├── PresetStore.cs        # JSON load/save to %APPDATA%\AudioMixer\presets.json
-│   ├── PresetMapper.cs       # View-model state → MixerPreset (the reverse lives in ApplyPreset)
-│   ├── DeviceResolver.cs     # Preset device → live endpoint: id first, then friendly name (see gotcha)
-│   ├── StateSnapshot.cs      # Builds the /state JSON (the selector's reasoning, not just mixer state)
-│   ├── DiagnosticsLog.cs     # Meter-tick logging: talker hand-offs + ~1 Hz output/input health dump
-│   └── StateServer.cs        # Opt-in loopback JSON state endpoint (diagnostics)
-├── Controls/VuMeter.cs       # Custom-drawn gradient bar, target band, peak-hold tick
-└── Assets/app.ico
-tools/                        # Offline analysis + diagnostics — validate selector changes HERE first
-├── AnalyzeInputs/            # C#: replays selector metrics over per-mic diag WAVs
-├── RxProbe/                  # C#: captures 2 endpoints at once — verify a split receiver at
-│                             #     sample level (corr + scalar-fit) after any remap
-├── VolProbe/                 # C#: read/set a capture endpoint's Windows gain (see the gain gotcha).
-│                             #     Lists ALL active capture endpoints; name+level args set one
-├── wavfix.py                # repair WAV headers left at 0 frames by a killed recording
-├── transcribe.py            # local speech-to-text of a mix/diag WAV (faster-whisper). Keep its
-│                            #   VAD off: it silently dropped the last 6 min of speech once the mix
-│                            #   level fell 6-8 dB (2026-09-23)
-├── gate_rate.py              # per-mic digital-silence rate + simultaneity (see finding 4)
-├── naturalness.py            # flux-CV artifact ranking (the "natural" metric, offline)
-├── comb_test.py / singing_vs_speech.py / find_singing.py / live_wav.py
-├── audio-device-diag.ps1     # WASAPI/BT/dongle enumeration + half-link detection
-└── build-readme.mjs          # README.md → README.html
+AudioMixer/          the app — Audio/ (engine, graph, automixer, replay), Services/ (PURE rules and
+                     persistence: HealthMonitor, PresetMapper, DeviceResolver, StateSnapshot…),
+                     ViewModels/, Views/ (SimpleWindow = the mixer, Checks, Diagnostics, Settings)
+AudioMixer.Tests/    xunit, pure logic only (no devices, no WPF) — plus XamlResourceTests, which
+                     reads markup as text
+tools/               offline analysis and diagnostics — validate selector changes HERE first
+  AnalyzeInputs/     C#: replays selector metrics over per-mic diag WAVs
+  RxProbe/           C#: captures 1+ endpoints beside the live mixer — verify a split receiver
+  VolProbe/          C#: list/set capture endpoints' Windows gain (no args = list)
+  device-identity.ps1  serial vs port-derived identity of each USB audio device (PnP walk)
+  audio-device-diag.ps1  WASAPI/BT/dongle enumeration, half-link detection
+  replay-baseline.ps1  golden-baseline regression over a replay fixture
+  wavfix.py          repair WAV headers a kill left at 0 frames (dry run by default)
+  transcribe.py      local speech-to-text of a recording (faster-whisper; keep its VAD off)
+  gate_rate.py / naturalness.py / live_wav.py / singing_vs_speech.py / find_singing.py / comb_test.py
+ROADMAP.md           open work and the decisions behind it — not a spec of what IS
 ```
 
-Offline tools replay against the "record all inputs" per-mic WAVs at
-`%USERPROFILE%\Documents\AudioMixer\analysis\diag-input*.wav`.
+Runtime files:
 
-## The UI, after 2026-09-20
+| What | Where |
+| --- | --- |
+| Preset (+ `.bak`) | `%APPDATA%\AudioMixer\preset.json` |
+| Log (opt-in `--log`), crash log (always) | `%TEMP%\AudioMixer.log`, `%TEMP%\AudioMixer.crash.log` |
+| Bus mixes `mix-A/B-<stamp>.wav` | `Documents\AudioMixer\recordings\` |
+| Per-mic `diag-input<N>-<stamp>.wav`, `decisions-<stamp>.csv` | `Documents\AudioMixer\analysis\` (fixtures in `analysis\keep\`) |
+| Session records `session-<stamp>.json` | `Documents\AudioMixer\sessions\` |
+| Live state | `http://127.0.0.1:7077/state` (with `--state`) |
 
-**There is one mixer window.** The Advanced window was retired once everything it uniquely held had a
-home, which is worth recording because the split cost real confusion: two places to mute a mic, two
-device pickers, two toolbars, and a window that could not be closed (only hidden) because it owned the
-view model.
+## The UI
 
-- **Operator panel** (`SimpleWindow`) — the Speaking/Singing toggle, one row per
-  mic (state stripe, meter with the target band, level, mute, bus A/B that lights when the automixer
-  picks it), on-air cards per bus with their own trim, and one toolbar. This is the mixer now, not a
-  simplified view of one.
-- **Checks** — every warning and error, nothing that is merely fine. Opens itself only when something
-  needs attention, so its appearance is the signal; never blocks.
-- **Diagnostics** — why this mic, the session record, calibration, devices. Never needed to run a service.
-- **Settings** — the rig: the priority mic, each strip's device and split side, automix mode per bus,
-  the bus leveler, the global low-cut, picker filters.
+**One mixer window** (`SimpleWindow`, fixed 330 px wide, `SizeToContent="Height"`, one row per mic):
+the **Speaking | Singing** toggle, mic rows (state stripe, meter with the target band, level, mute,
+bus A/B buttons that light green when the automixer has that mic on that bus), an on-air card per bus
+whose ON AIR / MUTED label *is* its mute button, and one toolbar. **Checks** lists every warning and
+opens itself only when something needs attention. **Diagnostics** is "why this mic", the session so
+far, calibration and devices. **Settings** holds the rig: the priority mic, each strip's device and
+split side, per-bus automix mode, the leveler, the global low-cut, picker filters. `App` owns
+`MainViewModel` and disposes it in `OnExit`. The Advanced window was retired 2026-09-20: two places
+to mute a mic and two device pickers cost real confusion.
 
-`App` owns `MainViewModel` and disposes it in `OnExit`. `--advanced` / `--simple` are gone.
+**Scenes were removed 2026-09-23 — do not rebuild presets without solving this first.** Four buttons
+(Standby/Teaching/Prayer/Singing) each rewrote every channel's mute, route and priority and every
+bus's mode. The operators could not remember what each did, and a scene silently undid their own hand
+mutes — twice in one evening. They are trusted with mute and A/B and mix in OBS. What survived is the
+knowledge they cannot re-derive:
 
-**Scenes were removed 2026-09-23.** There used to be four buttons — Standby, Teaching, Prayer,
-Singing — plus a voice-source override, each rewriting every channel's mute, route and priority and
-every bus's automix mode at once. Two things killed them, both from one live evening: (1) the
-operators could not remember what each button did, and a tooltip is no help under pressure or on a
-touchscreen; (2) a scene rewrote *everything*, so a hand mute on one strip or one bus was silently
-undone by the next scene change — "set it by hand" and "use scenes" did not compose. The operators
-are trusted with per-strip mute and A/B and are comfortable mixing in OBS, so the presets were
-protecting people from controls they already use well.
+- **Speaking | Singing** — both buses Gate, or both **Off** (singing has no single talker to follow).
+  Singing lights **purple** (the one colour with no other meaning here) because it is the mode you
+  can forget to leave; Checks warns after **15 min** in it (`singing.long`, time alone — singing is
+  not detectable from audio). It deliberately does **not** touch priority or routing: `AutoMixer`'s
+  Off branch sets unity gain and returns *before* the priority logic, so an armed lapel cannot duck
+  the congregation (the 2026-07-05 failure) and is still armed when speaking resumes. That early
+  return is the only thing preventing it — pinned by
+  `AutoMixerTests.OffIgnoresAnActivePriorityMic_SoSingingCannotDuckTheRoom`. If the buses disagree
+  (per-bus mode in Settings), **both sides go amber**.
+- **Priority mic** — set once in Settings (`LapelIndex`). To leave the lapel out of a meeting,
+  **mute it**: a strip's level is measured after its mute gate, so a muted priority mic never reads
+  as speaking and cannot duck anyone.
 
-What survived is the knowledge an operator cannot re-derive:
-- **Speaking | Singing**, a two-sided toggle on the operator panel with the current mode lit.
-  Speaking is both buses Gate; Singing is both buses **Off** — singing has no single talker, so
-  follow-the-talker must stop. Each side explains itself in a tooltip; an always-visible caption was
-  tried for an hour and dropped as noise once the lit side said the same thing. Singing It deliberately does *not* touch priority: `AutoMixer`'s Off branch
-  sets unity gain and returns before the priority logic runs, so an armed lapel cannot duck anything
-  while the buses are Off, and it is still armed when they go back to Gate. That early return is now
-  the ONLY thing keeping a congregation on air during worship (the 2026-07-05 failure), so it is
-  pinned by `AutoMixerTests.OffIgnoresAnActivePriorityMic_SoSingingCannotDuckTheRoom`. Unlike the
-  old scene it does not unroute room mics either: which mics are open is the operator's A/B call.
-  When the two buses disagree (the per-bus mode is still in Settings) **both sides go amber**:
-  lighting neither would read as a mode, and lighting one would claim a mode half the rig is not in.
-- **Priority mic** — the `LapelIndex` picker, in **Settings**. It is set once per rig; taking the
-  lapel out of a particular meeting is a **mute** on the operator panel, not a priority change. That
-  is sufficient: a strip's level is measured after its mute gate, so a muted priority lapel never
-  reads as speaking and cannot duck anyone. See "Priority mics" below.
-
-**Mutes persist, strip and bus alike.** Bus mutes used to reset on every launch, for fear a
-remembered one would leave the stream silent with nobody knowing why; since 2026-09-23 they save with
-the preset (`OutputPreset.Muted`), because the Checks window now flags a muted bus with an Unmute
-button and re-muting after every restart was the more real failure. Presets from before then carry
-no field and load unmuted, as they always did.
-
-Do not rebuild presets on top of this without solving the stomping problem first: any control that
-rewrites state the operator also sets by hand will silently undo their hand changes.
-
-**The route guard went the same day, for the same reason.** `RouteGuard` refused a mute or an
-unroute that would leave a bus with no live mic, snapping the button back with "Bus A would have no
-microphone". It existed because scenes had held that invariant for whole-rig changes and clickable
-A/B opened a path around it; with scenes gone and the operators trusted with A/B, a control that
-fights them was the wrong trade (the operator's call). It also had a cost of its own: a refusal
-raised the same `PropertyChanged` as a real change, which needed a `ChangeRefused` flag to stop the
-session log recording the opposite of what happened — all of that went with it. **What still
-catches an emptied bus is after the fact, not before**: `HealthMonitor`'s `out<N>.silent` rule goes
-Critical when a bus has been silent 10 s while any input is picking up sound, and the Checks window
-opens itself. In an empty room that rule is deliberately quiet, so a bus emptied before a service
-starts is only caught once people talk.
+**Mutes persist**, strip and bus (`OutputPreset.Muted`, since 2026-09-23; Checks flags a muted bus).
+**The route guard is gone** (2026-09-23, operator's call): it refused a tap that would leave a bus with
+no live mic, and fought trusted operators. What still catches an emptied bus is after the fact:
+`out<N>.silent` goes Critical after 10 s of bus silence while any input has sound — deliberately quiet
+in an empty room.
 
 ## Audio architecture
 
-**Pipeline per channel:**
 ```
-WasapiCapture → resample to 48kHz stereo float32 → side split (L/R/stereo) → peak/analysis taps →
-low-cut → mute gate → gain → post peak →
-level/flux/RF measurement → per-output automix gain → bus mixer
-```
-
-The **side split** (`ChannelSource`) is deliberately the FIRST stage after resampling: everything
-downstream — meters, the analysis recorder, level/flux-CV/RF, the automixer — must see one
-transmitter, not a blend. The **low-cut** sits deliberately AFTER the analysis recorder, so "record
-all inputs" stays an unprocessed capture and the offline tools never measure our own filter.
-
-**Output bus:**
-```
-MixingSampleProvider (sums routed channels) → bus leveler + limiter → peak tap →
-  [optional recorder tap] → volume → WasapiOut
+per channel:  WasapiCapture → resample to 48 kHz stereo float32 → side split (L/R/stereo)
+              → peak + analysis-recorder taps → low-cut → mute → gain → post peak
+              → level/flux/RF measurement → per-output automix gain → per-output feed buffer
+per bus:      MixingSampleProvider → leveler + limiter → peak tap → [recorder] → volume → WasapiOut
 ```
 
-**The bus leveler is the ONLY dynamics stage in the app, and it may never move upstream of the
-mixer.** `BusLeveler` (per output, default OFF) is a slow broadcast-style leveler — ratio/threshold/
-attack/release, a hard-capped make-up lift and a brick-wall limiter — for talkers who are quieter,
-louder, or further from a table mic. It sits deliberately *after* the automixer: `AutoMixer` picks
-the active mic by comparing per-channel smoothed RMS latched in `InputChannel.MeasureAndLatchLevels`,
-so any compression ahead of that flattens the level differences that encode *which mic is closest to
-the talker*. That is precisely what a transmitter's own AGC does, which is why GainAssist has to be
-off on this rig (finding 6a/7) — a per-channel compressor would be the same bug in software.
-
-Three constraints that are load-bearing rather than taste:
-- **Make-up lift is capped (`BusLeveler.MakeupCeilingDb` = 12 dB).** The room floor is acoustic HVAC
-  (finding 5b) and speech-band S/N is ~15 dB, so every dB of lift is a dB of rumble that no filter
-  takes back out. The cap is a noise budget.
-- **Idle hold, never a gate.** Below `IdleFloorDb` the gain *freezes* — `LevelerCore.Step` has no
-  path that lowers gain while idle, so it cannot punch holes in sustained material the way the
-  speakerphones did (finding 4). It also stops the leveler ramping into a priority duck and slamming
-  back. `IdleFloorDb` must be **calibrated per room**: a bus summing several open mics can sit above
-  the −45 dBFS default during "silence", and then the hold never engages.
-- **Off is a true bypass** (early return), so a disabled leveler is bit-identical and free.
-
-Settings live on `OutputBus.Leveler` (a `BusLevelerSettings`), not on the provider, so they survive
-`AudioEngine.RestartOutputBus_NoLock`; `OutputViewModel` writes them through directly the way it does
-`Volume`, with no `IAutoMixControl` involvement — the leveler is a bus device, not an automix
-decision.
-
-**Key facts:**
-- Internal mix format: **48 kHz, stereo, float32**. All captures resample to this.
-- Each output bus runs its own WasapiOut at the device's native rate; the bus resamples once on the
-  way out.
-- Inputs and outputs run on independent clocks. Per-channel ring buffers absorb drift; we accept
-  `DiscardOnBufferOverflow` semantics. If drift becomes audible, consider a small async resampler
-  per channel.
-- WASAPI **shared mode** everywhere — exclusive mode would lock Zoom out of the headset.
-- Meters update at ~30 Hz from peak values latched in the audio thread and polled by a UI timer (do
-  NOT marshal per-buffer).
-- Output **Volume** (`OutputBus.Volume` → `VolumeSampleProvider`) is applied *after* the
-  peak/recorder tap — a device trim that does NOT affect meters or recordings. Recording is **per
-  output** (each bus owns a `MixRecorder`).
+- **Side split first**: everything downstream (meters, analysis recorder, automixer) must see one
+  transmitter, not a blend. **Low-cut after the analysis tap**, so diag WAVs stay unprocessed and the
+  offline tools never measure our own filter.
+- **The bus leveler is the ONLY dynamics stage, and may never move upstream of the mixer.** The
+  automixer picks by smoothed per-channel RMS; any compression ahead of it flattens the level
+  differences that encode *which mic is closest* — exactly what a transmitter's AGC does (why
+  GainAssist must be off). Load-bearing constraints: make-up lift capped at 12 dB
+  (`MakeupCeilingDb` — the room floor is acoustic HVAC and speech-band S/N is ~15 dB, so every dB of
+  lift is a dB of rumble); below `IdleFloorDb` the gain **freezes**, never falls (no path lowers gain
+  while idle, so it cannot punch holes like the speakerphones did) — calibrate the floor per room, as a
+  bus summing open mics can sit above the −45 dBFS default; Off is a true bypass. Settings live on
+  `OutputBus.Leveler` so they survive `RestartOutputBus_NoLock`.
+- Internal format **48 kHz stereo float32**; each bus resamples once to its device rate. Inputs and
+  outputs run on independent clocks; per-channel feed buffers absorb drift (`DiscardOnBufferOverflow`).
+- Meters update at ~30 Hz from values latched on the audio thread and polled by a UI timer — never
+  marshal per buffer. Output **Volume** sits after the peak/recorder tap: it trims what the device
+  plays, not meters or recordings. Recording is per bus (`MixRecorder`) plus per mic (diag).
+- **Automix gain is applied after the meter and analysis taps**, so meters and diag WAVs show the
+  pre-automix level — intentional; don't move the tap.
 
 ### Automixer
 
-The fix for multiple distant mics summing the same voice (comb "echo", noise floor, reverb): per
-output, attenuate every mic except the one closest to the active talker. Static delay compensation
-is NOT a substitute — per-talker offset isn't fixed.
+Per output, keep only the mic closest to the active talker; several distant mics summing one voice
+give comb "echo", a raised floor and reverb. Static delay compensation is no substitute (per-talker
+offset isn't fixed). `AudioEngine.AutoMixTick` (~100 Hz, off the audio threads) smooths each
+channel's latched RMS (attack 8 ms / release 250 ms), picks a leader per output, and writes gains
+lock-free; `InputChannel` ramps them within a buffer.
 
-`AudioEngine` runs a ~100 Hz `Timer` (`AutoMixTick`) that reads each channel's latched
-`CurrentLevelLinear` (RMS), smooths it (attack 8 ms / release 250 ms → `AutoMixer._env`), picks a
-leader per output over the channels routed there, and writes per-channel gains lock-free (volatile).
-`InputChannel` applies them at the routing-push step with an intra-buffer ramp (no zipper). All
-decision logic is off the audio threads.
-
-**Modes** (`AutoMixMode`, per output):
-
-| Mode | Gain rule | Use when |
+| Mode | Rule | Use |
 | --- | --- | --- |
-| Off | unity | singing — no single talker for follow-the-talker to follow |
-| Gate | winner-take-all (hard mute of non-leaders) | everything else |
+| Off | unity | singing |
+| Gate | winner-take-all, non-leaders hard-muted | everything else |
 
-**Share was removed 2026-09-20**, with the strength slider, "Stable hand-off", "Match lapel" and
-"Prefer natural". All four were Anker-era: Share attenuated non-leaders instead of muting them, so
-several mics hearing one voice still combed and strength could only make that quieter; no scene ever
-selected it. Match lapel and Prefer natural were built to reject a loud-but-bad speakerphone, which
-finding 6 says cannot happen on matched DSP-free transmitters — and finding 6b measured Prefer
-natural actively harmful there. Stable hand-off became unconditional: finding 6a calls the hysteresis
-exactly as necessary, so a switch that turned it off could only re-create "far mic wins". The priority
-duck and Gate's non-leader level are now fixed at a hard mute, which is what strength 100% did and the
-only setting this rig ever ran. Flux-CV is still computed and still worth reading — it rises on RF
-dropouts — it simply no longer selects.
-
-Gate's ~200 ms hold can clip the first syllable of a fast interjection.
-
-**Leader hold.** The selected leader is held with hysteresis (`HandoffHoldTicks` ~200 ms,
-`HandoffHysteresis` ~3 dB) so a brief louder moment elsewhere can't steal it. It is unconditional —
-finding 6a calls it exactly as necessary on a DSP-free rig, so a switch that turned it off could only
-re-create "far mic wins" (finding 1). **Selection is level only**: smoothed RMS argmax with a
-multiplicative hysteresis margin. The correlation ("Match lapel") and flux-CV ("Prefer natural") rules
-were removed 2026-09-20 — see above for why.
-
-Known gap, pinned by `AutoMixerTests.ASingleTickSpikeCurrentlyDoesTakeTheBus`: a single 10 ms tick
-~15 dB over the leader takes the bus, because the margin is cleared instantly and the hold only blocks
-a change while it is counting down. Under Gate that mutes the actual talker for 200 ms. It is a
-different shape from finding 1's sustained failure and is invisible in the aggregates. Fixing it is a
-selector change and needs a labelled offline replay first.
-
-`InputChannel.CurrentFluxCv` is a 512-pt FFT per voiced 512-sample window **accumulated across
-capture buffers** in the audio thread (EMA mean/variance of normalized-spectrum frame-to-frame
-distance → coefficient of variation; lower = more natural). The accumulation is load-bearing:
-WASAPI shared-mode delivers ~480-frame buffers (<512), so the original per-buffer FFT
-(`if (frames < FluxN) return;`) almost never ran and the value **froze at a startup estimate**;
-fixed 2026-07-26 (`ComputeFlux` accumulates → `ComputeFluxWindow` runs the FFT, `FluxEma` retuned
-0.03→0.01 for the ~94 windows/s rate, `_fluxFill` reset in `Stop`). Live scale is now ~0.35–0.5 and
-**matches** the offline Python `flux_cv` (~0.4–0.6), so offline replays are faithful.
-
-**Priority mics** (`IsPriority`, the Priority mic picker in Settings). A priority mic (the presenter's lapel) is
-always full level and out of the competition, and while *active* (`PriorityActiveRms`, ~−40 dBFS) it
-ducks the room mics — otherwise that voice reaches the bus via both the clean lapel and a delayed
-room mic and comb-filters. **Exactly one mic is priority, and it is the lapel** (operator, 2026-09-20). Role
-and priority were two controls for one idea; the picker (`MainViewModel.LapelIndex`) sets both,
-exclusively, and is the only thing that does — the "Clear priority" health fix routes through it, and a
-preset load derives `IsPriority` from `Role` rather than loading it separately. They used to diverge
-(scenes cleared the flag and kept the role), which would have made the picker name a priority mic
-that ducks nothing. `Role` is the persisted half. The engine has no hard limit, but nothing
-in the UI can arm a second priority mic, which also retires the hazard of one left armed on an unused
-strip. Two priority mics hearing one source would still double, since they do not duck each other. **Hazard:** an unused-but-open priority lapel that crosses −40 dBFS (bumped,
-drift) silently ducks every room mic off the stream. Unroute/clear the flag when not in use.
-
-**Priority hangover** (`PriorityHoldTicks` ~1.2 s, `PriorityBreakInRms` ~−50 dBFS). The duck used to
-be recomputed bare each tick, while the *leader* had both a hold and hysteresis — so a presenter's
-sentence gap released it and Gate handed the bus to a room mic. The envelope release (250 ms) needs
-~575 ms to fall from speech to `PriorityActiveRms`, which an ordinary pause exceeds. Measured live
-2026-08-30 on the headset bus: **13 hand-offs in 40 s** (median 250 ms, max 0.89 s), every one with
-the lapel envelope just under −40 dBFS, to an S500 sitting on the presenter's own table (−28 dBFS in
-his pauses vs −17 while he spoke — no AGC pumping, every mic fell together). After the fix, 0 in 40 s
-with the duck verifiably held (gain 0.00 through every pause). The hold is **broken immediately** by
-a non-priority mic above `PriorityBreakInRms`, because `pduck` is a hard mute and a
-blind hold would swallow an audience interjection. Two caveats: (a) break-in can only separate a real
-talker from the presenter's residual when **no room mic sits near the presenter** — one on his table
-reads −28 dBFS, louder than a genuine interjection across the room (−43); (b) margin is thin —
-measured residual on a 15 ft mic peaked at −53.8 dBFS, only ~4 dB under the threshold, and that is
-also *above* `SilenceFloorRms`, so the silence floor alone would not have prevented the hand-off.
-
-**Split receivers.** A two-transmitter wireless receiver (RØDE Wireless PRO in Split mode) is ONE
-WASAPI endpoint carrying TX1 on the left and TX2 on the right. Bound whole it reaches the bus
-hard-panned and the automixer sees a single blended channel it cannot arbitrate. Bind it to two
-strips instead, one `ChannelSource.Left` and one `Right`. Device pickers are therefore exclusive per
-**side**, not per endpoint (`DeviceResolver.Claim`/`IsFree`, `MainViewModel.RefreshExclusiveChannels`)
-and picking a half-claimed endpoint auto-takes the free side. A Stereo claim still takes the endpoint
-whole and keeps the bare device id as its `used` key, so pre-split presets resolve unchanged.
-
-**Diagnostic surface.** `InputChannel.IsAutoMixActive` (leader on any routed output, from
-`AutoMixer._activeInput`) turns a mic row's stripe green ("live now"), and each bus button on the row
-lights green when the automixer has that mic on that bus — polled on the meter timer.
-`InputChannel.IsDucking` (any routed output's gain < 0.85) is read by `/state` and Diagnostics; it
-has no light on the panel since the per-bus ducking LED was removed with the old strip layout. The crest-derived "Mic clarity" readout was
-removed 2026-09-21: crest failed as a proximity cue through DSP (finding 1) and on a DSP-free mic it
-is dominated by handling transients, so it was neither used for selection nor worth showing. `AudioEngine.AutoMixActiveInput(o)`
-exposes the per-output winner and `MainViewModel.LogAutoMixSelectionChanges` writes each hand-off to
-`AudioLog`.
+- **Selection is level only**, with an unconditional **leader hold** (`HandoffHoldTicks` ~200 ms,
+  `HandoffHysteresis` ~3 dB): a talker's pauses would otherwise hand the bus to a neighbour (finding
+  1's "far mic wins"). Gate's hold can clip the first syllable of a fast interjection.
+- **Removed 2026-09-20:** Share (attenuated non-leaders, so one voice through several mics still
+  combed), its strength slider, the "stable hand-off" switch, "Match lapel" and "Prefer natural" —
+  all Anker-era; on matched DSP-free transmitters they could only hurt (finding 6). Flux-CV is still
+  computed and still diagnostic: it rises on RF dropouts.
+- **Known gap**, pinned by `AutoMixerTests.ASingleTickSpikeCurrentlyDoesTakeTheBus`: one 10 ms tick
+  ~15 dB over the leader takes the bus (the margin clears instantly), muting the real talker for
+  200 ms under Gate. Fixing it is a selector change — labelled offline replay first.
+- **Flux-CV** (`InputChannel.CurrentFluxCv`): 512-pt FFT per voiced 512-sample window, **accumulated
+  across capture buffers** — shared mode delivers ~480-frame buffers, so a per-buffer FFT almost never
+  ran and the value froze (fixed 2026-07-26; `FluxEma` 0.01 for ~94 windows/s). Live scale ~0.35–0.5
+  matches the offline `flux_cv`, so replays are faithful.
+- **Priority mic** (`IsPriority`): always full level, out of the competition, and while *active*
+  (`PriorityActiveRms` ~−40 dBFS) it hard-mutes the room mics, else the voice reaches the bus via the
+  lapel and a delayed room mic and combs. Exactly one, set only by `LapelIndex`, which sets `Role` and
+  `IsPriority` together; the "Clear priority" fix routes through it and a preset load derives
+  `IsPriority` from `Role`, so the picker never names a mic that ducks nothing. **Hazard:** an unused,
+  unmuted priority lapel crossing −40 dBFS (a bump) ducks every room mic off the stream — mute it.
+- **Priority hangover** (`PriorityHoldTicks` ~1.2 s): the duck used to release in a presenter's
+  sentence gaps (the 250 ms release needs ~575 ms to fall below −40) — measured 2026-08-30, 13
+  hand-offs in 40 s; 0 after. The hold is **broken immediately** by a non-priority mic above
+  `PriorityBreakInRms` (~−50 dBFS) so an interjection is not swallowed — which only works when **no
+  room mic sits near the presenter** (one on his table read −28, louder than a real interjection
+  across the room at −43), and the margin is thin (a 15 ft mic's residual peaked −53.8).
+- **Split receivers**: one WASAPI endpoint, TX1 left / TX2 right. Bind it to two strips
+  (`ChannelSource.Left`/`Right`); bound whole it reaches the bus hard-panned as one blended channel
+  the automixer cannot arbitrate. Device claims are per **side** (`DeviceResolver.Claim`/`IsFree`,
+  keys `id|1`/`id|2`; Stereo takes the bare id) — too strict and the second transmitter vanishes from
+  the preset on load, too loose and two strips push the same audio twice.
+- **What shows the automixer:** the row stripe goes green ("live now") from `IsAutoMixActive`; each bus
+  button lights green when that mic leads that bus. `IsDucking` is in `/state` and Diagnostics only.
+  Each hand-off is logged by `LogAutoMixSelectionChanges`.
 
 ## Testing without a room full of people
 
-The app used to be unexercisable without a live congregation, which blocked all UI work. It isn't now:
-
 - **Replay** (`--replay[=STAMP] --seek=MM:SS --for=MM:SS --speed=N --loop`) feeds the inputs from a
-  recorded session's `diag-input*.wav` files. Capture sits behind NAudio's `IWaveIn`, so everything
-  downstream — gain, flux-CV, RF tallies, automixer, meters, LEDs — runs unmodified.
-  Two things are load-bearing: the rig emits **480-frame** buffers (WASAPI shared mode's size; at 512+
-  the cross-buffer flux accumulation is bypassed and you test different code), and **one clock pumps
-  every source in lockstep** (independent timers drift and change which mic wins).
-- **The rig drives the automix tick** (`ReplayRig.Pumped` → one tick per chunk) instead of the
-  wall-clock timer. This makes replay deterministic *and* speed-independent — before it, `--speed 2`
-  halved every hold because the automixer saw half as many ticks per second of audio.
-- `--replay` is a **sandbox**: its own single-instance mutex (so it runs alongside a live session),
-  **no preset autosave**, and **no output devices** by default (two instances both opening CABLE Input
-  would double audio into Zoom).
-- **Golden baselines**: `tools/replay-baseline.ps1 -Name <fixture> ... [-Update]`, baselines in
-  `tools/baselines/`. Compares aggregates (mode, hand-off count, occupancy, median flux-cv). Record
-  and check at the **same `-Speed`, 1–2**; higher saturates the process and starts dropping audio.
-- **Each fixture owns its preset** (`tools/baselines/<Name>.preset.json`, passed with `--preset`).
-  This is what makes a baseline mean anything. `--replay` sandboxes autosave and output devices but
-  **not preset loading** — `MainViewModel.TryLoadInitialPreset()` runs unconditionally — so until
-  2026-09-21 every fixture inherited whatever `%APPDATA%\AudioMixer\preset.json` held that day:
-  routing, low-cut, split `ChannelSource`, automix mode. Verified then by running the `presentation`
-  fixture at **`5c597e9`, the very commit that recorded it**: 60 hand-offs vs its own stored 14, and
-  output B's occupancy 51.3%/32.8% → 0%/80% — exactly what that day's preset (only ch4 routed to B,
-  ch1/ch2 on 90/100 Hz low-cuts and Left/Right split) predicts. So a `DRIFT` meant "the preset moved"
-  at least as often as "the selector moved", and `-Update` silently laundered the difference.
-  `-Update` now seeds the fixture preset from the live one the first time and the baseline records
-  its hash, so a changed fixture preset is **reported as configuration drift before any numbers are
-  compared** rather than read as a selector regression. A fixture preset is a checked-in part of the
-  fixture: edit it deliberately, and expect to re-record the baseline when you do. `--no-preset` would
-  not have worked — the defaults route only channel 0, so the fixture would exercise no selection at
-  all.
-- **Binding errors**: WPF resolves binding paths at runtime and swallows failures, so a clean build
-  proves nothing about the UI. `--log` enables `BindingErrorListener`, which logs them.
-  `--open-all` opens every window so one run covers all their markup.
-- **`--shots[=DIR]` renders every window to PNG and exits** — the only way to actually SEE the UI
-  without being at the machine. It uses `RenderTargetBitmap` on the visual tree, not a screen grab,
-  so it works with windows occluded, off-screen, or the **workstation locked** — where
-  `CopyFromScreen` silently returns the lock screen instead of the desktop, which looks exactly like
-  a window that failed to open. (`PrintWindow` is no use either: it returns blank for WPF content.)
-  Zero binding errors is *not* evidence the layout is right; it is also what a window that rendered
-  garbage reports.
-- **Unit tests** (`AudioMixer.Tests`) cover only pure logic — health rules, the automixer, the autosave allowlist invariant, the low-cut option mapping. Anything needing a device or a window is verified
-  by a replay run instead. The one exception is `XamlResourceTests`, which reads the markup as *text*
-  (no WPF instantiation, no devices) to check every `{StaticResource}` key resolves in its own file —
-  see the UI gotcha for why a clean build does not.
-- **Nothing runs on push.** `.github/workflows/release.yml` only builds on a version tag; it never
-  runs `dotnet test`. So the suite is only as good as the last person who ran it locally — which is
-  how a window that crashed on open shipped and stayed broken for weeks.
+  session's `diag-input*.wav` through `IWaveIn`, so everything downstream runs unmodified.
+  Load-bearing: **480-frame** buffers (at 512+ the flux accumulation is bypassed and you test different
+  code), and **one clock pumps every source in lockstep and drives the automix tick** — deterministic
+  and speed-independent. Sandbox: own mutex, no autosave, no output devices by default.
+- **Golden baselines**: `tools/replay-baseline.ps1 -Name <fixture> [-Update]`, in `tools/baselines/`;
+  record and check at the same `-Speed` (1–2; higher drops audio). **Each fixture owns its preset**
+  (`<Name>.preset.json`, passed with `--preset`), and the baseline records its hash — `--replay` does
+  NOT sandbox preset loading, and until 2026-09-21 every fixture silently inherited the live preset
+  (the `presentation` fixture re-run at its own recording commit gave 60 hand-offs vs its stored 14),
+  so a changed fixture preset is reported as configuration drift before numbers are compared.
+- **Binding errors** are swallowed at runtime; a clean build proves nothing about the UI. `--log`
+  logs them (`BindingErrorListener`); `--open-all` opens every window. Zero binding errors is also
+  what a window that rendered garbage reports — look at it.
+- **`--shots[=DIR]`** renders every window to PNG via `RenderTargetBitmap` and exits — works occluded,
+  off-screen or with the workstation locked (a screen grab returns the lock screen; `PrintWindow`
+  returns blank for WPF).
+- **Unit tests** cover pure logic (health rules, automixer, allowlist, recorder, mapping). Anything
+  needing a device or window is verified by a replay run. **Nothing runs on push** —
+  `release.yml` builds only on a version tag and never runs `dotnet test`; that is how a window that
+  crashed on open shipped and stayed broken for weeks.
 
 ## Conventions
 
-- **Naming**: PascalCase for types/methods, _camelCase for private fields, camelCase for
-  locals/params.
-- **Async**: Engine start/stop is async (device init can block). Audio callbacks are NOT async.
-- **Threading**: NAudio callbacks run on its own threads. Never touch WPF UI objects from a callback
-  — use `Dispatcher.BeginInvoke` or (preferred) a UI timer that polls atomic state.
-- **No comments explaining what code does.** Only comment non-obvious WHY (e.g. "WASAPI shared mode
-  picks device default rate — must resample before mixing").
-- **Line width**: wrap this file and long comments at ~100 columns.
-- **Logging**: `System.Diagnostics.Trace` for engine events; user-facing errors go to the status bar
-  via MainViewModel. File logging (`AudioLog` → `%TEMP%\AudioMixer.log`) is **opt-in** — the
-  `AUDIOMIXER_LOG` env var or the `--log` CLI flag (so a desktop shortcut can enable it). The meter
-  loop writes ~1 line/sec, so we don't grow a file on every run. First line is a banner with exe
-  path, assembly version (`1.0.0+<git-sha>`, stamped by an MSBuild target) and build time — identify
-  *which build* produced a log from the log alone; don't cross-reference DLL mtimes.
-  **Crashes are the exception and are always recorded.** `App.InstallCrashHandlers` writes dispatcher,
-  app-domain and unobserved-task exceptions to `%TEMP%\AudioMixer.crash.log` unconditionally, because
-  the run that matters is the one nobody passed `--log` to; before it existed a crash left only a WER
-  bucket with no managed stack. Note `Trace.WriteLine` alone is **not** a diagnostic — with no listener
-  attached it goes nowhere — so every failure path worth reading (preset load, capture stopped,
-  watchdog restart, state server) writes to `AudioLog` too. A silent preset-load failure is the worst
-  of them: it looks exactly like an unconfigured mixer.
-- **Gain calibration** rides on the same per-input log line as `cal=[speech=<p50 dB> floor=<p50 dB>
-  n=<buffers>]`, and shows as `speech`/`floor` columns in the Diagnostics window (green within ±3 dB
-  of the −24 dBFS target) plus `speechDb`/`floorDb` in `/state`. `CalibrationHistogram` tallies every
-  capture buffer's RMS into 1 dB bins, voiced separately from the rest, at the **same post-fader tap
-  the automixer's absolute thresholds read** — so the number means what `PriorityActiveRms` and
-  friends mean. A peak meter cannot do this job: a DSP-free wireless mic's crest factor is ~20 dB, so
-  its peak says nothing about where speech sits, which is how a whole session's fixture once came out
-  30 dB low and unusable. **A median that spans a gain change is worse than no number at all**: it
-  averages two rigs, and the quiet head of a session (mics not yet worn, transmitters not yet on)
-  drags it down hard — one 2026-09-23 lapel read `speech=-40` and raised a "17 dB below target"
-  alert while the mic was live at ~-21, and acting on that alert over-drove it to -3.8 dBFS peaks.
-  So **reset calibration, then re-measure, before trusting any `speech` value or any alert derived
-  from one** — and note the alert carries no indication that its input is stale, which is a real gap
-  rather than an operator error. Note also that **Resync resets calibration as a side effect**
-  (`RestartInputs` -> `Stop()` -> `ResetCalibration()`), as does changing a strip's `ChannelSource`;
-  *Reset calibration* is the button that does it without interrupting audio.
-  Deliberately **cumulative** (a settling number is what makes gain-setting a
-  matching exercise), so it must be reset — Diagnostics → *Reset calibration* — after every
-  transmitter gain change, or the pre-change buffers keep dragging the median.
-- **RF-link health** rides on the per-input log line: `rf=[lvl=<voiced mean dB> voiced=<%>
-  silent=<%> drops=<n>]` (`InputChannel.SnapshotRfStats`, lock-free counters latched in the audio
-  callback), for **offline** diagnosis of a marginal Soundsync link. A dropping link shows
-  exact-silence gaps mid-speech (voiced→silent "drop edges") + high `fluxCv` while `voiced%` is high;
-  a healthy-but-far mic is quiet-and-smooth. Only assess a mic while it's *voiced*. Raw counts only,
-  no thresholds in-app — classify after the session.
-- **Diagnostic state endpoint**: `StateServer` serves a live JSON snapshot at
-  `http://127.0.0.1:<port>/state` — channels (levels/routes/mute/automix gains/`speechDb`/`floorDb`/
-  `calAgeMs`/`envDb`/`fluxCv`, plus `endpointGainDb`/`clippedSamples`/`underruns` for gain and crackle
-  triage), outputs (mode/`muted`/leveler state/`winner`/`winnerHold`/`activeInput`), plus the alert
-  list and a `replay` block (null when live). `endpointGainDb` is cached per device-list refresh, not
-  read per request — reading endpoints costs seconds and this handler runs on the UI thread. Its shape is pinned by `StateSnapshotTests`,
-  because renaming a key breaks the offline tooling silently. **Opt-in**
-  via `AUDIOMIXER_STATE` (port number, default 7077) or `--state[=PORT]`. Read-only, loopback only;
-  `MainViewModel.BuildStateJson` marshals to the UI thread. Fastest way to watch the automixer's
-  *reasoning* (env vs corr vs cv vs the selected leader) without the GUI.
-- **Never delete, empty, truncate, overwrite or move a log or a recording without the operator's
-  explicit permission** (operator's rule, 2026-09-23). That covers `%TEMP%\AudioMixer*.log`, the crash
-  log, `Documents\AudioMixer\recordings`, `analysis\` (diag WAVs, decisions CSVs), `sessions\` and
-  transcripts. They are the only evidence a later diagnosis has and cannot be recreated: emptying the
-  live log "to make a test run easier to read" destroyed the one record of a 2026-09-23 capture
-  failure, and its trigger could never be identified. Give test and sandbox runs their OWN log by
-  setting `TEMP`/`TMP` for that process; find a run's lines by the `=== AudioMixer started` banner, not
-  by clearing the file. Repairing recordings in place (`tools/wavfix.py --apply`) likewise needs an OK
-  first, with the dry run shown. The app's own retention (`RecordingRetention`) is the one deliberate
-  exception.
-- **Single instance**: `App.xaml.cs` holds a named mutex — a second launch signals the first (raises
-  its window) and exits, so two instances never fight over the same WASAPI capture devices.
+- PascalCase types/methods, `_camelCase` fields, camelCase locals. Wrap this file and comments at
+  ~100 columns. **Comments explain non-obvious WHY only.**
+- **Threading**: NAudio callbacks run on their own threads; never touch WPF objects there — poll
+  atomic state from a UI timer. Device enumeration (~3.5 s for 30 endpoints here) never on the UI
+  thread. Engine start/stop may block; audio callbacks are never async.
+- **Logging**: `Trace` alone is not a diagnostic (no listener, goes nowhere) — every failure path
+  worth reading also writes `AudioLog`. File logging is opt-in (`--log` / `AUDIOMIXER_LOG`), ~1 line/s,
+  and starts with a banner naming the exe, version (`1.0.0+<git-sha>`) and build time. **Crashes are
+  always logged** to `%TEMP%\AudioMixer.crash.log` by `App.InstallCrashHandlers`, because the run that
+  matters is the one nobody passed `--log` to. A silent preset-load failure is the worst case — it
+  looks exactly like an unconfigured mixer.
+- **Gain calibration** (`CalibrationHistogram`, per input): 1 dB bins of every buffer's RMS, voiced
+  separately, at the **same post-fader tap the automixer's absolute thresholds read**. Shown as
+  `cal=[speech= floor= n=]` in the log, `speech`/`floor` in Diagnostics (green within ±3 dB of the
+  **−24 dBFS target**), `speechDb`/`floorDb`/`calAgeMs` in `/state`. Deliberately **cumulative**, so
+  it must be **reset after every gain change** — a median spanning one averages two rigs (a lapel read
+  −40 while live at −21, and acting on it over-drove it to −3.8 dBFS peaks). Resync and changing a
+  strip's split side reset it too. A peak meter cannot do this job: a DSP-free mic's crest is 20–45 dB.
+- **RF-link health** on the per-input log line: `rf=[lvl= voiced= silent= drops=]` — a dropping link
+  shows exact-silence gaps mid-speech plus high flux-CV while voiced; raw counts only, classify later.
+- **`/state`** (`--state[=PORT]` / `AUDIOMIXER_STATE`, loopback, read-only): per channel levels,
+  routes, mute, automix gains, calibration, `envDb`, `fluxCv`, `endpointGainDb` (cached per device
+  refresh — reading endpoints costs seconds on the UI thread), `clippedSamples`, `underruns` (per bus,
+  routed-and-live pairs only); per output mode, `muted`, leveler, `winner`; alerts; a `replay` block.
+  Shape pinned by `StateSnapshotTests` — renaming a key breaks the offline tooling silently.
+- **Autosave** is driven by an **allowlist** (`PersistedProperties`) mirroring what `PresetMapper`
+  writes; tests pin that every preset field (channels and outputs) can trigger a save. Never a
+  blocklist: the meter tick raises display properties 30×/s, and a blocklist let it reset the 500 ms
+  debounce forever, so only a clean exit saved.
+- **Single instance**: a named mutex; a second launch raises the first window and exits.
 
 ## Build & run
 
 ```powershell
-dotnet restore
-dotnet build
-dotnet run --project AudioMixer
+dotnet build            # the running mixer locks bin\Debug — close it first, or build -c Release
+dotnet test AudioMixer.Tests -c Release
+dotnet run --project AudioMixer -- --log --state
 ```
 
-## External dependencies (user installs manually)
+## External dependencies
 
-- **VB-CABLE** (https://vb-audio.com/Cable/) — virtual audio cable. After install + reboot, "CABLE
-  Input" appears as a render device (mixer outputs to it) and Zoom selects "CABLE Output" as its
-  microphone.
-  If it is missing, Checks raises a warning with a download button (`vbcable.missing`). Detection
-  matches the interface name in parentheses, `(VB-Audio Virtual Cable)`, never the vendor "VB-Audio":
-  Voicemeeter's endpoints carry that vendor too — 16 of the rig machine's 19 VB-Audio endpoints are
-  Voicemeeter — so the old vendor match reported VB-CABLE present on any machine with Voicemeeter.
+- **VB-CABLE** (https://vb-audio.com/Cable/): after install + reboot, "CABLE Input" is a render device
+  (bus A) and Zoom/OBS select "CABLE Output". If missing, Checks warns with a download button.
+  Detection matches the interface name `(VB-Audio Virtual Cable)`, never the vendor "VB-Audio" —
+  Voicemeeter carries that too (16 of this machine's 19 VB-Audio endpoints), so a vendor match reported
+  VB-CABLE present on any machine with Voicemeeter.
 
 ## Measured findings — dead ends, don't re-litigate
 
-These cost multiple sessions with real hardware and labeled recordings. Each one is a *negative*
-result you cannot infer from the code. Before proposing a new mic-quality metric, read all three.
+Each is a *negative* result you cannot infer from the code. Read them before proposing a
+mic-quality metric or a selector change.
 
-**1. Speakerphone DSP destroys every proximity cue except gross level.** Measured on 4× Anker S500
-with `tools/AnalyzeInputs`: crest factor, spectral flatness, HF-energy ratio, spectral centroid and
-SNR all FAIL to rank the closest mic — noise suppression even adds HF hiss to *distant* mics
-(inverting HF/centroid), and gating zeroes the noise floor (making SNR a level proxy). Only
-**smoothed level** survives: ~5–6 dB of proximity remains after AGC, enough to pick the closest mic
-~18/18 on averages. The original "far mic wins" bug was **temporal, not metric** — Share re-picked
-the instantaneous-loudest mic every 10 ms with no hold, so a distant mic's AGC make-up gain during a
-talker's pause stole the selection (offline replay: 113 flips). Crest weighting, added to fix it,
-made it worse (136 flips). Hold + hysteresis on the level leader fixed it (≈23 flips). Lesson:
-stabilize the level selection; don't trust spectral/crest features through a speakerphone's DSP.
+### Current rig (DSP-free Rode)
 
-**2. Loudest ≠ best-sounding, and the mic's own signal can't tell you — use the lapel as reference.**
-A room mic can read *louder* than another yet sound clearly worse (AGC make-up gain, desk
-coupling/proximity boom, a nearby vent or PA), so loudest-wins picks the bad mic. Validated offline
-offline on a labeled capture (operator confirmed In4 good / In5 loud-but-bad): level
-ranked In5 > In4 (picks bad); refSNR also failed (gating zeroes the noise floor, so it favored a
-distant quiet mic); **envelope-correlation-to-lapel ranked In4 (0.774) > In5 (0.706)** — the bad mic
-is loudest yet correlates *worst*, its envelope smeared by reverb/noise. Shipped as "Match lapel" (removed 2026-09-20 — see finding 6).
-Caveats from the data: only **rejecting the loud-bad mic** is reliable — among several good mics the
-margins are noise (In2 0.778 ≈ In4 0.774) — and it needs an active lapel.
+**5. A DSP-free mic does not gate — but its noise floor is not recoverable by filtering.** 2026-08-23
+(`tools/gate_rate.py`): a Wireless PRO vs two Ankers, same room and speech — digital silence **0.0%**
+vs 4.1/7.1% (the Ankers lost 21.6 s and 36.9 s to gate holes). **Negative half:** the Rode's
+speech-band S/N is **15.3 dB** vs 28–33 (the Ankers' is an artifact of gating the floor), and a
+high-pass does NOT close it: 60–150 Hz cutoffs remove 0.9–8.2 dB of sub-100 Hz rumble but move
+100 Hz–8 kHz S/N by only **+0.1–0.2 dB**, because the floor's bulk is at 80 Hz–1 kHz, inside the
+voice. Run the low-cut at 80–100 Hz for rumble and handling — never as an S/N fix. No mains hum.
 
-**3. "Natural/scratchy" is NOT measurable by cleanliness metrics — measure temporal INSTABILITY.**
-A mic can be loud AND clean-by-the-numbers yet sound scratchy, because the noise suppression
-**over-processes**. On the labeled capture the bad mic (In5) scored HNR 13.2 / **CPPS 11.3, higher
-than the clean lapel** (8.6), with lower jitter/shimmer than the good mic — so HNR/CPPS/jitter/
-shimmer all rank the bad mic *cleanest* (inverted; measured with Praat). What
-sounds scratchy is **intermittent**: gating chatter, musical noise, broadband transient clicks
-(vertical streaks in a spectrogram) — an unstable spectrum over time. The discriminator that works is
-**spectral-flux coefficient-of-variation** (`flux_cv`, `tools/naturalness.py`): natural mics and the
-lapel ~0.41, the scratchy mic ~0.52–0.65, consistent across recordings. Offline replay flips selection from the bad mic (74%/59% of voiced time) to the good mic
-(64%/58%) on both sessions. Caveats: validated on 2 recordings, one room, one set of Ankers;
-flux-CV also penalizes distant/reverberant mics (hence the level floor) and, per the behavioural
-caveat above, vetoes better than it picks. A high flux-CV can also mean **RF dropouts**, not a bad
-capsule — check range before blaming the mic.
+**5b. That floor is ACOUSTIC, not the aux path.** 83% of its energy is below 1 kHz and only 5.3% above
+4 kHz; converter noise is hiss (flat, dominating the top), so this is HVAC and structure-borne rumble
+the S500s had been suppressing. USB instead of aux saves a few dB, not fifteen; the real lever is
+**proximity** (+6 dB per halving of distance). To split the two: record the aux with transmitters off,
+then on in a quiet room.
 
-**4. The Ankers gate congregational singing to digital silence — TOGETHER — so no mix strategy can
-fix worship audio.** Measured 2026-08-09 on the live capture (`scratchpad/gate_check.py`, 20 ms
-frames, "silence" = peak < 1e-5). During singing each unit sat in **true digital silence 13–21% of
-frames**; all four were silent **simultaneously 4.6%** of frames — **51× more often than statistical
-independence predicts** (0.1%). Over 170 s that is **71 total-stream dropouts, one every 2.4 s**,
-median 60 ms, max 780 ms, 22 of them >100 ms. Operator verdict, unprompted: "interrupted constantly,
-can't follow it at all." The gates are *correlated* because every unit hears the same acoustic signal
-and its noise suppression reaches the same "this is noise" verdict at the same instant. Consequences:
-(a) **summing more mics cannot fill the holes** — the holes are in every source at once (confirmed
-live: switching Automix to Off changed nothing); (b) the mic-count question for singing is the **wrong
-variable** — single-mic and multi-mic fail identically; (c) the same mechanism nibbles at *speech*
-(341× simultaneity pre-service) but is invisible there because gate closures land in the natural pauses
-between words. Only fixes are upstream of the mixer: the S500's **Broadcast pickup mode** (since found removed from the firmware — see The rig —
-"restores original sounds by turning the speaker off", the only DSP-adjacent control Anker exposes; no
-noise-reduction or EQ toggle exists), the DSP-free Rode lapel, or a board feed. Do NOT attempt another
-selector/mix-topology fix for singing. Corollary for diagnostics: `winner = -1` has **three** causes
-(automix Off, priority-active, silent-room) — disambiguate by the logged `gains=[…]` (priority duck
-writes 0; silent-room writes 1.0) before blaming a priority mic.
+**6. On matched DSP-free transmitters, level is a true proximity cue and flux-CV stops
+discriminating.** Identical capsules mean a level difference is distance, so Gate on smoothed level
+with the leader hold is right — and the hold is still necessary. Flux-CV reads ~0.29–0.33 on every
+mic (nothing to separate); "Prefer natural" hard-gated the only room mic hearing the talker live
+(2026-08-23). Both it and "Match lapel" (which engages only while the lapel speaks) were removed.
 
-**5. A DSP-free lapel does not gate at all — but its noise floor is NOT recoverable by filtering.**
-Measured 2026-08-23 on one capture of the same room and speech (`tools/gate_rate.py`, `compare_mics`/
-`hp_eval` in scratchpad). A RØDE Wireless PRO into the Realtek 3.5 mm jack vs two live Ankers:
-digital-silence **0.0%** (zero gate closures in 9 min) vs 4.1% / 7.1%; the Ankers lost **21.6 s** and
-**36.9 s** of audio to 174 and 375 gate holes (68 / 106 of them >100 ms, max ~700 ms) and still closed
-in unison (~8× independence). Flux-CV 0.317 vs 0.399 / 0.500 and hf_burst 1.06 vs 1.89 / 2.05, so the
-lapel is also the most natural mic by the metric of finding 3 — and Anker #3 beats #4 on every
-artifact column, which matches the operator's ear. This is the first thing measured on this rig that
-actually attacks finding 4. **The negative half:** the Rode's speech-band S/N is 15.3 dB vs 28–33 dB
-for the Ankers, and a high-pass does NOT close that gap — it was tempting to assume it would, since
-89% of the Rode's floor energy sits below 1 kHz. Measured per cutoff (Butterworth Q=0.707, the same
-biquad the app ships): 60/80/100/120/150 Hz cut sub-100 Hz rumble by 0.9/2.1/3.7/5.4/8.2 dB but move
-100 Hz–8 kHz S/N by only **+0.1–0.2 dB**, because the floor's bulk is at 80–200 Hz and 200 Hz–1 kHz,
-inside the voice. Run the low-cut at 80–100 Hz for rumble, handling and headroom — never as an S/N
-fix. Note the Ankers' *better* S/N is itself an artifact (their gate zeroes the floor, so gating more
-scores better — finding 1). No mains hum on the 3.5 mm path (≤2 dB at 50/60/100/120 Hz), so no ground
-loop and no notch is warranted.
+**7. Mixed device types cannot share one selector.** 2026-08-30, 2 Ankers + a Rode pair on one Gate
+bus: Ankers rows apart read an identical −24.6 dBFS (AGC), the closer Rodes −54/−53 — a 30 dB device
+offset, not distance. The Ankers led 68% of the time on construction. You cannot equalise an AGC'd
+source against an uncompressed one; compare levels **only within a matched set**.
 
-**5b. That noise floor is ACOUSTIC, not the aux path — USB will not fix it.** The obvious diagnosis
-(cheap Realtek input, unbalanced cable, an extra D/A→A/D round trip through the RX's 3.5 mm output)
-is wrong here, and it is worth not re-deriving. The floor's own spectrum settles it: **83% of its
-energy is below 1 kHz and only 5.3% is above 4 kHz** (20-80 Hz 8.9%, 80-200 44.7%, 200-1k 29.3%,
-1-4k 11.0%, 4-12k 4.7%, 12-24k 0.6%). Converter/preamp noise is *hiss* — roughly flat energy per
-unit bandwidth, so it dominates the upper bands, and there is almost nothing up there; mains hum was
-separately ruled out (≤2 dB at 50/60/100/120 Hz). That low-frequency signature is the room: HVAC,
-air handling, structure-borne rumble into the capsule. The S500s were hiding it with the very
-suppression we removed. Consequences: (a) prefer the RX's **USB-C** endpoint anyway — it drops two
-conversions, removes any hidden Realtek boost/AGC, and scales to several receivers where aux jacks
-do not — but expect a few dB, not fifteen; (b) the real lever is **proximity**, since the room floor
-is constant and every halving of mic-to-mouth distance is +6 dB of signal. To separate the two
-empirically: record the aux input with the transmitters **powered off** (pure electrical floor) and
-again with them **on in a quiet room** (electrical + acoustic) — the gap is what the aux path costs.
+**8. Absolute thresholds turn a gain-staging error into a chopped mix — check level before blaming a
+capsule.** 2026-09-20, 15 min prayer meeting: a clean capture (0 over-FS, flux-CV 0.38, no drops),
+but every mic ~22 dB under target (speech p50 −45/−46/−46). `PriorityActiveRms` (−40),
+`PriorityBreakInRms` (−50) and `SilenceFloorRms` (−55) assume speech near −24, so the lapel at −39 had
+1 dB of margin: 12 winner changes/min and winner = −1 (a hard mute under Gate) 28% of the time. **Compare
+`speech=` against −24 dBFS before reaching for a quality metric.** You cannot add the 22 dB
+downstream: crest is 28–36 dB, so peaks would clip — the gain belongs at the transmitter.
 
-**6. On a homogeneous DSP-free rig, level selection gets BETTER and flux-CV stops discriminating.**
-Findings 1-3 are all consequences of speakerphone DSP; remove it and their conclusions move. With N
-identical Rode transmitters: (a) **level becomes a true proximity cue** rather than a survivor of
-AGC — identical capsules mean a level difference is distance, not device variation, so Gate on
-smoothed level with **stable hand-off** is the right selector and the hysteresis that fixed "far mic
-wins" is still exactly as necessary (a talker's pauses still let a neighbour momentarily win);
-(b) **Prefer natural should be OFF** (it was removed outright 2026-09-20) — flux-CV measures *over-processing artifacts*, and with no DSP
-anywhere every mic reads ~0.29-0.33, so the metric has nothing to separate and its documented
-behavioural flaw (it pins the globally lowest-CV mic regardless of who is speaking) is all that is
-left. Observed live 2026-08-23: with two Rodes and two Ankers, prefer-natural hard-gated the *only*
-room mic hearing the talker because the Rodes scored cleaner. Flux-CV keeps **diagnostic** value —
-it still rises on RF dropouts — but not selection value. (c) **Match lapel** (also removed 2026-09-20) was useless for prayer:
-it engages only while a priority lapel is *speaking*, which is never the case when the room is.
+### Anker era (speakerphones, returned 2026-08-30) — kept because the lessons generalise
 
-**7. Mixed device types cannot share one selector — AGC flattens the proximity cue the automixer
-needs.** Measured 2026-08-30 over a 179 s Q&A with 2 Ankers + a split Rode pair on one Gate bus.
-The Anker in front of the presenter and the Anker a row back read an **identical −24.6 dBFS p50**
-despite being rows apart: their AGC auto-levels, so Anker level carries *no* proximity information
-(finding 1, in its strongest form). The Rode pair, physically **closer** to the back row than either
-Anker, read −54.4 / −52.9 — a ~30 dB offset that is device gain, not distance (inverse-square across
-those rows is ~3.5 dB). Consequence: the Ankers led **68%** of the window and the Rodes **0.9%**, and
-they won on *construction*, not proximity — no level trim fixes this, because you cannot equalize an
-AGC-compressed source against an uncompressed one (the Ankers' p50 sits near their peak; the Rode's
-crest is ~20 dB, so matching RMS clips the peaks). Corollary: any level comparison **across** device
-types is meaningless — compare only within a matched set. This is the strongest argument for the
-homogeneous DSP-free rig of finding 6.
+**1. Speakerphone DSP destroys every proximity cue except gross level.** Crest, spectral flatness,
+HF ratio, centroid and SNR all failed to rank the closest mic (`tools/AnalyzeInputs`); only smoothed
+level survived (~5–6 dB after AGC). "Far mic wins" was **temporal, not metric**: re-picking the
+instantaneous loudest every 10 ms let a distant mic's AGC make-up win in pauses (113 flips); crest
+weighting made it worse (136); **hold + hysteresis fixed it (~23)**.
 
-**8. Absolute automix thresholds turn a gain-staging error into a chopped mix — check level before
-blaming a capsule.** Measured 2026-09-20 over a 15 min prayer meeting on three DSP-free mics (a Rode
-lapel on the Realtek aux + a split Wireless PRO pair). The capture itself was **clean**: zero samples
-at or over full scale, **0.00%** impulsive frames (frame crest > 24 dB), flux-CV 0.382/0.383, `drops=0`.
-But every mic ran ~22 dB under the -24 dBFS target — speech p50 **-45.3 / -46.1 / -45.7 dBFS**, floors
--61/-65/-66, S/N 16-21 dB. `PriorityActiveRms` (-40 dBFS), `PriorityBreakInRms` (-50) and
-`SilenceFloorRms` (-55) are **absolute**, tuned for speech at -24, so the signal straddled them instead
-of clearing them. With the presenter's lapel at `speech=-39` — **1 dB of margin** — every soft syllable
-released the priority duck and a room mic was briefly selected (the operator reported exactly this,
-unprompted, before the log was read). Bus-wide: **12 winner changes/min** and **winner = -1 for 28-29%**
-of the session, which in Gate mode is a hard mute — both room mics silent **62%** of the time, the
-lapel 23%. That chopping is what gets heard, and it is easy to misattribute to a scratchy mic. So:
-**compare `cal=[speech=…]` against -24 dBFS before reaching for a quality metric.** No selector tuning
-fixes it — the rule is right, the signal is in the wrong place. Corollary: you cannot just add the
-missing 22 dB. Measured crest (whole-file peak vs speech p50) is **28-36 dB**, so speech at -24 would
-put peaks well over full scale; the gain belongs at the transmitter, converged with the calibration
-histogram, not dialled in downstream.
+**2. Loudest ≠ best-sounding.** A mic can be louder yet worse (AGC, desk boom, a vent). On a labelled
+capture, envelope correlation to the lapel rejected the loud-but-bad mic (0.706 vs 0.774) where level
+and refSNR both picked it — but only rejects reliably; among good mics the margins are noise.
 
-**Validating a selector change.** Never tune the live selector from a live impression. Capture
-"record all inputs" during a real session *with operator labels* of which mic sounded better when,
-then replay offline (`tools/AnalyzeInputs`, `tools/naturalness.py`) before touching `AutoMixer`. Judge mic quality over a longer listen with the
-real speaker — short A/B impressions have disagreed with both the metric and the operator's own
-later judgment.
+**3. "Scratchy" is not measurable by cleanliness metrics — measure temporal instability.** HNR, CPPS,
+jitter and shimmer ranked the over-processed mic *cleanest* (Praat). Spectral-flux coefficient of
+variation separated it (natural ~0.41, scratchy 0.52–0.65, `tools/naturalness.py`) — but it vetoes
+better than it picks, penalises distant mics, and **also rises on RF dropouts**: check range first.
+
+**4. The Ankers gated singing to digital silence together — no mix strategy could fix it.**
+2026-08-09: each unit silent 13–21% of frames, all four at once 4.6% (51× independence) — a
+total-stream dropout every 2.4 s. Summing more mics cannot fill holes that are in every source at
+once, and Automix Off changed nothing. Do not attempt a selector fix for gating. Diagnostic corollary:
+`winner = −1` has three causes — automix Off, priority active, silent room; the decisions CSV's
+`mode_<bus>` column settles the first, and applied gains 0 (duck) vs 1.0 (silence) the others.
+
+**Validating a selector change.** Never tune the live selector from a live impression. Capture "record
+all inputs" during a real session *with operator labels* of which mic sounded better when, replay
+offline (`tools/AnalyzeInputs`, `tools/naturalness.py`), then touch `AutoMixer`. Judge over a longer
+listen with the real speaker — short A/B impressions have contradicted both the metrics and the
+operator's own later judgement.
 
 ## Known gotchas
 
-*(grows over time — see Self-maintenance protocol below)*
+*Symptom → cause → rule. Grows over time — see the maintenance protocol.*
 
-### Devices, WASAPI & RF
+### Devices, gain & RF
 
-- WASAPI device IDs are stable across reboots **for fixed devices** (onboard/virtual — Realtek,
-  VB-CABLE); persist those in presets. They are **NOT** stable for hot-plug USB audio.
-- **Hot-plug USB audio (mics, USB headsets, wireless dongles) gets a NEW WASAPI endpoint GUID when it
-  re-enumerates** (a Windows-Update driver reboot, a replug, a different port). A preset matching only
-  on `DeviceId` then silently drops every such device on load. Root cause here: the Soundsync dongles
-  expose **no USB serial** (`USB\VID_291A&PID_3523&MI_01\7&<hash>&0` — the `7&hash&0` is a
-  *port-derived* instance), so their identity is the USB port and the endpoint GUID regenerates.
-  Windows *does* re-apply a user's device **rename** to the new endpoint (keyed to the port-path
-  instance, confirmed across a driver-update reboot), so the friendly name is the stable key.
-  Fix: `MainViewModel.ApplyPreset` (`ResolveDevice`) matches `DeviceId` first, then falls back to the
-  saved friendly name normalized by `DeviceNameKey`, which strips **only** the volatile `(N- …)`
-  enumerator (`EnumeratorPrefix` regex). Two hard-won details: (1) do **NOT** truncate to the prefix
-  before `" ("` — an un-renamed device's identity is the *interface* name inside the parens (`Speakers
-  (Lync USB Headset)` vs `Speakers (Realtek(R) Audio)` share the prefix `Speakers`), so truncating
-  mis-binds the headset to onboard speakers; (2) resolve against the **master** `_allInputDevices` /
-  `_allOutputDevices`, not a channel's `AvailableDevices`, which is dedup-filtered and can be missing a
-  device mid-apply. A `used` set prevents two channels grabbing the same device. **That self-healing was defeated by the app erasing its own memory** (fixed 2026-09-20): when an
-  endpoint vanished, `ChannelViewModel.RefreshDevices` nulled `SelectedDevice`, and the 500 ms autosave
-  then wrote `DeviceId=null DeviceName=null` — deleting the only thing the name match could work from,
-  so every replug cost a manual remap. The strip now keeps `DesiredDeviceId`/`DesiredDeviceName` which
-  survive the device going away (cleared only by an explicit *Clear device*), `PresetMapper` falls back
-  to them, and `ReattachDesiredDevices` re-binds a strip the moment its device reappears — no restart.
-  Lesson for any future state that mirrors hardware: **what the operator asked for and what is
-  currently resolvable are different facts, and only the first should be persisted.**  On resolve, autosave
-  rewrites the current GUID — the preset **self-heals** after one launch. NOTE: the Ankers are **not**
-  interchangeable — each unit covers a room area next to its own dongle, so the operator renamed them
-  `ANKER #1..4` in Windows Sound settings to match physical labels. Match by that name; never
-  greedy-fill in arbitrary order. A deliberate *rename* (`ANKER 4`→`ANKER #4`) correctly won't match
-  the old preset — one manual remap, then it re-saves.
-- **Endpoint gain ranges differ wildly per device, and the app's own fader cannot boost.**
-  `ChannelViewModel.PercentToLinear` is `percent / 100f` clamped 0..100 — 100% is *unity*, so a quiet
-  mic can NEVER be raised in-app, only upstream. Measured 2026-08-30: the Wireless PRO RX endpoint
-  ranges **−96 .. +30 dB**, every Anker Soundsync **−28.4 .. −0.1 dB** (already pinned at its ceiling,
-  no boost left). A Rode RX left at Windows-default 0 dB therefore sits ~30 dB under an Anker and is
-  structurally unselectable. The Windows slider taper is severely non-linear on the Rode: **53.7% =
-  0 dB, 87% = +15 dB, 100% = +30 dB** — the top eighth of the slider is 15 dB, so "turn it up to 100"
-  overshoots badly. At +30 dB the pair clipped (peaks **+5.25 / +2.81 dBFS**, ~300 samples over
-  −0.5 dBFS); +15 dB gives peak −17 / −12 dBFS with zero samples over full scale. **+24 dB clips too**
-  (2026-09-20): raising the RX mid-session to chase a 22 dB speech deficit produced peaks of
-  **+6.71 / +6.33 dBFS** and 180–898 over-FS samples per channel, in flat-top runs up to 91 samples
-  (1.9 ms) — audible crackle on transients. The clipping is dated precisely to the change: the 29 min
-  capture has **zero** over-FS samples in minutes 0-26 and all of them in minute 27, the minute the
-  gain was raised. The trap is that **speech was still 14 dB under target at the moment the peaks went
-  over**, because this rig's measured crest (whole-file peak vs speech p50) is **~45 dB** — bumps and
-  handling sit enormously above speech, so there is no endpoint gain that both lands speech at −24 dBFS
-  and keeps transients under full scale. Adding gain cannot fix a crest that wide; proximity and
-  transmitter gain can (finding 5b). **+15 dB is the verified ceiling for this receiver** — do not
-  exceed it to chase a level deficit. **Endpoint gain does not survive a port change**, so on a
-  rig whose devices move between hub ports it is the wrong place for this setting: the value is
-  stored against the endpoint GUID, which is keyed to the port-derived USB instance path
-  (`...MI_01&6941B14&0&0001` — no serial). Same port and it persists (an unplugged RX still
-  reports its 15.0 dB); a different port mints a fresh endpoint at the 0 dB default and loses the
-  rename with it. The Anker endpoints show the residue — `2-`/`3-`/`4-`/`5-`/`7-` prefixed records
-  from separate ports, several with orphaned volume stores. Set gain at the **transmitter**: it
-  lives in hardware, travels with the device, and doesn't spend peak headroom.
-  `tools/VolProbe "Wireless PRO" 15` is the stopgap when it does reset. Corollary: any scheme that
-  leans on a Windows **rename** to tell identical receivers apart needs a dedicated labelled port
-  per unit.
-  **Adding a SECOND identical receiver is where this bites hardest** (measured 2026-09-23). A new RX
-  on a new port is a fresh endpoint at the **0 dB default**, while the incumbent sat at 24 dB — so
-  the new pair arrived ~24 dB down and was structurally unselectable, which looks exactly like two
-  dead mics. Check `VolProbe` before suspecting the hardware. The two RXs *are* permanently
-  distinguishable (serials `801D150D` / `802ECAEA`, both `IdentityKind.Serial`), so `DeviceKey`
-  resolves them correctly even though they share a friendly name — it is only the **gain** that does
-  not follow the unit.
-  **Wireless PRO gain is set on the RECEIVER and applies to both of its transmitters** — there is no
-  per-TX level in that menu, so a pair is inherently matched and two pairs are matched by setting two
-  numbers. That is the whole of finding 7's "compare only within a matched set" in practice.
-  Preferred split on this rig: **RX at 0 dB, Windows endpoint at +3 dB** — the same total as the old
-  −12/+15 but with the durable half in the receiver, so a replug costs 3 dB instead of 15.
-  A **wired** lapel on the aux jack has no transmitter, so Windows gain is its only lever and is
-  legitimate there; the onboard Realtek endpoint is fixed hardware and does not suffer the port
-  reset.
-  Note the capture is float32, so the endpoint does not saturate: over-full-scale samples pass through
-  and only clip at render, which is why a peak reading alone looks fine. Judge clipping by counting
-  samples ≥ full scale plus flat-top runs, never by peak dBFS.
-
-- **Whether a USB audio device keeps its identity across a port change is answerable from the AUDIO
-  api alone, and Rode and Anker differ.** The WASAPI endpoint GUID always regenerates, so matching
-  falls back to the friendly name — which breaks the moment you own TWO IDENTICAL receivers, because
-  they share that name and `Resolve` can then only refuse. With each receiver covering its own part of
-  the room, binding an arbitrary one is the wrong mic in the wrong place: the Anker "never greedy-fill"
-  lesson, restated for Rode.
-
-  The PnP route works — walk endpoint → parent interface → USB composite and read the LAST segment of
-  its instance id; no `&` is a hardware **serial** (`...801D150D`), an `&` is **port-derived**
-  (`...&1ff22f3e&0&4`) — and `tools/device-identity.ps1` does exactly that. But it needs WMI, and
-  `PKEY_Device_InstanceId` is **not exposed on an endpoint's property store** (it reads empty for every
-  device, USB included), so the app cannot take that path.
-
-  **`PKEY_Device_ContainerId` is exposed, and carries the same answer in its UUID version nibble.**
-  Windows mints a container id one of two ways and says which: **version 5** (SHA-1, name-based) is
-  derived deterministically from the device's hardware identity, i.e. its serial — same device, any
-  port, same GUID; **version 1** (time-based) is minted once for that port and stored. Measured
-  2026-09-21 with every device live, and it agreed with the PnP walk on all four: Lync USB Headset
-  `b0c5074b-56d9-`**`11f1`**`-…` v1/PORT-DERIVED, Jabra PanaCast `…-`**`532f`**`-…` v5/SERIAL, RØDE
-  Wireless PRO RX `ea211674-4dbb-`**`5c8b`**`-…` v5/SERIAL (`USB\VID_19F7&PID_0058\801D150D`), onboard
-  Realtek v5/FIXED. So **Rode receivers are permanently distinguishable and the Soundsync dongles are
-  not**, and `Services/DeviceIdentity` reads it with no WMI at all.
-
-  Shipped: `AudioDeviceInfo.ContainerId`, `ChannelPreset.DeviceKey` (written **only** for a
-  serial-derived device — a port-derived container id regenerates on exactly the same events as the
-  endpoint GUID, so storing it would add a key that looks authoritative, matches first, and is no more
-  durable), and `DeviceResolver.Resolve` matching it ahead of the GUID. The Diagnostics Devices tab
-  shows the classification per endpoint.
-
-  **⚠ The cross-port claim is an inference, not yet a measurement.** It rests on the generation scheme
-  plus agreement with the PnP walk; nobody has yet watched a container id survive moving the cable.
-  The test is 30 seconds — note the RX's container id, move it to another USB port, look again — and
-  until it is done, treat `IdentityKind.Serial` as "should follow the device". Per-serial endpoint
-  gain (ROADMAP item 9) deliberately waits on it.
-
-- **A Wireless PRO in its charging case enumerates as USB *storage*, not audio.** Observed 2026-08-31:
-  two `RODE Wireless PRO USB Device` DiskDrives live (`VEN_RODE&PROD_WIRELESS_PRO&REV_V332`) while the
-  `Wireless PRO RX` audio interface (`VID_19F7&PID_0058&MI_01`) and its endpoint were both absent, so
-  the only live Rode path was the 3.5 mm aux. Two volumes and not three is the tell: the **transmitters**
-  hold the on-board recording storage and the RX has none, so a case containing RX + 2 TX mounts exactly
-  two drives. Connect the RX **directly** by its own USB-C to get a capture endpoint. Diagnostic value:
-  "I see RODE mass-storage volumes" means the gear is in the case, i.e. not live — check that before
-  hunting for a driver problem.
-- **Each TX records 32-bit float on board (32 GB, 40+ h) — a gain-proof backup fixture.** 32-bit float
-  cannot clip and cannot be too quiet to recover losslessly, so an on-board recording is immune to the
-  gain-staging mistake that has already ruined one capture (the Q&A fixture came out ~30 dB low and
-  unusable). Arm it for any session whose recording matters. Two limits keep it a *complement*, not a
-  replacement: it is captured **before the RF link**, so it cannot show dropouts and cannot validate the
-  selector (which only ever sees the post-RF signal) — but that same property makes it the decisive test
-  for "bad mic or bad link", since a glitch present in the app capture and absent on board is RF by
-  construction.
-
-- **An Anker S500 can hold its Soundsync dongle link AND a Bluetooth link simultaneously** (designed
-  bridging feature). So a mic feeds the mixer fine over its dongle while *also* transmitting on BT — a
-  self-contending extra 2.4 GHz radio that garbles the weakest dongle input. Adaptive hopping (BT AFH +
-  proprietary dongle) reduces but doesn't eliminate it. Fix: "Forget" every `Anker PowerConf S500` BT
-  pairing (they auto-reconnect otherwise) so units run dongle-only; safe, because the mixer binds
-  Soundsync endpoints, not the BT (`…PowerConf S500`/Hands-Free) ones. **Note the app's Bluetooth
-  rule no longer knows any of those names**: it decides purely from the Windows device-enumerator bus
-  (`BTHENUM`), because the name fallback it used to carry was a guess about one vendor's model
-  strings — and guessing is how the rule once told the operator "Anker 3 is connected over Bluetooth"
-  with no Anker in the building. An unreadable bus now fails quiet rather than wrong. Detect with
-  `tools/audio-device-diag.ps1` — it dedupes BT devices **by radio address** (identical units share a
-  FriendlyName, so `Sort -Unique` on name under-counts how many are live on BT).
-- **A chronically "bad" mic is usually out of RF range, not defective.** The furthest unit (~50 ft) sits
-  past the reliable range of the 2.4 GHz Soundsync link: an isolated walk test showed its flux-CV
-  *tracked position* — 0.58–0.68 with 7–12% transient spikes (packet loss) at far spots but **0.37 with
-  0% glitches up close** — plus ~5–6 dB signal loss at range. A defective capsule would be uniformly
-  bad; a gradient means distance/RF. Fixes in order: powered USB extension to move the dongle closer,
-  dongle height/line-of-sight, BT off, don't seat a mic beyond ~30 ft of a dongle.
-- Windows endpoint prefixes ("2-/3-/5-/6- Anker Soundsync") **shuffle on unplug/replug**, so "shows in
-  Windows" ≠ the endpoint the mixer needs is live. A dongle can also keep its **render** endpoint alive
-  while the **capture** path is down (the "half-link") — re-pair the dongle.
-- **A split two-transmitter receiver is one endpoint feeding two strips, so device exclusivity is
-  per-side.** `DeviceResolver.Claim(id, side)` keys a whole-endpoint claim on the bare id and a side
-  claim on `id|1`/`id|2`; `IsFree` makes Stereo conflict with either side. Get this wrong in either
-  direction and it fails silently — too strict and the second transmitter vanishes from the preset on
-  load, too loose and two strips push the same audio onto the bus twice.
-- **GainAssist on a Wireless PRO transmitter is AGC, and it breaks the automixer.** It normalises
-  level, which is the one selection cue that survives on this rig (finding 1) and the *only* one on a
-  DSP-free rig (finding 6) — leave it on and a distant mic's auto-gain pulls it level with the near
-  mic, re-creating the exact "far mic wins" failure the S500s caused. Turn it **off per transmitter**:
-  long-press the Left Navigation button until AUTO/DYNAMIC is replaced by a dB level, then set gain
-  manually. Modes are Auto and Dynamic; neither is safe for automixing.
-- **The capture chain takes only channels 0 and 1 of an endpoint** (`BuildConversionChain`'s >2-channel
-  branch maps a multichannel device down to the first two, verified by probe: an 8-channel input
-  yields `0,1,0,1,…`). So a multi-input USB interface silently drops everything past its second input
-  — no error anywhere. Two-channel devices (one split receiver each) are unaffected; widening
-  `ChannelSource` beyond Stereo/Left/Right is what a >2-in interface would need.
-- **On a RØDE Wireless PRO, "Split" only means TX1→L / TX2→R while the RX's 3.5 mm jack is an
-  OUTPUT.** Plug a mic into it as an RX Mic and the routing silently changes meaning: both
-  transmitters merge onto the **left** and the RX Mic takes the **right**. Change modes with a
-  long-press of both Nav buttons (short-press Left cycles, Right selects), or in RODE Central. Do not
-  confuse Split with **Safety**, which puts a −10 dB duplicate of the same mix on channel 2 — it looks
-  like a split on a meter and carries no second mic.
-- Some Bluetooth headsets switch to HSP/HFP when used as input and output simultaneously, dropping
-  quality. Workaround: BT input, wired output. (Moot on this rig — Ankers run dongle-only.)
+- **Hot-plug USB audio gets a NEW endpoint GUID on re-enumeration** (replug, another port, a driver
+  reboot); only fixed devices (Realtek, VB-CABLE) keep theirs. `DeviceResolver` therefore matches a
+  preset device by, in order: `DeviceKey` (serial-derived container id), GUID, then friendly name via
+  `DeviceNameKey`, which strips **only** the volatile `(N- …)` prefix — never truncate at `" ("`, as an
+  un-renamed device's identity is the interface name inside the parens (`Speakers (Lync USB Headset)`
+  vs `Speakers (Realtek(R) Audio)`). Resolve against the master device lists, not a strip's filtered
+  picker. **Persist what the operator asked for, not what is currently resolvable**: strips keep
+  `DesiredDeviceId/Name/Key` through a device's absence (cleared only by *Clear device*) and
+  `ReattachDesiredDevices` re-binds on reappearance — nulling it on disconnect once erased the only key
+  a replug could match. Identical devices that cover different areas must never be greedy-filled.
+- **Device identity across ports is readable without WMI** — not from `PKEY_Device_InstanceId`, which
+  reads empty on every audio endpoint, but from `PKEY_Device_ContainerId`'s UUID version: **v5** is derived from the hardware serial (same GUID on any port), **v1** is minted per
+  port (`Services/DeviceIdentity`; `tools/device-identity.ps1` confirms by PnP walk). The Wireless PRO
+  receivers are v5 — serials `801D150D` and `802ECAEA`, so two identical receivers are told apart;
+  the Soundsync dongles and the Lync headset are port-derived. `DeviceKey` is written only for v5. ⚠
+  The cross-port claim is inferred from the scheme, not yet watched: move a receiver and compare.
+- **Windows endpoint gain is keyed to the port-derived endpoint, so it resets to 0 dB on a new port**
+  (the rename goes with it). A second identical receiver on a new port arrived ~24 dB under its twin
+  and looked like two dead mics — check `tools/VolProbe` before suspecting hardware. **Set gain on the
+  receiver** (a Wireless PRO's level applies to both its transmitters, so pairs are matched by
+  construction), keep Windows near 0; a wired lapel on the aux jack has no receiver, so Windows is its
+  lever. The app's fader can only **attenuate** (100% = unity). The Rode endpoint's slider is
+  non-linear: 53.7% = 0 dB, 87% = +15 dB, 100% = +30 dB.
+- **+15 dB on the Wireless PRO endpoint is the verified ceiling.** +24 dB clipped (peaks +6.7 dBFS,
+  flat-tops to 1.9 ms) while speech was still 14 dB under target, because crest here is ~45 dB: no
+  endpoint gain lands speech at −24 and keeps transients under full scale — proximity and transmitter
+  gain can. The capture is float32, so over-full-scale passes through and clips only at render: judge
+  clipping by counting samples ≥ full scale and flat-top runs, never by peak dBFS.
+- **GainAssist on a Wireless PRO transmitter is AGC and breaks the automixer** (it levels a far mic up
+  to a near one — "far mic wins" again). Turn it off per transmitter: long-press Left Nav until
+  AUTO/DYNAMIC becomes a dB value.
+- **"Split" means TX1→L, TX2→R only while the RX's 3.5 mm jack is an output.** Plug a mic in as RX Mic
+  and both transmitters merge onto the left. **Safety** mode puts a −10 dB copy of the same mix on the
+  right — it looks like a split on a meter and carries no second mic. Mode: long-press both Nav
+  buttons, or RODE Central. **Prove a split by sample-level correlation** (two capsules ≈ 0.07; one
+  signal fanned out ≈ 1.0) — envelope correlation stays high either way (`tools/RxProbe`).
+- **A Wireless PRO in its charging case enumerates as USB storage, not audio** — two "RODE Wireless PRO
+  USB Device" drives (the transmitters) and no RX endpoint. Connect the RX directly by its own USB-C.
+- **Each transmitter records 32-bit float on board** (unclippable, 40+ h): a gain-proof backup, and
+  the decisive "bad mic or bad link" test — captured before the RF link, so a glitch in the app's
+  capture that is absent on board is RF.
+- **The capture chain takes only channels 0 and 1 of an endpoint** — a >2-input interface silently
+  loses the rest. Widening `ChannelSource` is what one would need.
+- **A chronically "bad" mic is usually out of RF range.** Anker-era walk test: flux-CV tracked
+  distance (0.58–0.68 with packet-loss spikes far, 0.37 up close) — a gradient means RF, a defect is
+  uniform. Anker specifics: an S500 can hold its dongle AND a Bluetooth link at once, the second radio
+  garbling the first (forget the BT pairings); a dongle can keep its render endpoint while its capture
+  is dead (the "half-link" — re-pair). The app's Bluetooth rule decides from the device bus
+  (`BTHENUM`) alone, never a name guess.
+- **When a receiver disappears** (unplugged, put in its case) capture stops with `0x88890004`
+  (device invalidated), the watchdog's restart fails the same way, and the strip shows "no microphone
+  assigned" while remembering its device for reattachment — correct behaviour, verified 2026-09-23.
 
 ### Audio graph & NAudio
 
-- **NAudio 2.2.1 `MixingSampleProvider.ReadFully=true` only controls output padding — NOT source
-  retention.** When any source returns less than the requested count, MSP unconditionally
-  `RemoveAt(index)`'s it — gone forever. To prevent eviction the source must always return the full
-  count: set `ReadFully=true` on the underlying `BufferedWaveProvider` so it pads with zeros. Symptom:
-  audio works until the first buffer-empty event (e.g. route toggle off then on), then the output is
-  permanently silent until the OutputBus restarts.
-- The per-output `BufferedWaveProvider` (`InputChannel._outBuffers`) sets the **hard cap on end-to-end
-  latency**. Sized generously (e.g. 2 s) with input pushing before output pulls, that backlog becomes
-  audible latency. Keep it small (`CreateOutBuffer` uses 500 ms) AND clear it when (re)starting an output
-  (`AudioEngine.RestartOutputBus_NoLock` → `ClearOutputBuffer`). Symptom: "hello" arrives 1–2 s late.
-- NAudio's property is `DiscardOnBufferOverflow` (not `DiscardOnBufferFull` — that name doesn't exist
-  in 2.2.1 despite older docs).
-- `WaveFileWriter` is NOT thread-safe; serialize Write calls with a lock or write from one tap thread.
-- **A stalled input capture freezes its VU meter at the last value** (looks ~80% "active" but passes no
-  audio). `PeakMeter` has no decay — `CurrentDb` only changes inside `Observe()`, called from
-  `OnDataAvailable`. If `WasapiCapture` stops firing `DataAvailable` (USB renegotiation, device drop),
-  the meter and `_currentLevelLinear` freeze and the channel is silently dead. Fixes: (1)
-  `InputChannel.Stop()` calls `PeakMeter.Reset()`; (2) `AudioEngine` runs a **capture-stall watchdog**
-  (`WatchdogTick`, 500 ms) — a selected input whose `LastDataTicks` is stale >1.5 s is restarted on a
-  background task (`RestartBackoffMs`, `MaxRestartAttempts`, then `InputRestartGaveUp`); (3) the Resync
-  button calls `RestartInputs()` too (it used to restart only output buses, so it couldn't recover
-  this). Shared-mode WASAPI delivers buffers even during silence, so "no DataAvailable" is an
-  unambiguous stall signal — a silent-but-alive mic won't false-trigger.
+- **`MixingSampleProvider` removes a source forever the first time it returns short**
+  (`ReadFully=true` on the mixer only pads the output). Every feed `BufferedWaveProvider` runs
+  `ReadFully=true` so it never returns short — else one empty read (a route toggled off and on)
+  silences that bus until it restarts.
+- **The feed buffer caps end-to-end latency.** 500 ms (`CreateOutBuffer`), cleared and **primed with
+  40 ms of silence** on every output (re)start — a large or unprimed backlog is heard as "hello"
+  arriving 1–2 s late. NAudio's property is `DiscardOnBufferOverflow` (not `…Full`).
+- **An empty feed buffer is a SILENT hole**: `ReadFully` pads the shortfall with zeros, so nothing
+  upstream sees it — a ≤10 ms splice with a click at each edge, heard as fine crackle or grit. The diag
+  WAVs tap *upstream* and are clean by construction; **`mix-*.wav` shows it** — in Gate only the leader
+  is on the bus, so each hole is exact digital silence. Count runs of ≥ 2 ms of exact zero per minute:
+  on 2026-09-23 a clean 0–3/min jumped to **1,600–2,250/min** at 19:38:38 on **both buses within
+  0.1 s** — so the capture side, not an output device — until the app was restarted; the trigger was
+  not identified (its log had been deleted). The live counter is `under=[a,b]` in the log and
+  `underruns` in `/state`, counted **before** each read and only for pairs that should be feeding
+  (routed, live capture) — before 2026-09-23 it also counted every unrouted pair (~100/s forever), so
+  filter old logs by routes. `bufMs = 0` is NOT an underrun (the depth legitimately drains to zero
+  between reads); only a climbing counter is.
+- **Crackle triage, in order:** (1) count samples ≥ full scale and flat-top runs (`tools/RxProbe`
+  capture or the diag WAV) — zero means it is not clipping, whatever the peak says, and no gain change
+  will help; (2) underruns climbing on routed pairs, or holes in the mix, mean the silent-hole crackle.
+  A restart (or Resync) re-primes every buffer and cures it. The operator's instinct is clipping; the
+  two sound alike.
+- **A stalled capture freezes its meter** at the last value (`PeakMeter` only updates on data). The
+  watchdog (`WatchdogTick`, 500 ms) restarts an input whose data is >1.5 s stale — shared mode delivers
+  buffers even in silence, so no data is an unambiguous stall — with backoff, then `InputRestartGaveUp`.
+- **Nothing that can wait may run on an audio thread.** Calling `WaveFileWriter.Flush()` from
+  `MixRecorder.WriteSamples` every 10 s (so a killed recording keeps a valid header) caused **24
+  underruns/min**, 23 of 24 phase-locked to the flush cycle — mostly the per-mic recorders flushing on
+  the *capture* threads, which drains both buses. Removed: 0 in 60 s. Audit, 2026-09-23: the capture
+  callback shares no lock with the UI and rents buffers from `ArrayPool`; the only disk I/O on audio
+  threads is the recorders' buffered writes (0 underruns). A crash-proof header needs a background
+  writer per recorder fed by a queue (attempt parked in `git stash`). `WaveFileWriter` is also not
+  thread-safe — writes are serialised by the recorder's lock.
 
-### Measurement & recording
+### Recording & measurement
 
-- **A replay fixture lives in the folder retention prunes, so it must be moved to `analysis/keep/`.**
-  `ReplayRig.DefaultDirectory` IS `analysis/`, and `Prune()` runs at every record start — i.e. ~12 s
-  after every launch. Both golden baselines referenced stamp `20260809-092931`, 42 days older than the
-  28-day rule, so their source WAVs were deleted on the first launch after retention shipped and the
-  fixtures could never be re-run. `EnumerateFiles` is top-level only, so a subfolder is already immune;
-  `RecordingRetention.KeepFolder` names it and `ReplayRig` lists and opens from it, preferring a kept
-  copy. Move any capture worth replaying there the day you record it — a fixture is the only way to
-  exercise the selector without a room full of people, and losing one is silent.
-
-- **Recording is always on, and the disk arithmetic is why it has three bounds rather than one.** A
-  single stream at the internal format (48 kHz stereo float32) is **1.29 GB/hour**; five mics and two
-  buses is **~9 GB/hour**, so a capped hour is ~9 GB (~6 GB once split strips go mono) and four
-  weeks at two services a week is ~50-70 GB against ~129 GB free. Age alone would therefore prune about a week
-  *after* the disk filled. So: recording stops itself at **1 hour** (somebody forgetting to close the
-  app must not mean a recording that runs till the disk is full), files expire at **28 days**, and
-  `RecordingRetention` additionally deletes **oldest-first when free space is under 20 GB at the
-  moment a recording starts** (pruning runs then, not continuously), refuses to start under 15 GB and
-  stops an in-flight recording under 8 GB — the stop floor being
-  lower than the start floor on purpose, so a session already running is given every chance to finish.
-  Session records are never swept: they are tens of kilobytes and are what you still want once the
-  audio is gone.
-  **Split strips record MONO** — after the side split a Left/Right strip carries one transmitter
-  duplicated to both channels (L/R correlation measured at exactly 1.0000), so the second channel is a
-  verbatim copy and the file halves losslessly. A `Stereo` strip on a genuinely stereo device keeps
-  both. Verified: a split pair writes 1-channel files at half the size of the stereo strips beside them.
-- **A NaN calibration median silently destroyed the whole session record.** `InputSummary.SpeechDb`
-  and `FloorDb` are `float.NaN` until a mic has produced enough voiced audio, and System.Text.Json
-  refuses to write NaN — it throws. `SessionStore.Save` wraps everything in a blanket catch (a record
-  that takes down the mixer it describes being the worse outcome), so the throw became a `return null`
-  and a line in the **opt-in** log. Net effect: any service where one mic was never used, or that was
-  too quiet to calibrate, produced **no session record at all**, with nothing visible to say so — and
-  those are precisely the services the record exists for. Found 2026-09-21 by the first
-  `SessionRecorder` test, not by anyone reading a folder. Fixed with `NaNAsNullConverter`, which
-  writes non-finite floats as **null** and reads null back as NaN. Null rather than the `NaN` literal
-  `AllowNamedFloatingPointLiterals` emits, because these files are read by the offline tooling and
-  `NaN` is not valid JSON (Python accepts it, jq does not); `/state` already maps NaN to null, so the
-  two agree. General lesson: a blanket catch around serialization converts a data-shape bug into
-  silent, total data loss — if the catch is load-bearing, the thing it guards needs a test that
-  actually round-trips the awkward values.
-
-- **`decisions-<stamp>.csv` sits beside every capture, and is the only thing that can answer "should
-  it have picked a different mic".** The diag WAVs are tapped BEFORE the automix gain and before the
-  bus, so they show what each mic heard and nothing about what was done with it; the mix shows a
-  choice was wrong but never what the alternative sounded like at that instant. The CSV carries one
-  row per 100 ms — automix mode and leader per bus, plus each mic's level and applied gain — sharing
-  the recording's stamp so it lines up sample-wise. The mode column replaced a `scene` column on
-  2026-09-23; it is the better record anyway, because a scene was a *claim* about the mode that a
-  hand edit made stale, and it settles the first of `winner = -1`'s three causes (finding 4) directly. 10 Hz is deliberate: the automixer's hold is 200 ms, so this
-  cannot miss a hand-off, and an hour costs ~2 MB against gigabytes of audio.
-
-
-- **Automix gain is applied AFTER the meter/analysis taps** (`InputPeak`/`PostPeak`/analysis recorder
-  all run before the per-output routing push). So VU meters and the diag recordings show the
-  *pre-automix* post-fader level — a channel can read hot while the automixer ducks its contribution.
-  Intentional (the meter shows what the channel produces); don't "fix" it by moving the tap.
-- **An empty per-output feed buffer is a SILENT hole, and nothing upstream can see it.** The
-  `BufferedWaveProvider` in `InputChannel._outBuffers` runs `ReadFully=true`, so when the bus asks for
-  more than it holds it returns the shortfall as **zeros** — the read looks complete, no meter moves,
-  no peak changes. At the ~10 ms (480-frame) shared-mode read size each hole is a ≤10 ms splice with a
-  broadband click at each edge, heard as fine crackle or grit rather than as a dropout. Crucially the
-  analysis recorder taps *upstream* of this buffer, so a diag WAV is clean by construction and no
-  offline tool can ever find it — headset-clean-recording is the signature. `ClearOutputBuffer` now
-  primes 40 ms of silence so the standing backlog is chosen rather than left to the startup race, and
-  `TrackingSampleProvider` counts depth-vs-request **before** each read (after it, ReadFully has
-  already padded). The count rides the per-input log line as `under=[a,b]` beside `bufMs`.
-  **`bufMs` = 0 is NOT an underrun, and mistaking it for one cost a session.** It is a 1 Hz sample of a
-  value that legitimately drains to zero and refills between reads. Measured 2026-09-20: pre-prime the
-  Lync USB headset sat at 0 ms in **15.8%** of samples against **1.1%** for VB-CABLE (a virtual device
-  is slaved to the system clock; a USB headset has its own crystal, so only the real one drifts), which
-  looked damning — but post-prime the same bus still reads 0 ms in **3.1%** of samples with **zero**
-  underruns over 65 s. The depth ratio between two buses is a drift signal, nothing more. Only
-  `under=[]` distinguishes a hole from normal oscillation, which is the entire reason it exists.
-  **Triage for "I hear crackling", in this order** (2026-09-23, a live session where both causes were
-  plausible): capture the endpoint with `tools/RxProbe` and **count over-full-scale samples and
-  flat-top runs** — zero of both means it is *not* clipping, whatever the peak dBFS says, and no gain
-  change will help. Then read `under=[a,b]` from two log lines a few seconds apart: **climbing**
-  counters are the silent-hole crackle. That session read 0 over-FS with `under=` rising ~20/sec on
-  both buses, and an **app restart cured it** — a restart re-primes every feed buffer, which is also
-  why the cure is evidence for the diagnosis. Resync is the same fix without the restart. Do not
-  reach for the gain slider first: the operator's instinct is clipping, and the two crackles sound
-  alike.
-  **The counter only counts a pair that should be feeding** — routed, with a live capture (fixed
-  2026-09-23, hours after the paragraph above was written). Before that, an unrouted strip's feed
-  buffer, empty by design, counted an underrun on every bus read: ~100/s forever, five unrouted pairs
-  at 5175 after ~50 s beside routed pairs at 3-5. So in any log or capture from before then, filter by
-  `routes` before reading a climb as crackle; the evening that produced the triage above did not, and
-  its "climbing" evidence is uncertain, though the restart cure still stands.
-- **Per-channel delay and the clap test were removed 2026-09-20.** Both came from Anker-era delay
-  compensation, which the automixer superseded: Gate hard-mutes every non-leader, so only one mic's
-  copy of a voice reaches the bus and there is nothing left to time-align. `DelayAnalyzer`, the delay
-  slider and `Detect Delays` are gone. The finding below is kept because it is about *measurement*,
-  not the feature, and the same trap waits for anyone who tries to time a signal path by clapping.
-- **The route-to-output clap test does NOT measure device latency.** A channel's position in the mixed
-  output is `transport_latency + standing backlog in its per-output BufferedWaveProvider`. That backlog
-  is set nondeterministically at startup (a fast device accumulates a *larger* backlog before the bus
-  drains it) and anti-correlates with transport latency, so the ordering scrambles — a low-latency
-  built-in mic can look *more* delayed than a Bluetooth one. Measure from the per-channel diag
-  recordings instead, which are tapped *before* the output buffer (what the removed `DelayAnalyzer`
-  did), and re-measure after any output restart.
-- **To time a signal path, cross-correlate onset envelopes, NOT a peak threshold** (how the removed
-  `DelayAnalyzer` worked). A "first sample ≥ 50% of
-  file peak" detector mislocates soft/vocal onsets: a spoken "T!" (used because the Ankers' noise
-  suppression gates real claps) has its global peak in the *vowel*, so the detector skips the leading
-  `[t]` on a clean mic (→ looks late) while a suppressed mic keeps only the `[t]` (→ looks early),
-  inverting the ranking. Fix: half-wave-rectified first-difference of a 1 ms RMS envelope, normalized
-  cross-correlation vs the loudest channel over ±1000 ms; the normalized peak is the confidence (warn
-  below 0.5). Caveat: a speakerphone that *gates* transients may have no constant latency, so no single
-  delay value fully syncs it.
-- **A digital-silence rate over a whole diag WAV counts the startup window and will libel a mic that
-  does not gate.** The recorder starts when the operator clicks it, which is *before* the transmitters
-  are powered, paired and bound — so the head of every capture is true zero. A 2026-09-20 Wireless PRO
-  capture measured 16.6% / 12.7% digital silence whole-file, which reads exactly like the Anker gating
-  of finding 4; per minute it was **99%/62% in minutes 1-2 and then 0.0% for the rest of the session**.
-  Always bucket the rate per minute (or skip the first 2-3 min) before concluding anything about
-  gating. Same caveat for speech/floor medians: the silent head drags the floor toward -inf.
-
-- **A live meter is not a measurement — never verify a gain change by watching `envDb`/`inputDb` in a
-  room where people are talking.** The room's acoustic input is the uncontrolled variable, so a
-  before/after comparison across a gain change measures the room, not the change. Done twice on
-  2026-09-23: a 12 dB Windows cut "showed" three strips falling ~6 dB and a fourth *rising*, and a
-  lapel appeared to gain 11.8 dB from a transmitter change that had not happened (its endpoint was
-  verifiably untouched at 16 dB — somebody had simply started speaking near it). Both readings
-  produced confident, wrong conclusions about which transmitters had been set. Verify a gain change
-  by reading the **endpoint** back (`tools/VolProbe` with no args), or by `tools/RxProbe` against a
-  controlled sound, or by calibration medians **after** a reset — never by the meters.
-- **To prove a split receiver is really two transmitters, correlate at BOTH scales.** Sample-level
-  correlation near 1.0 means one signal fanned to both sides (not split); near 0 means two capsules.
-  Envelope correlation stays *high* either way, because both mics hear the same room — so envelope
-  alone cannot tell them apart. A verified-good split on 2026-09-20 read **sample 0.069, envelope
-  0.866**. `tools/RxProbe` does this at the endpoint level; numpy on two diag WAVs does it post-hoc.
-- **A WAV being actively recorded reads 0 bytes / a frozen mtime in directory listings.** NTFS doesn't
-  flush the directory-entry size + last-write-time during a long buffered write, and `WaveFileWriter`
-  only finalizes the RIFF header on Dispose. So Explorer/`Get-ChildItem` show a live capture as 0 bytes
-  with the mtime stuck at creation — it's fine. Don't judge a live capture by the folder view and don't
-  stop/restart it in a panic (that's the only thing that *would* lose buffered data).
-  **A kill leaves that header at zero permanently** — the app never got to write it. A normal close
-  and a stopped recording both finalise correctly (verified 2026-09-23); a force-kill, crash or power
-  cut does not, and normal players then read the file as empty although every sample is on disk.
-  `tools/wavfix.py DIR...` reports such files and `--apply` rewrites only the size fields (RIFF, data,
-  and the `fact` count NAudio adds for float) — `--skip STAMP` for a recording still in progress. The
-  gap is not that the writer cannot update mid-recording: NAudio's `WaveFileWriter.Flush()` documents
-  that it "also updates header", and `MixRecorder` simply never calls it before `Stop`.
-  **Do NOT call that `Flush()` from `WriteSamples`** — measured 2026-09-23, it was tried at a 10 s
-  interval and caused **24 underruns/min on routed pairs**, 23 of 24 phase-locked to the flush cycle
-  (17 at 3-4 s after the mix flush, where the per-mic diag recorders' flushes fall — they run on the
-  CAPTURE threads, and a stalled capture drains the buses' feed buffers). Control on the same rig
-  minutes later, flush removed: **0 in 60 s**. The header did update perfectly every 10 s, so the
-  idea is right and the thread is wrong: any header update must happen off the audio threads (a
-  background timer writing the size fields through a separate handle, with the audio threads only
-  counting bytes). The attempt is in `git stash` as "periodic WAV flush on audio thread".
-  **Audio-thread audit (2026-09-23):** the capture callback takes no lock shared with the UI (state
-  swaps are volatile reference replacements) and rents its buffers from `ArrayPool`, so no per-buffer
-  GC; logging only happens on error paths. The ONLY disk I/O on the audio threads is the recorders'
-  `WriteSamples` (bus mixes on the render threads, per-mic diag files on the capture threads) — cheap,
-  since writes land in the OS cache, and measured at 0 underruns — plus a brief wait on the recorder
-  lock when the UI thread starts or stops a recording. The clean design, if ever needed, is one
-  background writer per recorder fed by a lock-free queue: it takes all disk I/O off the audio threads
-  AND makes the periodic header update safe.
-- **A mix recording DOES show underrun holes, and that is the way to prove crackle afterwards.** In
-  Gate only the leader is on the bus, so a starved feed buffer becomes exact digital silence in
-  `mix-*.wav`: count runs of >= 2 ms of exact zero per minute. 2026-09-23 19:38:38: from 0-3/min to
-  **1,600-2,250/min** (up to 90 ms), on **both buses within 0.1 s** — so the capture side, not an
-  output device — with RX A Left flickering to exact silence in `decisions-*.csv`, lasting until the
-  operator restarted the app. It is also what broke transcription (holes cut the level 6-8 dB and
-  Whisper's VAD dropped the speech). Trigger NOT identified: it coincided with the operator
-  replugging devices, but a replug on the later build did not reproduce it, and that run's log had
-  been deleted. Next time: keep the log, and count holes per minute before blaming anything else. True length
-  mid-write: `[System.IO.File]::Open(path,'Open','Read','ReadWrite').Length`. Offline tools
-  (`soundfile`) can't read it until stopped (header still claims 0 frames) — to analyze mid-session,
-  parse the chunks and read raw float32 from the `data` offset to true EOF (`tools/live_wav.py`).
+- **A kill leaves a recording's WAV header at zero frames**; a normal close or a stopped recording
+  finalises it. Every sample is on disk but players read the file as empty — `tools/wavfix.py DIR...`
+  reports, `--apply` rewrites only the size fields (RIFF, data, `fact`), `--skip STAMP` for one in
+  progress. A file *being* written also shows 0 bytes and a frozen mtime in Explorer (NTFS does not
+  update the directory entry); its true length is `File.Open(path,'Open','Read','ReadWrite').Length`,
+  and `tools/live_wav.py` reads it mid-session.
+- **Recording is always on, with three bounds** because a 5-mic, 2-bus hour is ~9 GB (1.29 GB per
+  stream-hour): it stops itself at **1 hour**, files expire at **28 days**, and `RecordingRetention`
+  deletes oldest-first below **20 GB free** when a recording starts, refuses to start below 15 GB and
+  stops one in flight below 8 GB. Session records are never swept. **Split strips record mono** (the
+  two channels are identical after the side split).
+- **A replay fixture must live in `analysis\keep\`** — `Prune()` runs at every record start (~12 s
+  after launch) and is top-level only. Both original golden baselines' WAVs were pruned at 42 days
+  old before anyone noticed.
+- **`decisions-<stamp>.csv` is the only record of what the automixer did**: every 100 ms, per bus the
+  automix mode and leader, per mic the level and applied gain (the diag WAVs are pre-automix). 10 Hz
+  cannot miss a 200 ms hold. The `mode_<bus>` columns replaced a `scene` column on 2026-09-23.
+- **A NaN calibration median once silently destroyed whole session records**: System.Text.Json throws
+  on NaN and a blanket catch in `SessionStore.Save` turned that into no file at all.
+  `NaNAsNullConverter` writes null (valid JSON for jq, unlike `NaN`). Lesson: a blanket catch around
+  serialisation needs a test that round-trips the awkward values.
+- **A digital-silence rate over a whole diag WAV counts the startup window** (the recorder starts
+  before transmitters are on): 16.6% whole-file was 99% in minutes 1–2 and 0.0% after. Bucket per
+  minute. The same head drags calibration floors toward −inf.
+- **Timing a signal path**: routing to the output and clapping does not measure device latency — a
+  channel's position in the mix includes its feed-buffer backlog, which is set at startup and
+  anti-correlates with transport latency. Measure from the diag WAVs (tapped before the buffer), and
+  cross-correlate onset envelopes rather than thresholding on peak (a spoken "T!" peaks in the vowel).
+  Per-channel delay compensation itself was removed 2026-09-20: Gate leaves one mic on the bus, so
+  there is nothing to align.
+- **Transcription** (`tools/transcribe.py`): Whisper's voice-activity filter silently dropped the last
+  6 minutes of a recording once the mix level fell 6–8 dB — the transcript just stopped mid-sentence.
+  Keep it off; Whisper's own no-speech check skips silence. Repetitive lines are invented text on
+  audio it cannot make out (the crackle stretch, for instance) — distrust them.
 
 ### UI / WPF
 
-- **A `{StaticResource}` key is resolved when a template is APPLIED, not at compile time, so a missing
-  one is a runtime process kill that a clean build will not reveal.** `MainWindow.xaml` referenced
-  `{StaticResource Cap}`, a style that exists only in the three `Views/` windows; WPF threw
-  `XamlParseException` inside `UniformGrid.MeasureOverride` while showing the window and the process
-  died before painting. It shipped in `ed756fa` and every `--advanced` launch — including
-  `tools/replay-baseline.ps1`, which passed `--advanced` at the time — crashed for weeks, and the one
-  harness that would have caught it was the one the crash disabled. `BindingErrorListener`
-  does **not** catch this: it sees binding failures, not a fatal parse error. Guarded now by
-  `AudioMixer.Tests/XamlResourceTests`, which checks **per file** that every referenced key is defined
-  in that file. Per-file is the whole point — globally the key sets match, because `Cap` *is* defined,
-  just out of scope. That scoping holds only because `App.xaml` carries no resources and every style
-  lives in a `Window.Resources`; `DefinitionsAreNotShared` pins the assumption so the test fails
-  honestly if merged dictionaries ever appear.
-- **A snap-to-tick `Slider` in a strip column is unusable, and it fails as skipped values rather than
-  as an obvious bug.** The low-cut was `Minimum=0 Maximum=200 TickFrequency=10` — 21 positions in a
-  ~115 px column, ~5 px per tick — so which cutoffs you could land on depended on pixel rounding
-  during the drag, and an operator reported reaching 70 and 90 Hz but not 80 on one strip and 60/80/100
-  on another. Anything with a small fixed set of meaningful values belongs in a list of named
-  choices, as the low-cut and leveler strength are in Settings.
-
-
-- **A `System.Threading.Timer`'s callback cannot tell itself apart from another caller unless you
-  give it a state object.** `AutoMixTick` was registered as `new Timer(AutoMixTick, null, 10, 10)` and
-  `ReplayPumped` also called `AutoMixTick(null)`, so the guard `if (replaying && state != null) return;`
-  could never be true and the wall-clock timer never stood down. Replay therefore ran the selector at
-  **200 ticks per audio-second instead of 100** (measured 2026-09-21 on fixture `20260920-211335`),
-  halving `HandoffHoldTicks` and `PriorityHoldTicks` — so the deterministic, speed-independent replay
-  this file promises did not hold, and every golden baseline was recorded under it. Fixed with a
-  `WallClock` sentinel passed as the timer's state. The symptom is invisible: nothing errors, the
-  numbers are merely wrong, and a hand-off count alone will not reveal it on stable material — it took
-  a scratch build with a tick counter in `/state` to see.
-
-- **The meter tick and the autosave debounce share one `PropertyChanged` stream, so filtering it with
-  a blocklist silently disables autosave.** `ChannelViewModel.RefreshMeters` raises ~13 display
-  properties 30x/second and `MainViewModel.OnSettingChanged` restarts a 500 ms debounce timer on any
-  property it doesn't recognise — so the four peak properties that were excluded weren't enough
-  (`IsDucking`, `IsAutoMixActive`, the per-bus LED state, clarity) and the timer was reset every
-  33 ms and could never elapse. Symptom: settings persist across a *clean exit* (Dispose still calls
-  `SavePreset`) but a crash or a killed process loses the whole session. Fix: `OnSettingChanged`
-  matches an **allowlist** (`PersistedProperties`) mirroring exactly what `PresetMapper` writes. Keep
-  it that way — a new display property must never be able to break saving by omission.
-
-- **`preset.json` is written by replace, not in place, and keeps a `.bak`.** `File.WriteAllText`
-  truncates the existing file before it writes a byte, so the window in which a kill destroys the
-  rig's entire configuration was the whole duration of every autosave — and this app gets force-killed
-  often enough to matter (the same reason session records checkpoint rather than writing only on
-  exit). A torn preset is *indistinguishable from never having saved one*: every channel comes up with
-  no device, which on a Sunday morning means remapping the rig by hand. `PresetStore.Save` now writes
-  `preset.json.tmp` and calls `File.Replace`, which swaps atomically and keeps the outgoing file as
-  `preset.json.bak` in the same call; `Load` falls back to the backup when the main file will not
-  parse, so the worst case is one autosave stale. Replace is not supported on some roaming/redirected
-  `%APPDATA%` shares, so an `IOException` degrades to an overwriting `Move` — still better than
-  truncate-in-place. The constructor also takes an optional path now, which is the only reason this is
-  testable at all: it was hardcoded to `%APPDATA%`, so any test would have clobbered the operator's
-  real preset.
-
-- **A WPF trigger's `Value` is parsed as a STRING, so comparing it against a boolean binding is
-  unreliable** — the trigger silently never fires and every button renders unselected with no error
-  anywhere. Bind selection state to `Tag` as an `"on"`/`"off"` **string** and use a `DataTrigger` on
-  `{Binding Tag, RelativeSource={RelativeSource Self}}` (see `Views/SimpleWindow.xaml` and
-  `MainViewModel.SingingState`, whose third value, "mixed", is a second reason it is a string).
-
-- **Alert *rules* live in pure functions** (`Services/HealthMonitor`) that take and return plain
-  records, with the view models only marshalling values in and out. They fire in situations nobody can
-  stage on demand, so a rule is only as good as its test. Keep new rules in the pure
-  layer so they stay unit-testable — do NOT put judgement in the view models.
-  **An alert names its remedy as a value, not a delegate** (`HealthAlert.Fix`, a `FixKind`, plus a
-  `Target` strip/bus index); `MainViewModel.ApplyFix` carries it out and `SimpleWindow` handles the two
-  kinds that need a window. That split keeps the rules layer free of view models while still making
-  "does this alert offer the right fix, aimed at the right strip" a pure test — `Target` is the half
-  that fails silently, since a fix pointed at the wrong index clears priority on somebody else's mic.
-  Alerts whose remedy is physical (a flat transmitter, a mic out of RF range) or ambiguous (a silent
-  bus: routing, device, or the far end?) deliberately carry `FixKind.None` and stay plain text. A
-  button that cannot help is worse than a sentence.
-
-- **The operator panel sizes itself; there is no window-size arithmetic left to get wrong.**
-  `SimpleWindow` is a fixed 330 px wide with `SizeToContent="Height"` and one row per mic, so adding a
-  row or a card grows the window instead of clipping it. Two gotchas that used to sit here — a
-  `UniformGrid` of strip columns ignoring `MinWidth`, and a fixed `BaseWindowHeight` that silently
-  clipped any new row — described the retired Advanced `MainWindow`, and were removed 2026-09-23 along
-  with a reference to a `WindowSizingTests` that no longer existed. The failure comes back only if a
-  window is given a fixed `Height` again.
-- **Enumerating audio endpoints is SLOW and must never run on the UI thread.**
-  `AudioDeviceInfo.Enumerate` opens three COM property stores per endpoint (friendly name, bus,
-  container id); measured 2026-09-23 at **3.5-3.9 s for 30 endpoints** on the rig machine, which has
-  a lot of virtual devices (VB-CABLE, Voicemeeter, NDI webcams). `DeviceWatcher` correctly raises its
-  event on a threadpool thread, but the handler marshalled to the UI thread *first* and enumerated
-  there, so every unplug/replug froze the window for ~3 s -- and it is slowest during a plug event,
-  exactly when it runs. Enumerate off-thread and marshal only the rebuild (ObservableCollections and
-  the engine). Verified by polling `/state`, whose handler marshals to the UI thread and is therefore
-  a genuine UI-responsiveness probe: a real hot-plug went from ~3000 ms to a 60 ms max, matching the
-  idle baseline. Overlapping refreshes **coalesce to one trailing pass** rather than queueing -- a
-  second enumeration returns the same lists seconds later and rebuilds the pickers under the operator
-  twice. Note the app still enumerates synchronously once in the `MainViewModel` constructor, which
-  is the same ~3.5 s of startup cost, before any window is shown.
-
-- **`SceneBtn` (and `SmallBtn`, based on it) ignore `Padding`** — the template's `Border` never binds
-  it, so the style's own `Padding="0,7"` has never done anything and setting it on a button changes
-  nothing. Size those buttons with `Height`, as the Speaking/Singing toggle does.
-
-- WPF's temporary XAML-compilation project (`*_wpftmp.csproj`) does not reliably honor
-  `ImplicitUsings` for `System.IO` — add an explicit `using System.IO;` in any file using
-  `Path`/`Directory`/`File`.
+- **A missing `{StaticResource}` is a runtime process kill, not a build error** — keys resolve when a
+  template is applied. A window referencing a style defined only in another window crashed on open
+  and shipped for weeks. `XamlResourceTests` checks per file that every key is defined in that file
+  (per-file matters: globally the keys all exist); `DefinitionsAreNotShared` pins that `App.xaml`
+  carries no resources. `BindingErrorListener` cannot catch this.
+- **A WPF trigger's `Value` is a string**, so comparing it to a bool binding silently never fires.
+  Selection state rides on `Tag` as a string (`"on"/"off"/"mixed"`) with a `DataTrigger` on
+  `{Binding Tag, RelativeSource={RelativeSource Self}}`.
+- **`SceneBtn`/`SmallBtn` ignore `Padding`** (the template's `Border` never binds it) — size them with
+  `Height`.
+- **XML comments cannot contain `--`**: a XAML comment with one is a build error.
+- **A snap-to-tick `Slider` in a narrow column is unusable** — which values you can reach depends on
+  pixel rounding (21 ticks in ~115 px). A small fixed set of values belongs in a list of named choices.
+- **Alert rules are pure** (`HealthMonitor`), and an alert names its remedy as a value
+  (`HealthAlert.Fix` + `Target`), carried out by `MainViewModel.ApplyFix` — so "does this alert offer
+  the right fix, aimed at the right strip" is a unit test. `Target` is the half that fails silently.
+  Physical or ambiguous remedies carry `FixKind.None`: a button that cannot help is worse than a
+  sentence.
+- **Device enumeration must stay off the UI thread** (`RefreshDevices` enumerates on the threadpool,
+  marshals only the rebuild, and coalesces overlapping refreshes). On the UI thread every replug froze
+  the window ~3 s; now a real hot-plug peaks at 60 ms. Startup still enumerates once synchronously,
+  before the window shows.
+- **`System.Threading.Timer` callbacks need a state object to tell callers apart**: replay's manual
+  tick and the wall-clock timer both passed null, so the timer never stood down and replay ran the
+  selector at 200 ticks/s instead of 100, halving every hold (fixed with a `WallClock` sentinel).
+- **`preset.json` is written by replace** (`.tmp` + `File.Replace`, keeping `.bak`; `Load` falls back
+  to the backup) — writing in place truncated first, so a kill during autosave left no configuration.
+- `*_wpftmp.csproj` does not honour `ImplicitUsings` for `System.IO` — add `using System.IO;`.
 
 ## Reviewing a recorded session
 
-`.claude/skills/session-review` is the procedure: what to read, in what order, and the traps that have
-already produced wrong conclusions once. Invoke it rather than re-deriving the order — several of its
-steps exist because doing them out of order gives a confident wrong answer (analysing hand-offs before
-checking level being the expensive one).
+`.claude/skills/session-review` is the procedure — invoke it rather than re-deriving the order (checking
+level before analysing hand-offs is the step that has produced confident wrong answers when skipped).
+A session is one `<stamp>` across `session-*.json` (**start here** — the `Config` everything must be
+read against), `decisions-*.csv`, the per-mic `diag-input*.wav` and the bus `mix-*.wav`.
 
-A session is one `<stamp>` across four artefacts: the per-mic `diag-input*.wav` (pre-fader,
-pre-low-cut), `decisions-*.csv` (10 Hz: automix mode and winner per bus, leveler gain, per-mic level
-and applied gain),
-`mix-*.wav` (post-leveler), and `session-*.json` (aggregates, events, and the `Config` the whole thing
-has to be read against). **Start from the JSON** — without the config the numbers do not mean anything.
+Two standing goals: **the remote attendee on bus A is the only listener that matters** — a selector
+can follow its rules perfectly and still put a scratchy distant mic on the stream; and **autopilot** —
+ask of every finding whether the app could have prevented, corrected or at least reported it without
+anyone in the room noticing. A fault only a technical operator could catch is a design gap.
 
-Two standing goals frame every review. **The remote attendee on bus A is the only listener that
-matters**: a selector can follow its rules perfectly and still put a scratchy distant mic on the
-stream. And **autopilot** — every finding should be asked "could the app have prevented, corrected or
-at least reported this without anyone in the room noticing?", because a fault only a technical
-operator could catch is a design gap, not an operator error.
+## Maintaining this file
 
-## Self-maintenance protocol
+Its value is knowledge **the repo cannot tell you**: measurements on real hardware, negative results,
+device behaviour, decisions with their *why*, and rules for working on the live rig. If a session that
+searches the code would learn it in 30 seconds, leave it out. **A wrong statement here costs more than
+a missing one** — whoever reads this trusts it.
 
-**This file is intended to be self-optimizing. Claude should update it as the project evolves.**
+Update it **in the same change** when you: find a non-obvious gotcha (symptom → cause → rule, with the
+number that proves it); prove something does not work (Measured findings — the highest-value entries);
+change the audio pipeline or a selection rule; remove a feature (fix every present-tense mention);
+add a tool, a runtime file location or a dependency; or learn a rule for working on the rig.
 
-Its value is knowledge that **cannot be recovered by reading the repo**: measurements on real
-hardware, negative results, device behavior, and decisions with their *why*. Code structure is
-cheap to rediscover with a search — don't spend this file describing it. When in doubt, ask: "would
-a session that greps the code learn this in 30 seconds?" If yes, leave it out.
+Not here: in-flight TODOs or planned work (ROADMAP), restatements of the code, per-service settings
+(session memory), speculation.
 
-Update CLAUDE.md **in the same change** whenever you:
-
-1. **Discover a non-obvious gotcha** — a bug that took >15 min to track down, a WASAPI/NAudio quirk,
-   device-specific behavior. Add to "Known gotchas" under the right sub-heading: symptom → cause →
-   fix.
-2. **Prove something doesn't work** — a metric that inverts, an approach that made it worse. Add to
-   "Measured findings" with the numbers and the tool that produced them. These are the highest-value
-   entries here; a dead end you don't record gets retried.
-3. **Change the audio architecture** — add/remove a pipeline stage, change the mix format, change a
-   selection rule. Update "Audio architecture".
-4. **Add/rename a top-level folder or file role** — update "Project layout".
-5. **Add an external dependency** — update "Stack" or "External dependencies".
-6. **Establish a new convention** — update "Conventions" and apply it to existing code.
-
-**What NOT to add here:**
-- Per-task progress, in-flight TODOs, or PR descriptions (tasks/commits), or planned work (ROADMAP).
-- Restatements of what the code obviously does.
-- Session-specific operational settings (which mics to route this Sunday) — that's session memory.
-- Speculative future plans. Document what IS, not what might be.
-
-**Optimization pass** — every ~5 substantial changes (or when a section bloats):
-- Remove gotchas that are now structurally impossible (the offending code is gone).
-- Fold duplicate guidance together; a fact should live in exactly one section.
-- Re-check tuning constants and numbers against the code — a fixed measurement bug can silently
-  invalidate constants that were tuned to the broken scale (see `NatCvGood`/`NatCvBad`).
-- Tighten wording. If a section hasn't been referenced or updated in many sessions, ask whether it's
-  still load-bearing.
-
-The goal: this file should always be the fastest way for a new Claude session to become productive
-in this repo. If it grows stale or bloated, it loses that property.
+Every few substantial changes: delete gotchas the code has made impossible, fold duplicates into one
+place, re-check constants and numbers against the code, and tighten — this file is only useful while
+it is both short enough to read and true.
