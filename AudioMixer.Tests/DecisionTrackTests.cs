@@ -88,12 +88,12 @@ public class DecisionTrackTests : IDisposable
     public void NamesAreSanitisedSoTheyCannotBreakTheColumns()
     {
         var path = Path_("decisions.csv");
-        using (var t = new DecisionTrack(path, new[] { "Steve, lapel (L)" }, new[] { "OBS/Zoom" })) { }
+        using (var t = new DecisionTrack(path, new[] { "Presenter, lapel (L)" }, new[] { "OBS/Zoom" })) { }
 
         var header = Lines(path)[0];
 
-        Assert.DoesNotContain("Steve,", header);
-        Assert.Contains("level_Stevelapel", header);
+        Assert.DoesNotContain("Presenter,", header);
+        Assert.Contains("level_Presenterlapel", header);
         Assert.Contains("winner_OBSZoom", header);
         Assert.Equal(2 + 1 + 1 + 2, header.Split(',').Length);
     }

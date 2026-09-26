@@ -118,7 +118,7 @@ public class PresetMapperTests
     {
         using var f = new VmFixture();
         var vm = f.Channels[1];
-        vm.CustomLabel = "Steve";
+        vm.CustomLabel = "Presenter";
         vm.VolumePercent = 80;
         vm.Muted = true;
         vm.IsPriority = true;
@@ -129,7 +129,7 @@ public class PresetMapperTests
 
         var ch = PresetMapper.FromViewModels(f.Channels, f.Outputs, Options).Channels[1];
 
-        Assert.Equal("Steve", ch.CustomLabel);
+        Assert.Equal("Presenter", ch.CustomLabel);
         Assert.Equal(80, ch.VolumePercent);
         Assert.True(ch.Muted);
         Assert.True(ch.Priority);
