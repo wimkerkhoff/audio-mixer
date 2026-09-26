@@ -188,22 +188,12 @@ public class AutoMixerTests
     }
 
     /// <summary>
-    /// DOCUMENTS CURRENT BEHAVIOUR, and it is arguably wrong.
-    ///
-    /// A single 10 ms tick 15 dB above the leader takes the bus. The envelope's attack is 8 ms, so one
-    /// tick moves it most of the way, and neither guard stops this: the +3 dB margin is cleared
-    /// instantly, and the 200 ms hold only blocks a change while it is counting down — once it has
-    /// expired the very next tick may flip. Under Gate that hard-mutes the actual talker for 200 ms,
-    /// so a cough, a bump or a click can swallow a syllable.
-    ///
-    /// The failure finding 1 describes was sustained (a distant mic's AGC make-up during a pause), so
-    /// the guards handle the case they were built for. A transient is a different shape and is not
-    /// guarded. The fix would be requiring the challenger to hold its margin for several consecutive
-    /// ticks — but CLAUDE.md is explicit that the selector is never tuned without a labelled offline
-    /// replay, so this test pins the behaviour rather than changing it. See ROADMAP.
+    /// A single 10 ms tick 15 dB above the leader used to take the bus (the margin cleared instantly,
+    /// and under Gate a cough muted the real talker for 200 ms). A challenger must now keep its margin
+    /// for a while, and the spike's envelope falls back through the bands before it has.
     /// </summary>
     [Fact]
-    public void ASingleTickSpikeCurrentlyDoesTakeTheBus()
+    public void ASingleTickSpikeDoesNotTakeTheBus()
     {
         var rig = Rig(2);
         rig[0].InjectLevelsForTest(0.10f);
@@ -215,9 +205,66 @@ public class AutoMixerTests
         rig[1].InjectLevelsForTest(0.60f);
         mix.Tick(rig);                       // one 10 ms tick
         rig[1].InjectLevelsForTest(0.01f);
-        mix.Tick(rig);
+        for (int t = 0; t < 100; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(0, mix.ActiveInput(0));
+        }
+    }
 
-        Assert.Equal(1, mix.ActiveInput(0));
+    /// <summary>
+    /// A talker between two mics reads within a few dB on both, and either serves; it was the flipping
+    /// between them that was heard (median tenure 0.4 s, 2026-09-26). A +4 dB lead must last ~500 ms.
+    /// </summary>
+    [Fact]
+    public void ACloseChallengerMustKeepItsLeadForHalfASecond()
+    {
+        var rig = Rig(2);
+        rig[0].InjectLevelsForTest(0.10f);
+        rig[1].InjectLevelsForTest(0.01f);
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+
+        rig[1].InjectLevelsForTest(0.16f);   // +4 dB
+        int ticks = TickUntilWinner(mix, rig, 1, max: 200);
+
+        Assert.InRange(ticks, 45, 80);
+    }
+
+    [Fact]
+    public void AClearWinnerStillTakesOverInAboutATenthOfASecond()
+    {
+        var rig = Rig(2);
+        rig[0].InjectLevelsForTest(0.10f);
+        rig[1].InjectLevelsForTest(0.01f);
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+
+        rig[1].InjectLevelsForTest(0.50f);   // +14 dB
+        int ticks = TickUntilWinner(mix, rig, 1, max: 200);
+
+        Assert.InRange(ticks, 8, 20);
+    }
+
+    /// <summary>A lead that lapses resets the wait: the challenger has to earn it again in one go.</summary>
+    [Fact]
+    public void AnInterruptedLeadStartsTheWaitAgain()
+    {
+        var rig = Rig(2);
+        rig[0].InjectLevelsForTest(0.10f);
+        rig[1].InjectLevelsForTest(0.01f);
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+
+        for (int burst = 0; burst < 6; burst++)
+        {
+            rig[1].InjectLevelsForTest(0.16f);   // +4 dB for ~300 ms...
+            Run(mix, rig, 30);
+            rig[1].InjectLevelsForTest(0.05f);   // ...then back under the margin
+            Run(mix, rig, 40);
+        }
+
+        Assert.Equal(0, mix.ActiveInput(0));
     }
 
     /// <summary>
@@ -381,6 +428,30 @@ public class AutoMixerTests
 
         Assert.Equal(1, mix.ActiveInput(0));
         Assert.Equal(1f, rig[1].GetAutoMixGain(0));
+    }
+
+    /// <summary>
+    /// 2026-09-26: a room mic hearing the presenter at -35 (lapel -30) stayed over -50 in his pauses
+    /// while the lapel dipped under -40, so the absolute break-in handed the bus lapel <-> room ~48
+    /// times a minute. A room mic no louder than the lapel is hearing the lapel's wearer.
+    /// </summary>
+    [Fact]
+    public void ThePresentersOwnVoiceInARoomMic_DoesNotBreakTheHeldDuck()
+    {
+        var rig = Rig(2);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.03f);      // presenter talking, -30
+        rig[1].InjectLevelsForTest(0.018f);     // his voice in the room mic, -35
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+
+        rig[0].InjectLevelsForTest(0.008f);     // his pause: lapel under -40, not "active"
+        rig[1].InjectLevelsForTest(0.006f);     // residual still over -50, but under the lapel
+        for (int t = 0; t < 100; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+        }
     }
 
     // --- robustness ------------------------------------------------------------------------------------

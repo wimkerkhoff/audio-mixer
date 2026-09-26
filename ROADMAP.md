@@ -47,14 +47,12 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
   between sessions, and when it is off the mix chops (finding 8). Candidate: derive speech/silence
   from each channel's own settled calibration median. Needs a cold-start rule and a reset after gain
   changes.
-- 🔬 **Hand-off chatter between near-equal mics.** Two mics a median 3.1 dB apart — right at
-  `HandoffHysteresis` — produced 72 leader switches in 179 s (2026-08-30), each a hard mute/unmute
-  under Gate. Four or six matched mics hearing one questioner will sit in that band more. Retune hold
-  and hysteresis offline against the fixture; never by de-matching transmitter gains.
-- 🔬 **A single-tick transient takes the bus** (pinned by
-  `AutoMixerTests.ASingleTickSpikeCurrentlyDoesTakeTheBus`): a cough can mute the real talker for
-  200 ms. Candidate: the challenger must hold its margin for several ticks. Find real instances in the
-  decisions CSV (a winner that changes and changes straight back ~200 ms later).
+- 🔬 **Validate the 2026-09-26 selector changes offline.** Margin-scaled sustain (answers the
+  near-equal chatter: 72 switches in 179 s on 2026-08-30, a 0.4 s median tenure on 2026-09-26, and
+  the single-tick spike) and the lapel-relative break-in were built from decisions CSVs, not a
+  labelled replay. Replay a per-mic capture of a discussion with the operator's "sounded bad at …"
+  notes, old commit vs new: switches/min, tenure, first-syllable loss on real interjections. Watch
+  for a genuine questioner waiting ~500 ms when two mics hear them within 6 dB.
 - 🔬 **Keep or remove flux-CV.** It no longer selects anything, and costs an FFT per voiced window per
   mic on the capture thread. Its remaining claim — that it rises on RF dropouts — was measured on the
   Anker links only. If a Rode session shows `fluxCv` tracking `drops=`, keep it as a diagnostic;

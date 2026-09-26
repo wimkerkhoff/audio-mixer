@@ -30,6 +30,25 @@ public sealed class AutoMixer
     // own table reads far louder than a real interjection across the room (measured: -28 vs -43 dBFS).
     private const float PriorityBreakInRms = 0.0032f;  // ~ -50 dBFS
 
+    // ...and it must also be louder than the lapel itself, i.e. hear someone the lapel does not. On
+    // 2026-09-26 a room mic heard the presenter at -35 while his lapel read -30; in his pauses both
+    // envelopes decay together, the room mic's residual stayed over -50 as the lapel crossed -40, and
+    // the absolute break-in alone handed the bus lapel <-> room mic ~48 times a minute. A room talker
+    // reads 10-20 dB over the lapel's faint pickup of them; one close enough for the lapel to hear
+    // nearly as well is carried by the lapel anyway, since the priority mic is always at unity.
+    private const float BreakInOverLapel = 2.0f;      // +6 dB
+
+    // How long a challenger must keep its margin before it takes the bus, by how far ahead it is.
+    // Within a few dB the talker is between two mics and either serves; switching is the only harm
+    // (median tenure 0.4 s, top two 3.2 dB apart, 2026-09-26). A clear winner still takes over fast.
+    // The wait also rejects a one-tick spike, whose envelope falls back through the bands in time.
+    private const int SustainTicksClose = 50;      // +3..+6 dB: ~500 ms
+    private const int SustainTicksMid = 25;        // +6..+10 dB: ~250 ms
+    private const int SustainTicksClear = 10;      // over +10 dB: ~100 ms
+
+    private static int RequiredSustainTicks(float ratio) =>
+        ratio >= 3.162f ? SustainTicksClear : ratio >= 2.0f ? SustainTicksMid : SustainTicksClose;
+
     // Stable hand-off: the selected mic is held with hysteresis so a brief louder moment on another
     // mic can't steal it. This is what fixes the speakerphones — their AGC applies make-up gain in a
     // talker's pauses, momentarily out-leveling the close mic; without a hold the selection chatters
@@ -47,6 +66,8 @@ public sealed class AutoMixer
     private readonly int[] _winnerHold;            // per output hold countdown
     private readonly int[] _priorityHold;          // per output, ticks the priority duck stays latched
     private readonly int[] _priorityArg;           // per output, priority channel that latched the duck
+    private readonly int[] _challenger;            // per output, mic currently past the margin (-1 = none)
+    private readonly int[] _challengeTicks;        // per output, consecutive ticks it has stayed there
 
     private readonly float[] _cv;                  // per channel spectral-flux instability (from InputChannel)
 
@@ -62,11 +83,14 @@ public sealed class AutoMixer
         _winnerHold = new int[outputCount];
         _priorityHold = new int[outputCount];
         _priorityArg = new int[outputCount];
+        _challenger = new int[outputCount];
+        _challengeTicks = new int[outputCount];
         for (int o = 0; o < outputCount; o++)
         {
             _activeInput[o] = -1;
             _winner[o] = -1;
             _priorityArg[o] = -1;
+            _challenger[o] = -1;
         }
 
         _env = new float[maxChannels];
@@ -135,6 +159,7 @@ public sealed class AutoMixer
             {
                 for (int i = 0; i < n; i++) inputs[i].SetAutoMixGain(o, 1f);
                 _winner[o] = -1;
+                _challenger[o] = -1;
                 _activeInput[o] = -1;
                 continue;
             }
@@ -181,7 +206,7 @@ public sealed class AutoMixer
             {
                 int held = _priorityArg[o];
                 bool heldStale = held < 0 || held >= n || !inputs[held].GetRoute(o) || !inputs[held].IsPriority;
-                if (heldStale || lmax > PriorityBreakInRms)
+                if (heldStale || (lmax > PriorityBreakInRms && lmax > _env[held] * BreakInOverLapel))
                 {
                     _priorityHold[o] = 0;
                     _priorityArg[o] = -1;
@@ -206,6 +231,7 @@ public sealed class AutoMixer
                 for (int i = 0; i < n; i++)
                     if (inputs[i].GetRoute(o) && !inputs[i].IsPriority) inputs[i].SetAutoMixGain(o, pduck);
                 _winner[o] = -1;
+                _challenger[o] = -1;
                 _activeInput[o] = pArg;
                 if (pArg >= 0) _activeAny[pArg] = true;
                 continue;
@@ -217,6 +243,7 @@ public sealed class AutoMixer
                 for (int i = 0; i < n; i++)
                     if (inputs[i].GetRoute(o)) inputs[i].SetAutoMixGain(o, 1f);
                 _winner[o] = -1;
+                _challenger[o] = -1;
                 _activeInput[o] = -1;
                 continue;
             }
@@ -227,11 +254,28 @@ public sealed class AutoMixer
             int w = _winner[o];
             if (_winnerHold[o] > 0) _winnerHold[o]--;
             bool wStale = w < 0 || w >= n || !inputs[w].GetRoute(o) || inputs[w].IsPriority;
-            if (wStale || (challenger != w && _winnerHold[o] <= 0
-                           && _env[challenger] > _env[w] * HandoffHysteresis))
+            if (wStale)
             {
+                // Nobody holds the bus, so there is nothing to protect: take it at once.
                 w = challenger;
                 _winnerHold[o] = HandoffHoldTicks;
+                _challenger[o] = -1;
+            }
+            else if (challenger != w && _winnerHold[o] <= 0
+                     && _env[challenger] > _env[w] * HandoffHysteresis)
+            {
+                if (_challenger[o] != challenger) { _challenger[o] = challenger; _challengeTicks[o] = 0; }
+                float ratio = _env[w] > 0f ? _env[challenger] / _env[w] : float.MaxValue;
+                if (++_challengeTicks[o] >= RequiredSustainTicks(ratio))
+                {
+                    w = challenger;
+                    _winnerHold[o] = HandoffHoldTicks;
+                    _challenger[o] = -1;
+                }
+            }
+            else
+            {
+                _challenger[o] = -1;
             }
             _winner[o] = w;
             int leader = w;
