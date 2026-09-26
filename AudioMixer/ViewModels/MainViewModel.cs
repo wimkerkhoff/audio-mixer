@@ -226,24 +226,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         };
         _meterTimer.Start();
 
-        // Records by default. The service nobody prepared for is the one worth having, which is the
-        // same argument as the session record — except audio is four orders of magnitude bigger, so it
-        // comes with a length cap and a disk guard rather than only an age rule. Delayed so devices
-        // have bound: starting at construction would record whichever strips happened to be ready.
-        if (!_isReplaying)
-        {
-            var autoRecord = new DispatcherTimer(DispatcherPriority.Background)
-            {
-                Interval = TimeSpan.FromSeconds(12),
-            };
-            autoRecord.Tick += (_, _) =>
-            {
-                autoRecord.Stop();
-                if (!_recording) ToggleRecording();
-            };
-            autoRecord.Start();
-        }
-
         TryLoadInitialPreset();
 
         // AFTER the preset: SessionAggregator sizes itself from Channels.Count, and before the preset
@@ -253,6 +235,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (!_isReplaying)
         {
             _session = new SessionRecorder(_engine, Channels, Outputs) { Config = BuildSessionConfig };
+
+            // Records by default. The service nobody prepared for is the one worth having, which is
+            // the same argument as the session record — except audio is four orders of magnitude
+            // bigger, so it comes with a length cap and a disk guard rather than only an age rule.
+            // Right after the preset, not on a 12 s timer as before: that delay existed because only
+            // strips bound when Record started were ever recorded, and it lost the first 12 s of every
+            // session. A device that binds later now joins the recording (JoinRecording).
+            ToggleRecording();
         }
 
         StartReplayIfRequested();

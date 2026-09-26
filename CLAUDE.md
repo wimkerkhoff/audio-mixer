@@ -512,8 +512,8 @@ operator's own later judgement.
   device mid-recording joins with a silent lead-in. A strip-count change restarts the recording
   under a new stamp (it used to stop it for good, mixes included). A writer error stops that one
   recorder and raises `rec.failed` in Checks.
-- **A replay fixture must live in `analysis\keep\`** — `Prune()` runs at every record start (~12 s
-  after launch) and is top-level only. Both original golden baselines' WAVs were pruned at 42 days
+- **A replay fixture must live in `analysis\keep\`** — `Prune()` runs at every record start (at
+  launch) and is top-level only. Both original golden baselines' WAVs were pruned at 42 days
   old before anyone noticed.
 - **`decisions-<stamp>.csv` is the only record of what the automixer did**: every 100 ms, per bus the
   automix mode and leader, per mic the level and applied gain (the diag WAVs are pre-automix). 10 Hz
