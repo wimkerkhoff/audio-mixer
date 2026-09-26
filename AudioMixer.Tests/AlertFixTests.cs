@@ -19,7 +19,7 @@ public class AlertFixTests
                                      int side = 0, string? deviceId = "dev1",
                                      float speechDb = -24f, bool stale = false) =>
         new(i, label, device, routed, muted, priority, level, sinceData, sinceSound,
-            null, deviceId, side, speechDb, stale);
+            null, deviceId, side, speechDb, stale, LeadSpeechDb: speechDb);
 
     private static OutputHealth Bus(int i, bool device = true, bool muted = false,
                                     double sinceSound = 0, float volume = 100f) =>

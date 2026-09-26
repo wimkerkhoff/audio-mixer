@@ -184,13 +184,16 @@ lock-free; `InputChannel` ramps them within a buffer.
 - **Selection is level only**, with an unconditional **leader hold** (`HandoffHoldTicks` ~200 ms,
   `HandoffHysteresis` ~3 dB): a talker's pauses would otherwise hand the bus to a neighbour (finding
   1's "far mic wins"). Gate's hold can clip the first syllable of a fast interjection.
+- **A challenger must keep its margin** for a time set by how far ahead it is: ~500 ms at +3–6 dB,
+  ~250 ms at +6–10, ~100 ms beyond (`RequiredSustainTicks`), reset if the lead lapses. Within a few
+  dB the talker is between mics and either serves — on 2026-09-26 the top two sat a median 3.2 dB
+  apart and a room mic's median tenure was 0.4 s. It also stops a one-tick spike taking the bus (the
+  old known gap). Added 2026-09-26 from the decisions CSV at the operator's request, **before** a
+  labelled replay — the first capture replayed against it is its real test.
 - **Removed 2026-09-20:** Share (attenuated non-leaders, so one voice through several mics still
   combed), its strength slider, the "stable hand-off" switch, "Match lapel" and "Prefer natural" —
   all Anker-era; on matched DSP-free transmitters they could only hurt (finding 6). Flux-CV is still
   computed and still diagnostic: it rises on RF dropouts.
-- **Known gap**, pinned by `AutoMixerTests.ASingleTickSpikeCurrentlyDoesTakeTheBus`: one 10 ms tick
-  ~15 dB over the leader takes the bus (the margin clears instantly), muting the real talker for
-  200 ms under Gate. Fixing it is a selector change — labelled offline replay first.
 - **Flux-CV** (`InputChannel.CurrentFluxCv`): 512-pt FFT per voiced 512-sample window, **accumulated
   across capture buffers** — shared mode delivers ~480-frame buffers, so a per-buffer FFT almost never
   ran and the value froze (fixed 2026-07-26; `FluxEma` 0.01 for ~94 windows/s). Live scale ~0.35–0.5
@@ -204,9 +207,15 @@ lock-free; `InputChannel` ramps them within a buffer.
 - **Priority hangover** (`PriorityHoldTicks` ~1.2 s): the duck used to release in a presenter's
   sentence gaps (the 250 ms release needs ~575 ms to fall below −40) — measured 2026-08-30, 13
   hand-offs in 40 s; 0 after. The hold is **broken immediately** by a non-priority mic above
-  `PriorityBreakInRms` (~−50 dBFS) so an interjection is not swallowed — which only works when **no
-  room mic sits near the presenter** (one on his table read −28, louder than a real interjection
-  across the room at −43), and the margin is thin (a 15 ft mic's residual peaked −53.8).
+  `PriorityBreakInRms` (~−50 dBFS) **and** +6 dB over the lapel (`BreakInOverLapel`), so an
+  interjection is not swallowed. The absolute test alone fired on the presenter's own voice: on
+  2026-09-26, after a +9–12 dB endpoint raise, a room mic heard him at −35 (lapel −30), its residual
+  stayed over −50 as the lapel dipped under −40 in each pause, and the bus went lapel ↔ room mic ~48
+  times a minute (1.9/min at 06:40–06:55; room discussion also grew, unlabelled). In a pause both
+  envelopes decay together, so the presenter's residual stays under the lapel; a room talker reads 10–20 dB over the lapel's pickup of them, and
+  one the lapel hears nearly as well is carried by the lapel (always at unity). Placement still
+  matters: a mic on his own table (−28 vs a real interjection at −43) out-levels anyone else.
+  Same caveat as the sustain rule: built before a labelled replay.
 - **Split receivers**: one WASAPI endpoint, TX1 left / TX2 right. Bind it to two strips
   (`ChannelSource.Left`/`Right`); bound whole it reaches the bus hard-panned as one blended channel
   the automixer cannot arbitrate. Device claims are per **side** (`DeviceResolver.Claim`/`IsFree`,
@@ -264,6 +273,10 @@ lock-free; `InputChannel` ramps them within a buffer.
   it must be **reset after every gain change** — a median spanning one averages two rigs (a lapel read
   −40 while live at −21, and acting on it over-drove it to −3.8 dBFS peaks). Resync and changing a
   strip's split side reset it too. A peak meter cannot do this job: a DSP-free mic's crest is 20–45 dB.
+  A room mic's median is whoever it hears — with only the lapel talking it is the presenter across
+  the room (−41 on four healthy mics, 2026-09-26) — so Checks' level warning judges room mics from a
+  second histogram fed only after the mic has held the bus for 1 s (`LeadSpeechDb`); the priority
+  mic, being worn, is judged on its whole median. Diagnostics and `/state` still show the whole one.
 - **RF-link health** on the per-input log line: `rf=[lvl= voiced= silent= drops=]` — a dropping link
   shows exact-silence gaps mid-speech plus high flux-CV while voiced; raw counts only, classify later.
 - **`/state`** (`--state[=PORT]` / `AUDIOMIXER_STATE`, loopback, read-only): per channel levels,
@@ -471,7 +484,7 @@ operator's own later judgement.
 - **Underruns can be CPU starvation, not the mixer.** 2026-09-26: this i5-9400T sits at 88–100% CPU
   during a service (OBS ~32%, Zoom ~16%, audiodg ~11%; the mixer ~3%) and routed mics underran
   ~1/s each at Normal priority. Raising the process to **High** (live): 0 in the next 30 s, 1 in
-  6 min. The app now sets High at startup (`App.RaiseProcessPriority`, not in replay).
+  6 min. The app now sets High at startup (Normal under `--replay`; `--priority=` overrides both).
 - **The Realtek aux input (the wired lapel) runs Realtek capture effects** (`RtkRecMFX`/`RtkRecEFX`
   APOs registered, "audio enhancements" not disabled, 2026-09-26) — DSP ahead of the mixer on the
   priority mic, of unknown kind. The USB receivers carry none. Toggling enhancements restarts the
@@ -490,6 +503,15 @@ operator's own later judgement.
   deletes oldest-first below **20 GB free** when a recording starts, refuses to start below 15 GB and
   stops one in flight below 8 GB. Session records are never swept. **Split strips record mono** (the
   two channels are identical after the side split).
+- **A capture restart must not end a recording.** Until 2026-09-26 `InputChannel.Stop()` closed the
+  mic's diag WAV, and Stop runs on every watchdog recovery, Resync, device change and replug: one
+  Resync ended all seven diag files 8 minutes into a service while the UI said "recording". Now only
+  `Dispose` (strip removed) closes it, and every file of a stamp is kept aligned to wall-clock time:
+  `MixRecorder.PadToNow` writes an outage as silence on the restart path (capture/render stopped —
+  never from an audio thread), gaps under 0.5 s are left as drift, and a strip or bus that gets its
+  device mid-recording joins with a silent lead-in. A strip-count change restarts the recording
+  under a new stamp (it used to stop it for good, mixes included). A writer error stops that one
+  recorder and raises `rec.failed` in Checks.
 - **A replay fixture must live in `analysis\keep\`** — `Prune()` runs at every record start (~12 s
   after launch) and is top-level only. Both original golden baselines' WAVs were pruned at 42 days
   old before anyone noticed.

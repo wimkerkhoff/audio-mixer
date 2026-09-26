@@ -111,16 +111,40 @@ public sealed class InputChannel : IDisposable
     /// <summary>How long this strip's calibration has been accumulating, in ms — see the histogram.</summary>
     public long CalibrationAgeMs => _calibration.AgeMs;
 
-    public void ResetCalibration() => _calibration.Reset();
+    public void ResetCalibration()
+    {
+        _calibration.Reset();
+        _leadCalibration.Reset();
+    }
+
+    // The same histogram, fed only once this mic has held the bus for LeadSettleMs. A room mic's
+    // plain median is whoever it hears: with only the presenter talking on the lapel it is his voice
+    // from across the room, and the level rule called four healthy room mics "quiet" for a whole
+    // service (2026-09-26). While it leads, it is the closest mic to a talker, which is what its
+    // gain has to suit. The settle time drops the 0.1-0.3 s blips a presenter's pauses hand it.
+    private readonly CalibrationHistogram _leadCalibration = new();
+    public const long LeadSettleMs = 1000;
+
+    public CalibrationHistogram.Stats SnapshotLeadCalibration() => _leadCalibration.Snapshot();
 
     // True when the automixer is currently selecting this channel (gate winner / automix leader /
     // active priority mic) on any output it is routed to. Drives the per-input green "selected" LED.
     private bool _isAutoMixActive;
+    private long _activeSinceTicks;
     public bool IsAutoMixActive
     {
         get => Volatile.Read(ref _isAutoMixActive);
-        set => Volatile.Write(ref _isAutoMixActive, value);
+        set
+        {
+            if (value && !Volatile.Read(ref _isAutoMixActive))
+                Volatile.Write(ref _activeSinceTicks, Environment.TickCount64);
+            Volatile.Write(ref _isAutoMixActive, value);
+        }
     }
+
+    private bool HasSettledLead =>
+        Volatile.Read(ref _isAutoMixActive)
+        && Environment.TickCount64 - Volatile.Read(ref _activeSinceTicks) >= LeadSettleMs;
 
     private bool _isPriority;
     public bool IsPriority
@@ -239,14 +263,16 @@ public sealed class InputChannel : IDisposable
     /// correlation of exactly 1.0000 — so the second channel is a verbatim copy costing half the file.
     /// A Stereo strip on a genuinely stereo device keeps both channels, where they can differ.
     /// </summary>
-    public void StartAnalysisRecording(string path)
+    public void StartAnalysisRecording(string path, TimeSpan joinedLate = default)
     {
         StopAnalysisRecording();
         bool mono = (ChannelSource)Volatile.Read(ref _source) != ChannelSource.Stereo;
         Volatile.Write(ref _analysisMono, mono ? 1 : 0);
 
+        // Fully started (lead-in written) before it is published to the capture thread.
         var recorder = new MixRecorder();
-        recorder.Start(path, WaveFormat.CreateIeeeFloatWaveFormat(InternalSampleRate, mono ? 1 : InternalChannels));
+        recorder.Start(path, WaveFormat.CreateIeeeFloatWaveFormat(InternalSampleRate, mono ? 1 : InternalChannels),
+                       joinedLate);
         _analysisRecorder = recorder;
     }
 
@@ -278,6 +304,11 @@ public sealed class InputChannel : IDisposable
         rec?.Stop();
         rec?.Dispose();
     }
+
+    public bool HasAnalysisRecorder => _analysisRecorder != null;
+
+    /// <summary>Why this strip's diag recording stopped writing, or null.</summary>
+    public string? AnalysisRecordingFault => _analysisRecorder?.Fault;
 
     public InputChannel(int outputCount)
     {
@@ -359,6 +390,8 @@ public sealed class InputChannel : IDisposable
         Stop();
         _label = label;
         _ownsCapture = ownsCapture;
+        // The capture thread is stopped, so this is the one safe moment to write the outage as silence.
+        _analysisRecorder?.PadToNow();
 
         _captureFormat = capture.WaveFormat;
         Volatile.Write(ref _lastSoundTicks, Environment.TickCount64);
@@ -393,13 +426,12 @@ public sealed class InputChannel : IDisposable
         capture.StartRecording();
     }
 
+    // Deliberately leaves the diag recording open: Stop runs on every capture restart — the watchdog
+    // recovering a stall, Resync, a device change, a replug — and closing the file here ended that
+    // mic's recording for the rest of the session while the UI still said "recording" (all seven
+    // ended at a Resync on 2026-09-26). Start pads the outage with silence instead.
     public void Stop()
     {
-        // Outside the lock: WaveFileWriter finalises the RIFF header on Dispose, and a strip removed by
-        // a count change was previously left with a 0-frame header — a file that offline tools cannot
-        // read at all. Nothing else calls this on the way out; StopRecording only walks the SURVIVING
-        // channels, so the removed ones were simply abandoned.
-        StopAnalysisRecording();
         lock (_stateLock)
         {
             _captureActive = false;
@@ -428,7 +460,13 @@ public sealed class InputChannel : IDisposable
         }
     }
 
-    public void Dispose() => Stop();
+    // A strip removed by a count change must finalise its RIFF header here, or it is abandoned with a
+    // 0-frame header that offline tools cannot read at all.
+    public void Dispose()
+    {
+        Stop();
+        StopAnalysisRecording();
+    }
 
     // The flux EMA only means anything for one continuous signal, so clear it whenever the signal
     // changes underneath it — a stop, or a switch to the other transmitter of a split endpoint.
@@ -731,6 +769,7 @@ public sealed class InputChannel : IDisposable
             if (voiced) ComputeFlux(rented, read);
             TallyRfHealth(rmsNow, voiced);
             _calibration.Add(rmsNow, voiced);
+            if (HasSettledLead) _leadCalibration.Add(rmsNow, voiced);
 
             PushToOutputs(rented, read);
         }

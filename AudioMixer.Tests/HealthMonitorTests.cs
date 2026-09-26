@@ -12,9 +12,10 @@ public class HealthMonitorTests
     private static ChannelHealth Mic(int i, string label = "Anker",
         string? device = "ANKER #1 (Anker Soundsync)", bool routed = true, bool muted = false,
         bool priority = false, double levelDb = -25, double sinceData = 0, double sinceSound = 0,
-        string? bus = null, string? deviceId = null, int side = 0, float speechDb = float.NaN)
+        string? bus = null, string? deviceId = null, int side = 0, float speechDb = float.NaN,
+        float leadSpeechDb = float.NaN)
         => new(i, label, device, routed, muted, priority, levelDb, sinceData, sinceSound,
-               bus, deviceId, side, speechDb);
+               bus, deviceId, side, speechDb, false, leadSpeechDb);
 
     private static OutputHealth Bus(int i, string label = "OBS/Zoom", bool hasDevice = true,
         bool muted = false, double peakDb = -20, double sinceSound = 0, float volume = 100f)
@@ -209,7 +210,7 @@ public class HealthMonitorTests
     [InlineData(-18, false, null)]
     public void LevelFarFromTarget_Warns(double speech, bool expected, string? word)
     {
-        var a = HealthMonitor.Evaluate(Snap(ch: new[] { Mic(0, speechDb: (float)speech) }));
+        var a = HealthMonitor.Evaluate(Snap(ch: new[] { Mic(0, leadSpeechDb: (float)speech) }));
 
         Assert.Equal(expected, Has(a, ".level"));
         if (word != null) Assert.Contains(word, a.First(x => x.Id.EndsWith(".level")).Message);
@@ -223,7 +224,30 @@ public class HealthMonitorTests
     [Fact]
     public void LevelIsNotJudgedOnAMicThatIsNotLive() =>
         Assert.False(Has(HealthMonitor.Evaluate(
-            Snap(ch: new[] { Mic(0, routed: false, speechDb: -46f) })), ".level"));
+            Snap(ch: new[] { Mic(0, routed: false, speechDb: -46f, leadSpeechDb: -46f) })), ".level"));
+
+    /// <summary>
+    /// 2026-09-26: only the presenter spoke, on the lapel, and four room mics read -41 dBFS — his
+    /// voice from across the room — so Checks called them all quiet for the whole service.
+    /// </summary>
+    [Fact]
+    public void ARoomMicThatNeverHeldTheBus_IsNotCalledQuiet() =>
+        Assert.False(Has(HealthMonitor.Evaluate(
+            Snap(ch: new[] { Mic(0, speechDb: -41f) })), ".level"));
+
+    /// <summary>The lapel is worn: everything it hears is its wearer, so its whole median counts.</summary>
+    [Fact]
+    public void ThePriorityMic_IsJudgedOnItsWholeMedian() =>
+        Assert.True(Has(HealthMonitor.Evaluate(
+            Snap(ch: new[] { Mic(0, priority: true, speechDb: -46f) })), ".level"));
+
+    [Fact]
+    public void ARecordingThatStoppedWriting_Warns()
+    {
+        var snap = Snap() with { FailedRecordings = new[] { "Rode A1: IOException: disk full" } };
+        var a = HealthMonitor.Evaluate(snap);
+        Assert.Contains(a, x => x.Id == "rec.failed" && x.Message.Contains("Rode A1"));
+    }
 
     /// <summary>Has a device and is not muted, so every other output rule passes while nothing is heard.</summary>
     [Theory]

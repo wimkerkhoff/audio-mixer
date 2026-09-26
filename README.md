@@ -184,6 +184,7 @@ dotnet test AudioMixer.sln
 | `--shots[=DIR]` | Render every window to PNG and exit. Works with the workstation locked, where a screen grab returns the lock screen. |
 | `--log` | Write `%TEMP%\AudioMixer.log`, including WPF binding failures. Crashes are always logged regardless, to `%TEMP%\AudioMixer.crash.log`. |
 | `--open-all` | Open every window, so one run covers all their markup. |
+| `--priority=CLASS` | Process priority: `Idle`, `BelowNormal`, `Normal`, `AboveNormal` or `High`. Defaults to `High` (a PC running OBS and Zoom starves Normal-priority capture threads) and to `Normal` under `--replay`. |
 
 ## Architecture
 

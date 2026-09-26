@@ -58,7 +58,8 @@ public sealed record ChannelHealth(
     string? DeviceId = null,
     int Side = 0,                 // 0 Stereo, 1 Left, 2 Right — see ChannelSource
     float SpeechDb = float.NaN,   // settled calibration median; NaN until enough voiced buffers
-    bool CalibrationStale = false);
+    bool CalibrationStale = false,
+    float LeadSpeechDb = float.NaN); // the same, only while this mic held the bus — see InputChannel
 
 public sealed record OutputHealth(
     int Index,
@@ -77,7 +78,8 @@ public sealed record HealthSnapshot(
     IReadOnlyList<OutputHealth> Outputs,
     bool IsReplaying,
     bool VbCableInstalled = true,
-    double SingingSeconds = 0);
+    double SingingSeconds = 0,
+    IReadOnlyList<string>? FailedRecordings = null);  // "label: reason", while recording is on
 
 /// <summary>
 /// The productised version of the human-in-the-loop these sessions have needed: an operator watching
@@ -228,10 +230,14 @@ public static class HealthMonitor
         }
 
         // Level, the fault that ran a whole meeting unnoticed. Phrased as something a volunteer can
-        // do — they cannot act on a number, and the fix is never in this app.
-        foreach (var c in live.Where(c => !float.IsNaN(c.SpeechDb) && !c.CalibrationStale))
+        // do — they cannot act on a number, and the fix is never in this app. The priority mic is
+        // worn, so all it hears is its wearer; a room mic is judged only from the time it held the
+        // bus, since otherwise it is measuring a talker across the room (see InputChannel).
+        foreach (var c in live.Where(c => !c.CalibrationStale))
         {
-            double off = c.SpeechDb - TargetSpeechDb;
+            double speech = c.IsPriority ? c.SpeechDb : c.LeadSpeechDb;
+            if (double.IsNaN(speech)) continue;
+            double off = speech - TargetSpeechDb;
             if (Math.Abs(off) < LevelToleranceDb) continue;
             bool quiet = off < 0;
             alerts.Add(new HealthAlert($"in{c.Index}.level", AlertSeverity.Warning,
@@ -239,6 +245,15 @@ public static class HealthMonitor
                     ? $"{c.Label} is quiet. Speech is {-off:F0} dB below target."
                     : $"{c.Label} is hot. Speech is {off:F0} dB above target and may distort.",
                 quiet ? "Check the transmitter is on and its gain is set" : "Turn the transmitter gain down"));
+        }
+
+        // A recorder that hit a write error stops itself rather than throwing into the audio thread;
+        // without this the UI would go on saying "recording" over a file that stopped growing.
+        if (s.FailedRecordings is { Count: > 0 } failed)
+        {
+            alerts.Add(new HealthAlert("rec.failed", AlertSeverity.Warning,
+                $"Recording stopped for {string.Join("; ", failed)}.",
+                "Check free disk space, then press Record twice"));
         }
 
         // Two strips sharing one endpoint must take opposite sides of a split receiver. Left on Stereo

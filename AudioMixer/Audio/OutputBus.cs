@@ -65,6 +65,9 @@ public sealed class OutputBus : IDisposable
     public void Start(AudioDeviceInfo deviceInfo, IEnumerable<ISampleProvider> inputs)
     {
         Stop();
+        // Nothing pulls the graph while the bus is down, so an unplugged output left its outage out of
+        // the mix file; write it as silence before the render thread resumes writing.
+        _recorder?.PadToNow();
         AudioLog.Write($"OutputBus.Start device='{deviceInfo.FriendlyName}'");
         var device = deviceInfo.Resolve()
             ?? throw new InvalidOperationException($"Render device not found: {deviceInfo.FriendlyName}");

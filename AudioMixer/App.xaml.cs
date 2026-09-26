@@ -54,7 +54,10 @@ public partial class App : Application
         _showListener = new Thread(ShowListenerLoop) { IsBackground = true, Name = "SingleInstanceListener" };
         _showListener.Start();
 
-        if (ReplayOptions.Current == null) RaiseProcessPriority();
+        SetProcessPriority(_priorityOverride
+            ?? (ReplayOptions.Current == null
+                ? System.Diagnostics.ProcessPriorityClass.High
+                : System.Diagnostics.ProcessPriorityClass.Normal));
 
         // Must be enabled before any window is created, or bindings resolved during startup are missed.
         if (AudioLog.Enabled) Services.BindingErrorListener.Enable();
@@ -65,19 +68,26 @@ public partial class App : Application
 
     // This PC runs OBS and Zoom at ~100% CPU during a service; at Normal priority the capture threads
     // lost their turn often enough to underrun ~1/s per routed mic. At High: 0 in 30 s (2026-09-26).
-    // The mixer itself uses ~3% CPU, so it cannot starve them in return. Not for replay: a sandbox
-    // must never compete with the live mixer beside it.
-    private static void RaiseProcessPriority()
+    // The mixer itself uses ~3% CPU, so it cannot starve them in return. Replay defaults to Normal: a
+    // sandbox must never compete with the live mixer beside it. --priority overrides either, for
+    // testing starvation on purpose. RealTime is refused — it can starve the OS's own input threads.
+    private static System.Diagnostics.ProcessPriorityClass? _priorityOverride;
+
+    internal static System.Diagnostics.ProcessPriorityClass? ParsePriority(string s) =>
+        Enum.TryParse<System.Diagnostics.ProcessPriorityClass>(s, ignoreCase: true, out var p)
+        && Enum.IsDefined(p) && p != System.Diagnostics.ProcessPriorityClass.RealTime
+            ? p : null;
+
+    private static void SetProcessPriority(System.Diagnostics.ProcessPriorityClass priority)
     {
         try
         {
-            System.Diagnostics.Process.GetCurrentProcess().PriorityClass =
-                System.Diagnostics.ProcessPriorityClass.High;
-            AudioLog.Write("Process priority set to High.");
+            System.Diagnostics.Process.GetCurrentProcess().PriorityClass = priority;
+            AudioLog.Write($"Process priority set to {priority}.");
         }
         catch (Exception ex)
         {
-            AudioLog.Write($"Could not raise process priority: {ex.GetType().Name}: {ex.Message}");
+            AudioLog.Write($"Could not set process priority: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -117,6 +127,8 @@ public partial class App : Application
     //                    replay fixture hermetic; see tools/replay-baseline.ps1
     //   --speed=N        replay rate multiplier (batch runs); --loop  replay repeatedly
     //   --shots[=DIR]    render every window to PNG and exit (works with the workstation locked)
+    //   --priority=CLASS process priority: Idle, BelowNormal, Normal, AboveNormal or High (default
+    //                    High live, Normal under --replay)
     private static void ApplyCliFlags(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
@@ -125,6 +137,12 @@ public partial class App : Application
             if (a.Equals("--log", StringComparison.OrdinalIgnoreCase))
             {
                 AudioLog.Enabled = true;
+            }
+            else if (a.StartsWith("--priority=", StringComparison.OrdinalIgnoreCase))
+            {
+                _priorityOverride = ParsePriority(a[11..]);
+                if (_priorityOverride == null)
+                    AudioLog.Write($"Ignoring {a}: expected Idle, BelowNormal, Normal, AboveNormal or High.");
             }
             else if (a.Equals("--replay", StringComparison.OrdinalIgnoreCase) ||
                      a.StartsWith("--replay=", StringComparison.OrdinalIgnoreCase))

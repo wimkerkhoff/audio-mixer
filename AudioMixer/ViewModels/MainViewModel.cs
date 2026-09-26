@@ -52,6 +52,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         Path.Combine(RecordingRoot, "analysis"), Path.Combine(RecordingRoot, "recordings"));
 
     private DateTime _recordingStarted;
+    private string? _recordingStamp;
     private bool _recording;
     private DecisionTrack? _decisions;
     public bool IsRecording => _recording;
@@ -635,7 +636,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.SelectedDevice?.Id,
                 (int)vm.Source,
                 cal.SpeechDb,
-                cal.IsStale));
+                cal.IsStale,
+                input.SnapshotLeadCalibration().SpeechDb));
+        }
+
+        List<string>? failedRecordings = null;
+        if (_recording)
+        {
+            for (int i = 0; i < Channels.Count; i++)
+                if (_engine.Inputs[i].AnalysisRecordingFault is { } f)
+                    (failedRecordings ??= new()).Add($"{Channels[i].DisplayName}: {f}");
+            for (int o = 0; o < Outputs.Length; o++)
+                if (_recorders[o].Fault is { } f)
+                    (failedRecordings ??= new()).Add($"{Outputs[o].DisplayName}: {f}");
         }
 
         var outputs = new List<OutputHealth>(Outputs.Length);
@@ -654,7 +667,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 vm.SelectedDevice == null || vm.IsPlaying));
         }
 
-        return new HealthSnapshot(channels, outputs, IsReplaying, _vbCableInstalled, SingingSeconds);
+        return new HealthSnapshot(channels, outputs, IsReplaying, _vbCableInstalled, SingingSeconds,
+                                  failedRecordings);
     }
 
     private readonly long[] _lastOutputSound = new long[AudioEngine.OutputCount];
@@ -953,11 +967,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // the end 33 ms later, throwing on the dispatcher. App's handler records the crash but does
         // not mark it handled, so the process exited mid-service. Stopping first also gives every
         // removed strip's diag WAV a finalised header instead of abandoning it.
-        if (IsRecording && count != Channels.Count)
-        {
-            StopRecording();
-            StatusText = $"Recording stopped. Changing to {count} mic strips starts a new one.";
-        }
+        bool restartRecording = IsRecording && count != Channels.Count;
+        if (restartRecording) StopRecording();
 
         bool prevAutosave = _suppressAutosave;
         bool prevRebuild = _suppressRebuild;
@@ -992,6 +1003,39 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _suppressRebuild = prevRebuild;
         }
         RebuildAvailableDevices();
+
+        // The status line promised a new recording here and nothing started one: adding a strip
+        // mid-service silently ended every recording, the stream's mix included.
+        if (restartRecording) ToggleRecording();
+    }
+
+    /// <summary>
+    /// A strip or bus that gets its device while recording joins the session's recording, with its
+    /// lead-in written as silence so it lines up with the rest of the stamp. Before, only what had a
+    /// device at the moment Record was pressed was ever recorded.
+    /// </summary>
+    private void JoinRecording(int inputIndex)
+    {
+        if (!_recording || _recordingStamp == null) return;
+        var input = _engine.Inputs[inputIndex];
+        if (input.HasAnalysisRecorder) return;
+        input.StartAnalysisRecording(
+            Path.Combine(RecordingRoot, "analysis", $"diag-input{inputIndex + 1}-{_recordingStamp}.wav"),
+            DateTime.Now - _recordingStarted);
+    }
+
+    private void JoinRecordingOutput(int index)
+    {
+        if (!_recording || _recordingStamp == null) return;
+        var rec = _recorders[index];
+        // A recorder that faulted keeps its Fault until the next Start: don't overwrite its file.
+        if (rec.IsRecording || rec.Fault != null) return;
+        var bus = _engine.Outputs[index];
+        rec.Start(Path.Combine(RecordingRoot, "recordings",
+                               $"mix-{OutputViewModel.Tag(index)}-{_recordingStamp}.wav"),
+                  bus.InternalFormat, DateTime.Now - _recordingStarted);
+        bus.Recorder = rec;
+        Outputs[index].SetRecording(true);
     }
 
     // User-triggered actions all report failure the same way: a status-bar line naming the action.
@@ -1008,6 +1052,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             _engine.SetInputDevice(index, device);
             StatusText = device == null ? $"Input {index + 1}: (none)" : $"Input {index + 1}: {device.FriendlyName}";
+            if (device != null) JoinRecording(index);
         });
         if (!_suppressRebuild) RebuildAvailableDevices();
     }
@@ -1030,6 +1075,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             _engine.SetOutputDevice(index, device);
             StatusText = device == null ? $"Output {tag}: (none)" : $"Output {tag}: {device.FriendlyName}";
+            if (device != null) JoinRecordingOutput(index);
         });
         if (!_suppressRebuild) RebuildAvailableDevices();
     }
@@ -1560,6 +1606,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
             _recording = true;
             _recordingStarted = DateTime.Now;
+            _recordingStamp = stamp;
             _session?.Action("recording started");
             RaiseRecordingState();
             StatusText = $"Recording {inputs.Length} mics and {outputs.Length} buses.";
