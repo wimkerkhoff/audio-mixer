@@ -10,7 +10,7 @@ public sealed class OutputBus : IDisposable
     public const int InternalChannels = InputChannel.InternalChannels;
 
     private readonly object _lock = new();
-    private WasapiOut? _output;
+    private IWavePlayer? _output;
     private TapSampleProvider? _tap;
     private VolumeSampleProvider? _volumeProvider;
     private BusLeveler? _leveler;
@@ -110,25 +110,7 @@ public sealed class OutputBus : IDisposable
             output = new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: true, latency: 200);
             output.Init(source);
         }
-        output.PlaybackStopped += (_, e) =>
-        {
-            if (e.Exception != null)
-                AudioLog.Write($"OutputBus playback STOPPED with error: {e.Exception}");
-            else
-                AudioLog.Write($"OutputBus playback stopped (no error)");
-
-            // PeakMeter has no decay, so without this the tap keeps its last peak forever and the
-            // health snapshot goes on seeing a bus that is "producing sound" — a dead bus stayed
-            // invisible to Checks. Clearing _output also makes IsPlaying tell the truth, which is
-            // what the new health rule reads. Device *removal* was already covered by DeviceWatcher;
-            // this is the stopped-stream-on-a-present-device case (format renegotiation, another app
-            // taking the endpoint, a USB headset changing rate).
-            lock (_lock)
-            {
-                _tap?.Meter.Reset();
-                _output = null;
-            }
-        };
+        output.PlaybackStopped += (_, e) => OnPlaybackStopped(output, e.Exception);
         output.Play();
         AudioLog.Write($"  Play() called; PlaybackState={output.PlaybackState}");
 
@@ -138,6 +120,42 @@ public sealed class OutputBus : IDisposable
             _volumeProvider = volume;
             _leveler = leveler;
             _output = output;
+        }
+    }
+
+    /// <summary>Test seam: installs a player the way <see cref="Start"/> does, without a device.</summary>
+    internal void AdoptPlayer(IWavePlayer player)
+    {
+        lock (_lock) _output = player;
+    }
+
+    internal void OnPlaybackStopped(IWavePlayer player, Exception? error)
+    {
+        lock (_lock)
+        {
+            // PlaybackStopped arrives posted to the UI thread, i.e. AFTER a restart has installed
+            // the next player. Acting on the old one's event cleared the live player: both buses
+            // reported "stopped" (Critical) for a whole service while playing at full rate
+            // (2026-09-26), and the next Stop() could no longer dispose the orphan.
+            if (!ReferenceEquals(player, _output))
+            {
+                AudioLog.Write("OutputBus previous player stopped (expected after a restart)");
+                return;
+            }
+
+            if (error != null)
+                AudioLog.Write($"OutputBus playback STOPPED with error: {error}");
+            else
+                AudioLog.Write("OutputBus playback stopped (no error)");
+
+            // PeakMeter has no decay, so without this the tap keeps its last peak forever and the
+            // health snapshot goes on seeing a bus that is "producing sound" — a dead bus stayed
+            // invisible to Checks. Clearing _output also makes IsPlaying tell the truth, which is
+            // what the health rule reads. Device *removal* is covered by DeviceWatcher; this is the
+            // stopped-stream-on-a-present-device case (format renegotiation, another app taking
+            // the endpoint, a USB headset changing rate).
+            _tap?.Meter.Reset();
+            _output = null;
         }
     }
 
@@ -154,7 +172,7 @@ public sealed class OutputBus : IDisposable
 
     public void Stop()
     {
-        WasapiOut? prevOutput;
+        IWavePlayer? prevOutput;
         lock (_lock)
         {
             prevOutput = _output;
