@@ -54,11 +54,31 @@ public partial class App : Application
         _showListener = new Thread(ShowListenerLoop) { IsBackground = true, Name = "SingleInstanceListener" };
         _showListener.Start();
 
+        if (ReplayOptions.Current == null) RaiseProcessPriority();
+
         // Must be enabled before any window is created, or bindings resolved during startup are missed.
         if (AudioLog.Enabled) Services.BindingErrorListener.Enable();
 
         base.OnStartup(e);
         CreateWindows();
+    }
+
+    // This PC runs OBS and Zoom at ~100% CPU during a service; at Normal priority the capture threads
+    // lost their turn often enough to underrun ~1/s per routed mic. At High: 0 in 30 s (2026-09-26).
+    // The mixer itself uses ~3% CPU, so it cannot starve them in return. Not for replay: a sandbox
+    // must never compete with the live mixer beside it.
+    private static void RaiseProcessPriority()
+    {
+        try
+        {
+            System.Diagnostics.Process.GetCurrentProcess().PriorityClass =
+                System.Diagnostics.ProcessPriorityClass.High;
+            AudioLog.Write("Process priority set to High.");
+        }
+        catch (Exception ex)
+        {
+            AudioLog.Write($"Could not raise process priority: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     // A crash used to leave nothing behind but a WER bucket: there was no handler anywhere, AudioLog

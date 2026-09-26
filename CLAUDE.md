@@ -468,6 +468,14 @@ operator's own later judgement.
   threads is the recorders' buffered writes (0 underruns). A crash-proof header needs a background
   writer per recorder fed by a queue (attempt parked in `git stash`). `WaveFileWriter` is also not
   thread-safe — writes are serialised by the recorder's lock.
+- **Underruns can be CPU starvation, not the mixer.** 2026-09-26: this i5-9400T sits at 88–100% CPU
+  during a service (OBS ~32%, Zoom ~16%, audiodg ~11%; the mixer ~3%) and routed mics underran
+  ~1/s each at Normal priority. Raising the process to **High** (live): 0 in the next 30 s, 1 in
+  6 min. The app now sets High at startup (`App.RaiseProcessPriority`, not in replay).
+- **The Realtek aux input (the wired lapel) runs Realtek capture effects** (`RtkRecMFX`/`RtkRecEFX`
+  APOs registered, "audio enhancements" not disabled, 2026-09-26) — DSP ahead of the mixer on the
+  priority mic, of unknown kind. The USB receivers carry none. Toggling enhancements restarts the
+  endpoint, so the lapel drops for a watchdog restart: never mid-service.
 
 ### Recording & measurement
 
