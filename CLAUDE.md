@@ -188,8 +188,12 @@ lock-free; `InputChannel` ramps them within a buffer.
   ~250 ms at +6–10, ~100 ms beyond (`RequiredSustainTicks`), reset if the lead lapses. Within a few
   dB the talker is between mics and either serves — on 2026-09-26 the top two sat a median 3.2 dB
   apart and a room mic's median tenure was 0.4 s. It also stops a one-tick spike taking the bus (the
-  old known gap). Added 2026-09-26 from the decisions CSV at the operator's request, **before** a
-  labelled replay — the first capture replayed against it is its real test.
+  old known gap). Added 2026-09-26 from the decisions CSV at the operator's request, before a
+  replay. **Replayed since** (with the break-in change) on the 9.5 min `20260926-073500` capture,
+  old vs new code on identical audio: hand-offs 41.4 → 19.5/min, room-mic blips under 0.5 s
+  105 → 36, and all 10 room talkers the old code held ≥ 1.5 s still got a room mic (median +0.06 s
+  later, worst +0.77 s). The replay matched the live run (184 vs 182). Unlabelled: whether the
+  remaining lapel ↔ room switches are real speech is still unknown.
 - **Removed 2026-09-20:** Share (attenuated non-leaders, so one voice through several mics still
   combed), its strength slider, the "stable hand-off" switch, "Match lapel" and "Prefer natural" —
   all Anker-era; on matched DSP-free transmitters they could only hurt (finding 6). Flux-CV is still
@@ -215,7 +219,7 @@ lock-free; `InputChannel` ramps them within a buffer.
   envelopes decay together, so the presenter's residual stays under the lapel; a room talker reads 10–20 dB over the lapel's pickup of them, and
   one the lapel hears nearly as well is carried by the lapel (always at unity). Placement still
   matters: a mic on his own table (−28 vs a real interjection at −43) out-levels anyone else.
-  Same caveat as the sustain rule: built before a labelled replay.
+  Replayed with the sustain rule (numbers there); lapel ↔ Rode B1 fell 161 → 71 in 9.5 min.
 - **Split receivers**: one WASAPI endpoint, TX1 left / TX2 right. Bind it to two strips
   (`ChannelSource.Left`/`Right`); bound whole it reaches the bus hard-panned as one blended channel
   the automixer cannot arbitrate. Device claims are per **side** (`DeviceResolver.Claim`/`IsFree`,

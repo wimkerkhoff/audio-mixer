@@ -47,12 +47,14 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
   between sessions, and when it is off the mix chops (finding 8). Candidate: derive speech/silence
   from each channel's own settled calibration median. Needs a cold-start rule and a reset after gain
   changes.
-- 🔬 **Validate the 2026-09-26 selector changes offline.** Margin-scaled sustain (answers the
-  near-equal chatter: 72 switches in 179 s on 2026-08-30, a 0.4 s median tenure on 2026-09-26, and
-  the single-tick spike) and the lapel-relative break-in were built from decisions CSVs, not a
-  labelled replay. Replay a per-mic capture of a discussion with the operator's "sounded bad at …"
-  notes, old commit vs new: switches/min, tenure, first-syllable loss on real interjections. Watch
-  for a genuine questioner waiting ~500 ms when two mics hear them within 6 dB.
+- 🔬 **Label-check the 2026-09-26 selector changes.** An unlabelled old-vs-new replay of
+  `20260926-073500` halved hand-offs (41.4 → 19.5/min) without losing a sustained room talker
+  (CLAUDE.md, Automixer). Still owed: a discussion captured with the operator's "sounded bad at …"
+  notes, to tell whether the remaining lapel ↔ room switches (~70 in 9.5 min, room mic +8.6 dB over
+  a lapel at −51) are real speech, and whether any questioner audibly waited (worst +0.77 s).
+- 🔬 **Room floors now sit at the silence threshold.** After the +9–12 dB endpoint raise the Rode
+  floors read −56 to −59 against `SilenceFloorRms` −55, and a room mic that takes the bus after the
+  lapel's hold expires reads a median −47.6: room tone competing. Part of "Relative thresholds".
 - 🔬 **Keep or remove flux-CV.** It no longer selects anything, and costs an FFT per voiced window per
   mic on the capture thread. Its remaining claim — that it rises on RF dropouts — was measured on the
   Anker links only. If a Rode session shows `fluxCv` tracking `drops=`, keep it as a diagnostic;
