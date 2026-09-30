@@ -83,9 +83,14 @@ public sealed class OutputPreset
     ///
     /// A real function rather than a line inside ApplyPreset, because a migration that is only
     /// exercised by loading a preset is only tested by someone noticing the mixer misbehaving.
+    ///
+    /// Version 1 (2026-09-21) postdates that, so a versioned preset stores the enum as it is — and
+    /// 2 means Lapel since 2026-09-30. Only an unversioned preset gets the old mapping.
     /// </summary>
-    public static Audio.AutoMixMode MigrateMode(int stored) =>
-        stored <= 0 ? Audio.AutoMixMode.Off : Audio.AutoMixMode.Gate;
+    public static Audio.AutoMixMode MigrateMode(int stored, int presetVersion) =>
+        stored <= 0 ? Audio.AutoMixMode.Off
+        : presetVersion >= 1 && stored == (int)Audio.AutoMixMode.Lapel ? Audio.AutoMixMode.Lapel
+        : Audio.AutoMixMode.Gate;
 
     public string? CustomLabel { get; set; }
     public string? DeviceId { get; set; }

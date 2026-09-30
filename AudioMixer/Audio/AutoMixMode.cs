@@ -17,4 +17,11 @@ public enum AutoMixMode
     /// copy of a voice reaches the bus.
     /// </summary>
     Gate = 1,
+
+    /// <summary>
+    /// The priority lapel alone: every other routed mic is off, however loud, so room noise never
+    /// reaches the bus while one person teaches. Sustained speech on a room mic switches the buses
+    /// to Gate (Q&amp;A) by itself. With no routed, unmuted priority mic it behaves as Gate.
+    /// </summary>
+    Lapel = 2,
 }

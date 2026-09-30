@@ -10,8 +10,8 @@ namespace AudioMixer.Tests;
 /// Everything it decides comes from per-channel level, routing and the priority flag, none of which
 /// needs audio hardware; <see cref="InputChannel.InjectLevelsForTest"/> is the one seam.
 ///
-/// Levels are linear RMS. Landmarks: SilenceFloorRms 0.0018 (~−55 dBFS), PriorityBreakInRms 0.0032
-/// (~−50), PriorityActiveRms 0.01 (~−40).
+/// Levels are linear RMS. Landmarks: SilenceFloorRms 0.0018 (~−55 dBFS), PriorityBreakInRms 0.0056
+/// (~−45), PriorityActiveRms 0.01 (~−40).
 /// </summary>
 public class AutoMixerTests
 {
@@ -366,10 +366,10 @@ public class AutoMixerTests
     /// The 2026-08-30 fix: the duck used to be recomputed bare each tick, so an ordinary sentence gap
     /// released it and handed the bus to a room mic — measured at 13 hand-offs in 40 s.
     ///
-    /// Reaching the hangover at all takes care. The envelope's release is 250 ms, so after the lapel
+    /// Reaching the held floor at all takes care. The envelope's release is 250 ms, so after the lapel
     /// stops the duck stays up on the envelope ALONE for ~40 ticks before `priorityActive` goes false;
-    /// a test that only covers those ticks passes without the hangover code ever running. (This test
-    /// did exactly that until coverage showed the branch at `_priorityHold[o]--` unexecuted.) So tick
+    /// a test that only covers those ticks passes without the floor-holding code ever running. (This
+    /// test did exactly that until coverage showed the old hangover branch unexecuted.) So tick
     /// past the release first, and only then assert.
     /// </summary>
     [Fact]
@@ -389,10 +389,13 @@ public class AutoMixerTests
         Assert.Equal(0f, rig[1].GetAutoMixGain(0));
     }
 
-    /// <summary>...and it does eventually let go, or an unattended open lapel would duck the room off
-    /// the stream for the rest of the service.</summary>
+    /// <summary>
+    /// 2026-09-27: after the old 1.2 s hangover the loudest room mic took the bus at once, and in a
+    /// 45-minute study every one of 94 such moments was noise, the presenter or unclear — paper
+    /// mostly. A pause of any length now stays the lapel's while the room makes only noise.
+    /// </summary>
     [Fact]
-    public void OnceTheHangoverExpiresTheRoomComesBack()
+    public void RoomNoiseInALongPauseNeverTakesTheLapelsFloor()
     {
         var rig = Rig(2);
         rig[0].IsPriority = true;
@@ -401,19 +404,47 @@ public class AutoMixerTests
         var mix = Gated(channels: 2);
         Run(mix, rig);
 
-        rig[0].InjectLevelsForTest(0f);
-        Run(mix, rig, 80 + 130);               // release, then past the full 120-tick hold
-
-        Assert.Equal(1f, rig[1].GetAutoMixGain(0));
-        Assert.Equal(1, mix.ActiveInput(0));
+        rig[0].InjectLevelsForTest(0f);         // a 10 s pause
+        rig[1].InjectLevelsForTest(0.004f);     // rustle at -48: over the silence floor, under break-in
+        for (int t = 0; t < 1000; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+        }
     }
 
     /// <summary>
-    /// The hold must break for a real interjection, or at hard-mute depth it would swallow one
-    /// entirely. A room mic over PriorityBreakInRms ends the duck immediately.
+    /// The four labelled coughs reached a room mic at -49 to -53 (smoothed). NOT covered: a cough
+    /// right at a mic — the break-in reads the smoothed level, whose 250 ms release carries a burst
+    /// over ~-35 past BreakInSustainTicks.
     /// </summary>
     [Fact]
-    public void ALoudInterjectionBreaksTheHeldDuck()
+    public void ACoughAcrossTheRoomDoesNotBreakIn()
+    {
+        var rig = Rig(2);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.05f);
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+        rig[0].InjectLevelsForTest(0f);
+        Run(mix, rig, 200);
+
+        rig[1].InjectLevelsForTest(0.004f);     // -48 for 600 ms
+        Run(mix, rig, 60);
+        rig[1].InjectLevelsForTest(0f);
+        for (int t = 0; t < 300; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+        }
+    }
+
+    /// <summary>
+    /// A real interjection must still get through, or at hard-mute depth the floor would swallow it —
+    /// and it cannot be instant, which is the price: about the first 0.4 s of the question.
+    /// </summary>
+    [Fact]
+    public void ASustainedInterjectionBreaksInAfterAboutFourHundredMilliseconds()
     {
         var rig = Rig(2);
         rig[0].IsPriority = true;
@@ -423,11 +454,50 @@ public class AutoMixerTests
         Run(mix, rig);
 
         rig[0].InjectLevelsForTest(0f);
-        rig[1].InjectLevelsForTest(0.20f);      // someone speaks up
-        Run(mix, rig, 200);
+        Run(mix, rig, 100);                     // the presenter's pause (his envelope falls first)
+        rig[1].InjectLevelsForTest(0.03f);      // someone speaks up at -30
+        int took = TickUntilWinner(mix, rig, 1, max: 200);
 
-        Assert.Equal(1, mix.ActiveInput(0));
+        Assert.InRange(took, 35, 60);
         Assert.Equal(1f, rig[1].GetAutoMixGain(0));
+    }
+
+    /// <summary>...so an unattended open lapel still cannot lock the room out for the service: any
+    /// talker breaks in, however long ago the lapel last spoke.</summary>
+    [Fact]
+    public void AnIdleLapelStillLetsARoomTalkerIn()
+    {
+        var rig = Rig(2);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.05f);      // a bump
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+        rig[0].InjectLevelsForTest(0f);
+        Run(mix, rig, 6000);                    // a minute of nothing
+
+        rig[1].InjectLevelsForTest(0.03f);
+        Assert.NotEqual(0, TickUntilWinner(mix, rig, 1, max: 100));
+    }
+
+    /// <summary>
+    /// Muting is how an operator leaves the lapel out of a meeting. It must give up the floor at once,
+    /// or the room would run behind a 0.4 s break-in for the rest of the service.
+    /// </summary>
+    [Fact]
+    public void MutingTheLapelGivesTheRoomBackAtOnce()
+    {
+        var rig = Rig(2);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.05f);
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+
+        rig[0].Muted = true;
+        rig[0].InjectLevelsForTest(0f);         // the level is measured after the mute gate
+        Run(mix, rig, 60);                      // let the lapel's envelope fall
+        rig[1].InjectLevelsForTest(0.004f);     // a quiet talker, under break-in
+
+        Assert.InRange(TickUntilWinner(mix, rig, 1, max: 10), 1, 10);
     }
 
     /// <summary>
@@ -452,6 +522,121 @@ public class AutoMixerTests
             mix.Tick(rig);
             Assert.Equal(0f, rig[1].GetAutoMixGain(0));
         }
+    }
+
+    // --- Q&A: the lapel earns the bus back -------------------------------------------------------------
+
+    /// <summary>A room talker holding the bus in Q&A, and the lapel at unity beside them.</summary>
+    private static (AutoMixer, InputChannel[]) RoomTalkerHoldsTheBus()
+    {
+        var rig = Rig(2);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.05f);
+        var mix = Gated(channels: 2);
+        Run(mix, rig);
+        rig[0].InjectLevelsForTest(0f);
+        Run(mix, rig, 100);
+        rig[1].InjectLevelsForTest(0.056f);     // a questioner at -25
+        Assert.NotEqual(0, TickUntilWinner(mix, rig, 1, max: 100));
+        return (mix, rig);
+    }
+
+    /// <summary>
+    /// 2026-09-27: the presenter's "mm-hm" during a question, or his lapel hearing the questioner,
+    /// crossed PriorityActiveRms and cut the questioner off ~40 times a minute. A lapel quieter than
+    /// the talker is not the presenter taking over.
+    /// </summary>
+    [Fact]
+    public void AQuieterLapelDoesNotCutOffTheRoomTalker()
+    {
+        var (mix, rig) = RoomTalkerHoldsTheBus();
+        rig[0].InjectLevelsForTest(0.018f);     // -35: "active", but 10 dB under the talker
+        for (int t = 0; t < 200; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(1f, rig[1].GetAutoMixGain(0));
+            Assert.Equal(1f, rig[0].GetAutoMixGain(0));   // the "mm-hm" still airs, via the lapel
+        }
+    }
+
+    [Fact]
+    public void ThePresentersAnswerTakesTheBusBackInAboutAThirdOfASecond()
+    {
+        var (mix, rig) = RoomTalkerHoldsTheBus();
+        rig[0].InjectLevelsForTest(0.10f);      // he answers at -20, over the talker
+        int t = 0;
+        while (rig[1].GetAutoMixGain(0) > 0f && t < 200) { mix.Tick(rig); t++; }
+        Assert.InRange(t, 25, 45);
+    }
+
+    // --- Lapel mode ------------------------------------------------------------------------------------
+
+    private static (AutoMixer, InputChannel[]) LapelMode()
+    {
+        var rig = Rig(2);
+        rig[0].IsPriority = true;
+        var mix = new AutoMixer(Outputs, 2);
+        for (int o = 0; o < Outputs; o++) mix.SetMode(o, AutoMixMode.Lapel);
+        return (mix, rig);
+    }
+
+    [Fact]
+    public void LapelModeKeepsARoomMicOffThroughAShortLoudNoise()
+    {
+        var (mix, rig) = LapelMode();
+        rig[1].InjectLevelsForTest(0.03f);      // a page turn at -30 for 300 ms
+        for (int t = 0; t < 30; t++) { mix.Tick(rig); Assert.Equal(0f, rig[1].GetAutoMixGain(0)); }
+        rig[1].InjectLevelsForTest(0f);
+        Run(mix, rig, 300);
+
+        Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+        Assert.Equal(1f, rig[0].GetAutoMixGain(0));
+        Assert.False(mix.TakeRoomSpeech(0));
+    }
+
+    /// <summary>Sustained room speech is reported once, for the UI to switch to Q&A; Lapel itself
+    /// never opens a room mic.</summary>
+    [Fact]
+    public void LapelModeReportsSustainedRoomSpeechOnce()
+    {
+        var (mix, rig) = LapelMode();
+        rig[1].InjectLevelsForTest(0.03f);      // someone asks a question
+        Run(mix, rig, 170);
+        Assert.False(mix.TakeRoomSpeech(0));    // not yet: ~2 s
+
+        Run(mix, rig, 60);
+        Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+        Assert.True(mix.TakeRoomSpeech(0));
+        Assert.False(mix.TakeRoomSpeech(0));
+    }
+
+    /// <summary>Once Q&A takes over, the questioner already has the room: no second 0.4 s break-in.</summary>
+    [Fact]
+    public void AfterTheSwitchTheQuestionerIsOnAtOnce()
+    {
+        var (mix, rig) = LapelMode();
+        rig[0].InjectLevelsForTest(0.05f);
+        Run(mix, rig);
+        rig[0].InjectLevelsForTest(0f);
+        rig[1].InjectLevelsForTest(0.03f);
+        Run(mix, rig, 250);
+        Assert.True(mix.TakeRoomSpeech(0));
+        Run(mix, rig, 3);                       // the UI takes up to a meter tick to switch
+
+        mix.SetMode(0, AutoMixMode.Gate);
+        Assert.InRange(TickUntilWinner(mix, rig, 1, max: 10), 1, 5);
+    }
+
+    /// <summary>Lapel with no live lapel would put nothing on air: it runs as Q&A instead.</summary>
+    [Fact]
+    public void LapelModeWithTheLapelMutedRunsAsQa()
+    {
+        var (mix, rig) = LapelMode();
+        rig[0].Muted = true;
+        rig[1].InjectLevelsForTest(0.03f);
+
+        Assert.NotEqual(0, TickUntilWinner(mix, rig, 1, max: 20));
+        Assert.Equal(1f, rig[1].GetAutoMixGain(0));
     }
 
     // --- robustness ------------------------------------------------------------------------------------

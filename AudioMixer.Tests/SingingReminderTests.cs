@@ -21,7 +21,7 @@ public class SingingReminderTests
         Assert.DoesNotContain(Run(14 * 60), a => a.Id == "singing.long");
 
     [Fact]
-    public void NotWhenSpeaking() =>
+    public void NotWhenTalking() =>
         Assert.DoesNotContain(Run(0), a => a.Id == "singing.long");
 
     [Fact]
@@ -30,7 +30,7 @@ public class SingingReminderTests
         var a = Assert.Single(Run(16 * 60), x => x.Id == "singing.long");
 
         Assert.Equal(AlertSeverity.Warning, a.Severity);
-        Assert.Equal(FixKind.SwitchToSpeaking, a.Fix);
+        Assert.Equal(FixKind.SwitchToLapel, a.Fix);
         Assert.Contains("16 min", a.Message);
     }
 }

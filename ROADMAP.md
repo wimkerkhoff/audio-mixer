@@ -32,7 +32,7 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
   baselines exist in the repo** (`tools/baselines/` was never committed, and the original fixtures'
   WAVs were pruned) — record them from this capture with its own preset. Every 🔬 item below waits on
   it.
-- 🏛 **Use Speaking/Singing as intended for a few services.** Each tap lands in the decisions CSV as a
+- 🏛 **Use Lapel/Q&A/Singing as intended for a few services.** Each tap lands in the decisions CSV as a
   per-bus mode change, so the operators produce the singing/speaking labels the auto-detect needs.
 - 🏛 **The 30-second replug test**: note a receiver's container id, move it to another USB port, look
   again. The serial-derived identity is inferred, not observed, until this is done.
@@ -42,19 +42,27 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
 
 ## Automixer and levels
 
-- 🔬 **Relative thresholds.** `PriorityActiveRms` (−40), `PriorityBreakInRms` (−50) and
+- 🔬 **Relative thresholds.** `PriorityActiveRms` (−40), `PriorityBreakInRms` (−45) and
   `SilenceFloorRms` (−55) are absolute and assume speech near −24; the rig's level has moved 20+ dB
   between sessions, and when it is off the mix chops (finding 8). Candidate: derive speech/silence
   from each channel's own settled calibration median. Needs a cold-start rule and a reset after gain
   changes.
-- 🔬 **Label-check the 2026-09-26 selector changes.** An unlabelled old-vs-new replay of
-  `20260926-073500` halved hand-offs (41.4 → 19.5/min) without losing a sustained room talker
-  (CLAUDE.md, Automixer). Still owed: a discussion captured with the operator's "sounded bad at …"
-  notes, to tell whether the remaining lapel ↔ room switches (~70 in 9.5 min, room mic +8.6 dB over
-  a lapel at −51) are real speech, and whether any questioner audibly waited (worst +0.77 s).
-- 🔬 **Room floors now sit at the silence threshold.** After the +9–12 dB endpoint raise the Rode
-  floors read −56 to −59 against `SilenceFloorRms` −55, and a room mic that takes the bus after the
-  lapel's hold expires reads a median −47.6: room tone competing. Part of "Relative thresholds".
+- 🏛 **Watch Lapel → Q&A live.** The auto-switch (~2 s of room sound over −45 dBFS) is validated on two
+  decision tracks and two replays only (CLAUDE.md, The UI). At the next services note when it fired
+  and whether a real question started it; a false switch costs little (Q&A is still sensible), a
+  missed one keeps a question off the stream. Also listen for how much of the first question is lost.
+- 🔬 **Label the theology study** (`20260926-073500`, interactive). Its old-vs-new replays assume a
+  room mic held ≥ 1.5 s is a talker; the one tenure the floor rule dropped (2:58, Rode B1, −45 to −56)
+  is unverified, as is whether the lapel reclaim rule clipped any answer. The labelling page built for
+  the confession study (claude.ai artifact "Room Mic Takeovers") can be reused with new clips.
+- 🔬 **In Q&A, a silent room still opens every mic.** After a room talker stops and before the
+  presenter speaks, Gate's silent-room branch puts every routed mic at unity (the floor rule only
+  covers the presenter's pauses). The Rode floors sit at −54 to −59 against `SilenceFloorRms` −55, so
+  room tone and paper compete there. Candidate: hand the floor back to the lapel when the room goes
+  quiet. Part of "Relative thresholds".
+- 🔬 **Loud paper at a mic still breaks in, in Q&A.** −27 to −32 dBFS for seconds passes any level
+  test (half the confession study's rustle survived the floor rule in replay). Lapel mode is the
+  answer for teaching; in discussion it is unsolved, and pitch does not work (finding 9).
 - 🔬 **Keep or remove flux-CV.** It no longer selects anything, and costs an FFT per voiced window per
   mic on the capture thread. Its remaining claim — that it rises on RF dropouts — was measured on the
   Anker links only. If a Rode session shows `fluxCv` tracking `drops=`, keep it as a diagnostic;
@@ -67,7 +75,7 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
 
 - 🛠 **Soundcheck / preflight** (deferred by the operator 2026-09-21): a walked "speak into each mic"
   pass that checks level *and* which strip each transmitter landed on, plus both buses alive, bus
-  mutes, Speaking/Singing and no idle priority lapel. The only check that would have caught
+  mutes, Lapel/Q&A/Singing and no idle priority lapel. The only check that would have caught
   2026-09-20 before the meeting. Open question: warn-and-proceed or block.
 - 🛠 **Test tone per bus.** One click plays a tone out bus A or B so the operator can see OBS/Zoom
   receive it before the service. On 2026-07-05 the first 10–15 min never reached OBS while bus A was

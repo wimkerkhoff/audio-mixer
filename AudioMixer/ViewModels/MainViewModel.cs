@@ -41,17 +41,25 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AudioMixer");
 
     /// <summary>
-    /// Recording stops itself after this long. Somebody forgetting to close the app must not mean a
-    /// recording that runs until the disk is full, and an hour is comfortably longer than the window
-    /// anyone actually reviews afterwards — the point of the capture is to check the selector's
-    /// choices, the leveler and clipping, not to archive the service.
+    /// Recording starts a new set of files (a new stamp) after this long. It used to stop outright:
+    /// on 2026-09-27 a 70-minute study lost its last 10 minutes — the Q&A, the part the review
+    /// needed most. One file per hour also keeps the stereo lapel's diag WAV (1.38 GB/h) clear of
+    /// the 4 GB RIFF limit.
     /// </summary>
-    public static readonly TimeSpan MaxRecordingLength = TimeSpan.FromHours(1);
+    public static readonly TimeSpan RecordingFileLength = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// ...and stops after this long in all, so somebody forgetting to close the app does not record
+    /// around the clock (~9 GB an hour) and churn retention through the fixtures. Longer than any
+    /// service.
+    /// </summary>
+    public static readonly TimeSpan MaxRecordingLength = TimeSpan.FromHours(3);
 
     private readonly RecordingRetention _retention = new(
         Path.Combine(RecordingRoot, "analysis"), Path.Combine(RecordingRoot, "recordings"));
 
-    private DateTime _recordingStarted;
+    private DateTime _recordingStarted;             // this set of files
+    private DateTime? _recordingChainStarted;       // the first set, across hourly roll-overs
     private string? _recordingStamp;
     private bool _recording;
     private DecisionTrack? _decisions;
@@ -210,6 +218,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _diagnostics.Tick();
             _session?.Tick();
             CheckRecordingLimits();
+            SwitchToQaOnRoomSpeech();
             _decisions?.Sample(
                 o => _engine.AutoMixActiveInput(o),
                 // Clamped as well as stopped above: the tick runs on a timer and must never be able to
@@ -249,7 +258,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         StartStateServer();
     }
 
-    // --- Speaking / Singing: the one automix decision the operator makes ----------------------------
+    // --- Lapel / Q&A / Singing: the one automix decision the operator makes -------------------------
     //
     // Scenes were removed 2026-09-23. They rewrote every channel and output at once, which silently
     // undid any hand mute the moment someone changed scene, and the operators -- who are trusted with
@@ -262,23 +271,36 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     // Priority needs no handling here. AutoMixer's Off branch sets unity gain and skips the priority
     // logic entirely, so a priority lapel cannot duck anything while the buses are Off -- and it is
     // still armed when they go back to Gate, which the old Singing scene (which cleared it) was not.
+    //
+    // Speaking was split in two on 2026-09-30 (operator's call): Lapel for teaching, where the room
+    // only ever made noise (94 labelled room-mic moments in a confession study, none speech), and
+    // Q&A (Gate) for discussion. Lapel moves itself to Q&A when a room mic carries sustained speech
+    // -- towards more open, never back: returning to Lapel is the operator's decision.
 
-    public RelayCommand SetSpeakingCommand { get; private set; } = null!;
+    public RelayCommand SetLapelCommand { get; private set; } = null!;
+    public RelayCommand SetQaCommand { get; private set; } = null!;
     public RelayCommand SetSingingCommand { get; private set; } = null!;
 
-    public bool IsSpeaking => Outputs.Length > 0 && Outputs.All(o => o.AutoMixModeIndex == (int)AutoMixMode.Gate);
-    public bool IsSinging => Outputs.Length > 0 && Outputs.All(o => o.AutoMixModeIndex == (int)AutoMixMode.Off);
+    private bool AllIn(AutoMixMode m) => Outputs.Length > 0 && Outputs.All(o => o.AutoMixModeIndex == (int)m);
+    private bool AnyIn(AutoMixMode m) => Outputs.Any(o => o.AutoMixModeIndex == (int)m);
 
-    // "on" / "off" / "mixed" for each side's DataTrigger -- strings because a WPF trigger Value is
-    // parsed as text and silently never fires against a bool. "mixed" lights BOTH sides amber when the
-    // buses disagree (the per-bus mode is still in Settings): lighting neither would read as "off", and
-    // lighting one would claim a mode only half the rig is in.
-    public string SpeakingState => IsSpeaking ? "on" : IsSinging ? "off" : "mixed";
-    public string SingingState => IsSinging ? "on" : IsSpeaking ? "off" : "mixed";
+    public bool IsLapel => AllIn(AutoMixMode.Lapel);
+    public bool IsQa => AllIn(AutoMixMode.Gate);
+    public bool IsSinging => AllIn(AutoMixMode.Off);
+
+    // "on" / "off" / "mixed" for each button's DataTrigger -- strings because a WPF trigger Value is
+    // parsed as text and silently never fires against a bool. "mixed" lights every mode a bus is in
+    // amber when the buses disagree (the per-bus mode is still in Settings): lighting none would read
+    // as "off", and lighting one would claim a mode only half the rig is in.
+    private string State(AutoMixMode m) => AllIn(m) ? "on" : AnyIn(m) ? "mixed" : "off";
+    public string LapelState => State(AutoMixMode.Lapel);
+    public string QaState => State(AutoMixMode.Gate);
+    public string SingingState => State(AutoMixMode.Off);
 
     private void InitAutomixControls()
     {
-        SetSpeakingCommand = new RelayCommand(() => SetAllModes(AutoMixMode.Gate));
+        SetLapelCommand = new RelayCommand(() => SetAllModes(AutoMixMode.Lapel));
+        SetQaCommand = new RelayCommand(() => SetAllModes(AutoMixMode.Gate));
         SetSingingCommand = new RelayCommand(() => SetAllModes(AutoMixMode.Off));
         foreach (var op in Outputs)
         {
@@ -290,9 +312,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 // nobody in the room chose it this session.
                 if (!IsSinging) _singingSinceTicks = 0;
                 else if (_singingSinceTicks == 0) _singingSinceTicks = Environment.TickCount64;
-                RaisePropertyChanged(nameof(IsSpeaking));
+                RaisePropertyChanged(nameof(IsLapel));
+                RaisePropertyChanged(nameof(IsQa));
                 RaisePropertyChanged(nameof(IsSinging));
-                RaisePropertyChanged(nameof(SpeakingState));
+                RaisePropertyChanged(nameof(LapelState));
+                RaisePropertyChanged(nameof(QaState));
                 RaisePropertyChanged(nameof(SingingState));
             };
         }
@@ -306,6 +330,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void SetAllModes(AutoMixMode mode)
     {
         foreach (var o in Outputs) o.AutoMixModeIndex = (int)mode;
+    }
+
+    /// <summary>
+    /// Meter tick: a bus in Lapel that heard sustained room speech moves every Lapel bus to Q&A, so
+    /// the operator's monitor never disagrees with the stream about it. Always drains the engine's
+    /// flags, so one raised while in another mode cannot fire later.
+    /// </summary>
+    private void SwitchToQaOnRoomSpeech()
+    {
+        bool heard = false;
+        for (int o = 0; o < Outputs.Length; o++) heard |= _engine.TakeRoomSpeech(o);
+        if (!heard || !AnyIn(AutoMixMode.Lapel)) return;
+
+        foreach (var o in Outputs)
+            if (o.AutoMixModeIndex == (int)AutoMixMode.Lapel) o.AutoMixModeIndex = (int)AutoMixMode.Gate;
+        StatusText = "Someone in the room is talking. Switched to Q&A.";
+        AudioLog.Write("Lapel -> Q&A: sustained speech on a room mic.");
+        _session?.Action("auto: switched to Q&A (room speech)");
     }
 
     /// <summary>
@@ -735,9 +777,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     StatusText = $"{Label(ch)}'s calibration cleared. It will settle again as the mic is used.";
                     break;
 
-                case FixKind.SwitchToSpeaking:
-                    SetAllModes(AutoMixMode.Gate);
-                    StatusText = "Switched to Speaking.";
+                case FixKind.SwitchToLapel:
+                    SetAllModes(AutoMixMode.Lapel);
+                    StatusText = "Switched to Lapel. It moves to Q&A by itself if the room starts talking.";
                     break;
 
                 case FixKind.InstallVbCable:
@@ -1499,10 +1541,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 Outputs[o].RestoreDesiredDevice(op.DeviceId, op.DeviceName);
                 var match = DeviceResolver.Resolve(_allOutputDevices, op.DeviceId, op.DeviceName, usedOutputIds);
                 Outputs[o].SelectedDevice = match;
-                // Migrate presets written before Share was removed: the enum was Off=0, Share=1,
-                // Gate=2, so a saved 2 is out of range now and a saved 1 meant Share. Both become
-                // Gate — Share's job was follow-the-talker, and Gate is what every scene forced.
-                Outputs[o].AutoMixModeIndex = (int)OutputPreset.MigrateMode(op.AutoMixMode);
+                // Presets written before Share was removed stored Off=0, Share=1, Gate=2; see
+                // MigrateMode for why the version decides what a 2 means.
+                Outputs[o].AutoMixModeIndex = (int)OutputPreset.MigrateMode(op.AutoMixMode, preset.Version);
                 Outputs[o].VolumePercent = Math.Clamp(op.Volume, 0f, 100f);
                 Outputs[o].Muted = op.Muted;
 
@@ -1596,6 +1637,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
             _recording = true;
             _recordingStarted = DateTime.Now;
+            _recordingChainStarted ??= _recordingStarted;
             _recordingStamp = stamp;
             _session?.Action("recording started");
             RaiseRecordingState();
@@ -1607,6 +1649,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         if (!_recording) return;
         _recording = false;
+        _recordingChainStarted = null;
         foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
         _decisions?.Dispose();
         _decisions = null;
@@ -1634,11 +1677,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         if (!_recording) return;
 
-        if (DateTime.Now - _recordingStarted >= MaxRecordingLength)
+        var now = DateTime.Now;
+        if (now - (_recordingChainStarted ?? _recordingStarted) >= MaxRecordingLength)
         {
             StopRecording();
             StatusText = $"Recording stopped automatically after {MaxRecordingLength.TotalHours:F0} hours.";
             AudioLog.Write("Recording stopped: reached the maximum length.");
+            return;
+        }
+        if (now - _recordingStarted >= RecordingFileLength)
+        {
+            var chain = _recordingChainStarted;
+            StopRecording();
+            _recordingChainStarted = chain;
+            ToggleRecording();
+            _session?.Action("recording continued in new files");
+            AudioLog.Write($"Recording rolled over to new files after {RecordingFileLength.TotalHours:F0} hour: {_recordingStamp}");
             return;
         }
 

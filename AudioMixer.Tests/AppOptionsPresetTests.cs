@@ -57,11 +57,21 @@ public class AppOptionsPresetTests
     [Theory]
     [InlineData(0, 0)]   // Off stays Off
     [InlineData(1, 1)]   // old Share -> Gate
-    [InlineData(2, 1)]   // old Gate  -> Gate
+    [InlineData(2, 1)]   // old Gate  -> Gate, NOT Lapel: an unversioned preset predates Lapel
     [InlineData(9, 1)]   // anything else is a live bus, so Gate
     public void OldAutoMixModesMigrateToTheCollapsedEnum(int stored, int expected)
     {
-        Assert.Equal((AutoMixMode)expected, OutputPreset.MigrateMode(stored));
+        Assert.Equal((AutoMixMode)expected, OutputPreset.MigrateMode(stored, presetVersion: 0));
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]   // Lapel
+    [InlineData(9, 1)]   // unknown: a live bus, so Gate
+    public void AVersionedPresetKeepsItsModeIncludingLapel(int stored, int expected)
+    {
+        Assert.Equal((AutoMixMode)expected, OutputPreset.MigrateMode(stored, presetVersion: 1));
     }
 
     [Fact]

@@ -22,7 +22,7 @@ public enum FixKind
     ResetCalibration,
     Resync,
     InstallVbCable,
-    SwitchToSpeaking,
+    SwitchToLapel,
     OpenSettings,
     OpenDiagnostics,
 }
@@ -142,14 +142,14 @@ public static class HealthMonitor
         }
 
         // Singing opens every routed mic with no switching. Left on into the talking, one voice
-        // reaches the stream through several mics at once -- the echo Speaking exists to prevent --
+        // reaches the stream through several mics at once -- the echo Lapel and Q&A exist to prevent --
         // and nothing sounds broken enough in the room for anyone to notice.
         if (s.SingingSeconds > SingingReminderSeconds)
         {
             alerts.Add(new HealthAlert("singing.long", AlertSeverity.Warning,
                 $"Singing has been on for {s.SingingSeconds / 60:F0} min. If the singing has finished, " +
-                "switch back to Speaking, or every mic stays open through the talking.",
-                "Switch to Speaking", FixKind.SwitchToSpeaking));
+                "switch back to Lapel, or every mic stays open through the talking.",
+                "Switch to Lapel", FixKind.SwitchToLapel));
         }
         var live = s.Channels.Where(c => c.Routed && !c.Muted && c.DeviceName != null).ToList();
         bool anyInputSound = s.Channels.Any(c => c.LevelDb > SilenceDb);

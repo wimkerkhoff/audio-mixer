@@ -19,7 +19,7 @@ public partial class SimpleWindow : Window
         _vm = vm;
         InitializeComponent();
         DataContext = vm;
-        Audio.AudioLog.Write($"Simple mode opened ({(vm.IsSinging ? "singing" : "speaking")}, {vm.Channels.Count} mics).");
+        Audio.AudioLog.Write($"Simple mode opened ({(vm.IsSinging ? "singing" : vm.IsLapel ? "lapel" : vm.IsQa ? "Q&A" : "mixed modes")}, {vm.Channels.Count} mics).");
 
         // Opens itself once, shortly after startup, and only if something is actually wrong — so its
         // appearance is the signal and a volunteer needs no interpretation. Delayed because devices

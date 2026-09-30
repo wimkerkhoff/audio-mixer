@@ -151,6 +151,15 @@ public sealed class OutputViewModel : ViewModelBase
             return;
         }
 
+        int lapelActive = Index < diag.ActiveInput.Length ? diag.ActiveInput[Index] : -1;
+        if (mode == AutoMixMode.Lapel && lapelActive >= 0 && lapelActive < channels.Count
+            && channels[lapelActive].IsPriority)
+        {
+            SelectionVerdict = $"Lapel only. {Name(lapelActive)} is on; every room mic is off until " +
+                               "someone in the room talks, which switches to Q&A.";
+            return;
+        }
+
         int winner = diag.Winner[Index];
         int active = Index < diag.ActiveInput.Length ? diag.ActiveInput[Index] : -1;
 
@@ -180,7 +189,8 @@ public sealed class OutputViewModel : ViewModelBase
         RaisePropertyChanged(nameof(IsRecording));
     }
 
-    public string[] AutoMixModeOptions { get; } = { "Off", "Gate" };
+    // Indexed by AutoMixMode. Off is Singing and Gate is Q&A on the main window.
+    public string[] AutoMixModeOptions { get; } = { "Off", "Gate", "Lapel" };
 
     private int _autoMixModeIndex;
     public int AutoMixModeIndex

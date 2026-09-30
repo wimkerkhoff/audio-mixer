@@ -98,14 +98,14 @@ Runtime files:
 | Preset (+ `.bak`) | `%APPDATA%\AudioMixer\preset.json` |
 | Log (opt-in `--log`), crash log (always) | `%TEMP%\AudioMixer.log`, `%TEMP%\AudioMixer.crash.log` |
 | Bus mixes `mix-A/B-<stamp>.wav` | `Documents\AudioMixer\recordings\` |
-| Per-mic `diag-input<N>-<stamp>.wav`, `decisions-<stamp>.csv` | `Documents\AudioMixer\analysis\` (fixtures in `analysis\keep\`) |
+| Per-mic `diag-input<N>-<stamp>.wav`, `decisions-<stamp>.csv` | `Documents\AudioMixer\analysis\` (fixtures in `analysis\keep\`, with `<stamp>.preset.json` and any `labels-<stamp>.json`) |
 | Session records `session-<stamp>.json` | `Documents\AudioMixer\sessions\` |
 | Live state | `http://127.0.0.1:7077/state` (with `--state`) |
 
 ## The UI
 
 **One mixer window** (`SimpleWindow`, fixed 330 px wide, `SizeToContent="Height"`, one row per mic):
-the **Speaking | Singing** toggle, mic rows (state stripe, meter with the target band, level, mute,
+the **Lapel | Q&A | Singing** buttons, mic rows (state stripe, meter with the target band, level, mute,
 bus A/B buttons that light green when the automixer has that mic on that bus), an on-air card per bus
 whose ON AIR / MUTED label *is* its mute button, and one toolbar. **Checks** lists every warning and
 opens itself only when something needs attention. **Diagnostics** is "why this mic", the session so
@@ -120,7 +120,19 @@ bus's mode. The operators could not remember what each did, and a scene silently
 mutes — twice in one evening. They are trusted with mute and A/B and mix in OBS. What survived is the
 knowledge they cannot re-derive:
 
-- **Speaking | Singing** — both buses Gate, or both **Off** (singing has no single talker to follow).
+- **Lapel | Q&A | Singing** — both buses Lapel, Gate or **Off** (singing has no single talker to
+  follow). They set bus modes only — never a mute, route or priority, which is what made scenes
+  unsafe. **Lapel** (2026-09-30, operator's design) airs the lapel alone and moves *itself* to Q&A
+  when a room mic holds ~2 s over −45 dBFS and +6 dB over the lapel (`RoomSpeechTicks`;
+  `MainViewModel.SwitchToQaOnRoomSpeech` moves every Lapel bus, logs it and records a session
+  action) — towards more open, never back; returning to Lapel is the operator's call. The cost is
+  the first ~2 s of the first question. At 1.5 s a replay of the confession study switched 33 s in,
+  on paper shuffled at a room mic (−23 dBFS) as people turned to the text after a hymn.
+  At 2 s, replayed: the confession study stayed in Lapel for all 45 minutes with no room mic on
+  the stream (old code: 85 s of room airtime, 70 takeovers); the theology study switched at 1:15
+  and still gave 21 of 22 room talkers a mic.
+  With no routed, unmuted priority mic, Lapel runs as Q&A. Speaking was split this way after
+  finding 9: in teaching the room only makes noise, in discussion it must be heard.
   Singing lights **purple** (the one colour with no other meaning here) because it is the mode you
   can forget to leave; Checks warns after **15 min** in it (`singing.long`, time alone — singing is
   not detectable from audio). It deliberately does **not** touch priority or routing: `AutoMixer`'s
@@ -128,7 +140,7 @@ knowledge they cannot re-derive:
   the congregation (the 2026-07-05 failure) and is still armed when speaking resumes. That early
   return is the only thing preventing it — pinned by
   `AutoMixerTests.OffIgnoresAnActivePriorityMic_SoSingingCannotDuckTheRoom`. If the buses disagree
-  (per-bus mode in Settings), **both sides go amber**.
+  (per-bus mode in Settings), **every mode a bus is in goes amber**.
 - **Priority mic** — set once in Settings (`LapelIndex`). To leave the lapel out of a meeting,
   **mute it**: a strip's level is measured after its mute gate, so a muted priority mic never reads
   as speaking and cannot duck anyone.
@@ -179,7 +191,8 @@ lock-free; `InputChannel` ramps them within a buffer.
 | Mode | Rule | Use |
 | --- | --- | --- |
 | Off | unity | singing |
-| Gate | winner-take-all, non-leaders hard-muted | everything else |
+| Gate ("Q&A") | winner-take-all, non-leaders hard-muted | discussion, prayer |
+| Lapel | the priority mic only; room mics off; ~2 s of room speech switches to Gate | teaching |
 
 - **Selection is level only**, with an unconditional **leader hold** (`HandoffHoldTicks` ~200 ms,
   `HandoffHysteresis` ~3 dB): a talker's pauses would otherwise hand the bus to a neighbour (finding
@@ -206,20 +219,34 @@ lock-free; `InputChannel` ramps them within a buffer.
   (`PriorityActiveRms` ~−40 dBFS) it hard-mutes the room mics, else the voice reaches the bus via the
   lapel and a delayed room mic and combs. Exactly one, set only by `LapelIndex`, which sets `Role` and
   `IsPriority` together; the "Clear priority" fix routes through it and a preset load derives
-  `IsPriority` from `Role`, so the picker never names a mic that ducks nothing. **Hazard:** an unused,
-  unmuted priority lapel crossing −40 dBFS (a bump) ducks every room mic off the stream — mute it.
-- **Priority hangover** (`PriorityHoldTicks` ~1.2 s): the duck used to release in a presenter's
-  sentence gaps (the 250 ms release needs ~575 ms to fall below −40) — measured 2026-08-30, 13
-  hand-offs in 40 s; 0 after. The hold is **broken immediately** by a non-priority mic above
-  `PriorityBreakInRms` (~−50 dBFS) **and** +6 dB over the lapel (`BreakInOverLapel`), so an
-  interjection is not swallowed. The absolute test alone fired on the presenter's own voice: on
-  2026-09-26, after a +9–12 dB endpoint raise, a room mic heard him at −35 (lapel −30), its residual
-  stayed over −50 as the lapel dipped under −40 in each pause, and the bus went lapel ↔ room mic ~48
-  times a minute (1.9/min at 06:40–06:55; room discussion also grew, unlabelled). In a pause both
-  envelopes decay together, so the presenter's residual stays under the lapel; a room talker reads 10–20 dB over the lapel's pickup of them, and
-  one the lapel hears nearly as well is carried by the lapel (always at unity). Placement still
-  matters: a mic on his own table (−28 vs a real interjection at −43) out-levels anyone else.
-  Replayed with the sustain rule (numbers there); lapel ↔ Rode B1 fell 161 → 71 in 9.5 min.
+  `IsPriority` from `Role`, so the picker never names a mic that ducks nothing. An unused, unmuted
+  lapel that is bumped over −40 takes the floor, and room talkers must then break in (below) — mute
+  a lapel nobody wears.
+- **The lapel keeps the floor through its wearer's pauses** (`_priorityOwned`, since 2026-09-30),
+  however long, until a room mic **breaks in**: over `PriorityBreakInRms` (~−45 dBFS) **and** +6 dB
+  over the lapel (`BreakInOverLapel`), held `BreakInSustainTicks` (~0.4 s). Muting the lapel gives
+  the floor up at once. History: the duck used to release in sentence gaps (13 hand-offs in 40 s,
+  2026-08-30), then was held 1.2 s, after which the loudest room mic took the bus at once — which on
+  2026-09-27 aired 94 room moments in a 45-minute study, none of them speech (finding 9). The +6 dB
+  test exists because the absolute one alone fired on the presenter's own voice in a room mic
+  (2026-09-26: ~48 hand-offs/min); a room talker reads 10–20 dB over the lapel's pickup of them.
+  Replayed old vs new: the 2026-09-26 **theology study** (the interactive one) went 18.9 → 9.9
+  hand-offs/min and kept 21 of 22 room talkers (median +0.04 s later, worst +0.45 s; the one lost
+  sat at −45 to −56 in a gap between the presenter's sentences); the 2026-09-27 **confession study**
+  went from 70 room takeovers to 29 and 85 → 45 s of room airtime — **only half**, because paper
+  shuffled right at a mic reads −27 to −32 for seconds and passes any level test, then holds the bus
+  under Gate until the presenter speaks. That residue is why Lapel mode exists. Known gap: the test
+  reads the smoothed envelope, whose 250 ms release carries a burst over ~−35 past 0.4 s.
+- **In Q&A the lapel must earn the bus back** from a room talker who holds it: louder than them for
+  `LapelReclaimTicks` (~0.3 s), not merely over −40. The presenter's "mm-hm", or his lapel hearing the
+  questioner, used to cut the questioner off — ~40 switches/min through the 2026-09-27 closing Q&A
+  (seen only in the log: the recording had stopped). On the 2026-09-26 decisions CSV, 23 lapel
+  reclaims lasted under 1 s, the shortest with the lapel a median 9 dB *under* the talker; the rule
+  keeps 21 of them off and lets 22 of 24 answers through ~0.3 s later. The lapel is at unity
+  throughout, so an "mm-hm" still airs; the price is both mics open for that 0.3 s (comb risk).
+  Replayed on the theology study with the floor rule: 9.9 → 8.3 hand-offs/min, lapel → room 33 →
+  19, room blips under 0.5 s 16 → 6 (old code: 18.9, 62, 38), still 21 of 22 talkers, now covering
+  97% of their time. In Lapel mode the same capture switched itself to Q&A at 1:15 and then matched.
 - **Split receivers**: one WASAPI endpoint, TX1 left / TX2 right. Bind it to two strips
   (`ChannelSource.Left`/`Right`); bound whole it reaches the bus hard-panned as one blended channel
   the automixer cannot arbitrate. Device claims are per **side** (`DeviceResolver.Claim`/`IsFree`,
@@ -242,8 +269,12 @@ lock-free; `InputChannel` ramps them within a buffer.
   NOT sandbox preset loading, and until 2026-09-21 every fixture silently inherited the live preset
   (the `presentation` fixture re-run at its own recording commit gave 60 hand-offs vs its stored 14),
   so a changed fixture preset is reported as configuration drift before numbers are compared.
-  **No baselines are committed yet**: `tools/baselines/` does not exist, and the two original
-  fixtures' WAVs were pruned by retention. Recording one is on the roadmap.
+  **No golden baselines are committed yet** (`tools/baselines/` does not exist; the two original
+  fixtures' WAVs were pruned by retention). Two fixtures now sit in `analysis\keep\` with their own
+  presets (`<stamp>.preset.json`): `20260926-073500`, a **theology study** (interactive — tests that
+  questions still get a mic), and `20260927-091932`, a **confession study** (teaching; the room only
+  made noise — with the operator's labels, finding 9). Replay a selector change on both. Batch runs:
+  the hand-off log line carries `@hh:mm:ss.ff`, the replay position, so two runs line up.
 - **Binding errors** are swallowed at runtime; a clean build proves nothing about the UI. `--log`
   logs them (`BindingErrorListener`); `--open-all` opens every window. Zero binding errors is also
   what a window that rendered garbage reports — look at it.
@@ -349,6 +380,18 @@ but every mic ~22 dB under target (speech p50 −45/−46/−46). `PriorityActiv
 1 dB of margin: 12 winner changes/min and winner = −1 (a hard mute under Gate) 28% of the time. **Compare
 `speech=` against −24 dBFS before reaching for a quality metric.** You cannot add the 22 dB
 downstream: crest is 28–36 dB, so peaks would clip — the gain belongs at the transmitter.
+
+**9. In teaching, room mics carry noise, not speech — and pitch cannot tell them apart.** 2026-09-27
+confession study (`analysis\keep\labels-20260927-091932.json`): the operator, who was in the room,
+labelled all 94 room-mic tenures on bus A from 09:34 to 10:19 — 66 paper/rustle, 17 unsure, 6 the
+presenter's own voice, 4 coughs, 1 "amen" said with him, **0 someone speaking**. 88% of room airtime
+was rustle, half of it on one mic (Rode A1); on the lapel it barely registered (+2.8 dB vs +9.6 on
+the room mic), so it was the congregation's paper, not the presenter's. **Negative half:** a pitch
+detector (fraction of 40 ms frames with an 80–400 Hz autocorrelation peak) scored the presenter 0.70
+and rejected 42% of the rustle — but 0% of the coughs, because every room mic also hears the
+presenter faintly and his pitch leaks into each clip. Don't build a speech/noise classifier on a room
+mic's pitch. What separated them was level held over time (−45 dBFS for 0.4 s: 5 of 93 noises offline),
+and even that only halves the rustle in a replay (above). Hence Lapel mode.
 
 ### Anker era (speakerphones, returned 2026-08-30) — kept because the lessons generalise
 
@@ -503,7 +546,10 @@ operator's own later judgement.
   update the directory entry); its true length is `File.Open(path,'Open','Read','ReadWrite').Length`,
   and `tools/live_wav.py` reads it mid-session.
 - **Recording is always on, with three bounds** because a 5-mic, 2-bus hour is ~9 GB (1.29 GB per
-  stream-hour): it stops itself at **1 hour**, files expire at **28 days**, and `RecordingRetention`
+  stream-hour): it starts a **new stamp every hour** (`RecordingFileLength` — which also keeps the
+  stereo lapel's 1.38 GB/h diag WAV under the 4 GB RIFF limit) and stops after **3 hours**
+  (`MaxRecordingLength`). It used to stop at 1 hour, which lost the closing Q&A of a 70-minute study
+  on 2026-09-27 — the part that review needed. Files expire at **28 days**, and `RecordingRetention`
   deletes oldest-first below **20 GB free** when a recording starts, refuses to start below 15 GB and
   stops one in flight below 8 GB. Session records are never swept. **Split strips record mono** (the
   two channels are identical after the side split).

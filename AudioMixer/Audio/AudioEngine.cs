@@ -47,6 +47,7 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
 
     public void SetAutoMixMode(int output, AutoMixMode mode) => _autoMix.SetMode(output, mode);
     public int AutoMixActiveInput(int output) => _autoMix.ActiveInput(output);
+    public bool TakeRoomSpeech(int output) => _autoMix.TakeRoomSpeech(output);
     public AutoMixDiag AutoMixSnapshot() => _autoMix.Snapshot(Inputs.Length);
 
     private bool _autoMixErrorLogged;
@@ -54,7 +55,7 @@ public sealed class AudioEngine : IDisposable, IAutoMixControl
     /// <summary>
     /// Identifies the wall-clock timer's own callbacks. Both callers used to pass null, so the guard
     /// below ("is this the timer?") could never be true and the timer never stood down: replay ran at
-    /// ~200 ticks/s instead of 100, halving HandoffHoldTicks and PriorityHoldTicks and quietly
+    /// ~200 ticks/s instead of 100, halving HandoffHoldTicks and the sustain rules and quietly
     /// breaking the deterministic, speed-independent replay the golden baselines assume.
     /// </summary>
     private static readonly object WallClock = new();
