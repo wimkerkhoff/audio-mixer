@@ -43,8 +43,12 @@ public sealed class DiagnosticsLog
             if (winner == _lastAutoMixWinner[o]) continue;
             int prev = _lastAutoMixWinner[o];
             _lastAutoMixWinner[o] = winner;
+            // Under --replay the wall clock says nothing about where in the recording this was, and
+            // --speed scales it; the audio position lets two replays of one fixture be lined up.
+            var rig = _engine.Replay;
+            string at = rig == null ? "" : $" @{rig.Position:hh\\:mm\\:ss\\.ff}";
             AudioLog.Write(
-                $"Output {OutputViewModel.Tag(o)} auto-mix: {Name(prev)} → {Name(winner)}");
+                $"Output {OutputViewModel.Tag(o)} auto-mix: {Name(prev)} → {Name(winner)}{at}");
         }
 
         string Name(int i) => i < 0 ? "none"
