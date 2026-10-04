@@ -45,12 +45,14 @@ something to learn.
 
 ## The rig
 
-- **Now (2026-09-23):** two **RØDE Wireless PRO** receivers on USB, each carrying two transmitters in
-  **Split** mode (four strips), plus a **wired classic Rode lapel** on the Realtek aux jack for the
-  presenter, used as the **priority** mic. The Wireless PRO is DSP-free and does not gate (finding 5).
+- **Now (2026-10-04):** three **RØDE Wireless PRO** receivers on USB (A/B/C), each carrying two
+  transmitters in **Split** mode (six strips), plus a **wired classic Rode lapel** on the Realtek
+  aux jack for the presenter, used as the **priority** mic. The Wireless PRO is DSP-free and does not gate (finding 5).
   It is *body-worn*: it covers people, not a room, so mic count and placement do the work DSP used to
-  pretend to do. Gain: each receiver at **0 dB** (applies to both its transmitters), Windows endpoint
-  **+3 dB**; the wired lapel's only lever is its Windows endpoint (~16 dB).
+  pretend to do. Gain: every transmitter **manual 26 dB** (GainAssist off), every receiver output
+  **0 dB — its maximum**, Windows endpoint **+18.9 dB** on all three (matched 2026-10-04); the wired
+  lapel's only lever is its Windows endpoint (~16 dB). Room mics still read ~20 dB under target on
+  air in a prayer meeting (−42 to −52 dBFS) — the remaining lever is transmitter gain or proximity.
 - **Outputs:** bus A = VB-CABLE → Zoom/OBS (the remote attendees — the listener that matters);
   bus B = the operator's USB headset.
 - **Usage:** teaching (one talker), prayer meetings (turn-taking, often led from the lapel),
@@ -312,8 +314,11 @@ lock-free; `InputChannel` ramps them within a buffer.
   the room (−41 on four healthy mics, 2026-09-26) — so Checks' level warning judges room mics from a
   second histogram fed only after the mic has held the bus for 1 s (`LeadSpeechDb`); the priority
   mic, being worn, is judged on its whole median. Diagnostics and `/state` still show the whole one.
-- **RF-link health** on the per-input log line: `rf=[lvl= voiced= silent= drops=]` — a dropping link
-  shows exact-silence gaps mid-speech plus high flux-CV while voiced; raw counts only, classify later.
+- **RF-link health** on the per-input log line: `rf=[lvl= voiced= silent= drops= gaps=]`. `gaps` is
+  the one to read: a cumulative count of ≥ 30 ms runs of exact zero, pre-fader (`DropoutCounter`),
+  and Checks warns `in<N>.dropouts` at 6+ in a minute. `drops` (voiced→silent edges) misses a
+  Wireless PRO entirely — the receiver fades before it mutes — and read 0 all of 2026-10-04 while
+  A1 lost 25–99% of each minute in fixed ~0.53 s mutes.
 - **`/state`** (`--state[=PORT]` / `AUDIOMIXER_STATE`, loopback, read-only): per channel levels,
   routes, mute, automix gains, calibration, `envDb`, `fluxCv`, `endpointGainDb` (cached per device
   refresh — reading endpoints costs seconds on the UI thread), `clippedSamples`, `underruns` (per bus,
@@ -431,8 +436,11 @@ operator's own later judgement.
 
 - **Hot-plug USB audio gets a NEW endpoint GUID on re-enumeration** (replug, another port, a driver
   reboot); only fixed devices (Realtek, VB-CABLE) keep theirs. `DeviceResolver` therefore matches a
-  preset device by, in order: `DeviceKey` (serial-derived container id), GUID, then friendly name via
-  `DeviceNameKey`, which strips **only** the volatile `(N- …)` prefix — never truncate at `" ("`, as an
+  preset device by `DeviceKey` (serial-derived container id) — which **decides alone**: absent or
+  claimed means wait, never fall through, because identical receivers share a name and a strip whose
+  receiver was unplugged bound the free twin (2026-10-04: A and B strips swapped during a firmware
+  update, and the bind rewrote the desire, so the swap was saved). Without a key: GUID, then
+  friendly name via `DeviceNameKey`, which strips **only** the volatile `(N- …)` prefix — never truncate at `" ("`, as an
   un-renamed device's identity is the interface name inside the parens (`Speakers (Lync USB Headset)`
   vs `Speakers (Realtek(R) Audio)`). Resolve against the master device lists, not a strip's filtered
   picker. **Persist what the operator asked for, not what is currently resolvable**: strips keep
@@ -447,11 +455,11 @@ operator's own later judgement.
   The cross-port claim is inferred from the scheme, not yet watched: move a receiver and compare.
 - **Windows endpoint gain is keyed to the port-derived endpoint, so it resets to 0 dB on a new port**
   (the rename goes with it). A second identical receiver on a new port arrived ~24 dB under its twin
-  and looked like two dead mics — check `tools/VolProbe` before suspecting hardware. **Set gain on the
-  receiver** (a Wireless PRO's level applies to both its transmitters, so pairs are matched by
-  construction), keep Windows near 0; a wired lapel on the aux jack has no receiver, so Windows is its
-  lever. The app's fader can only **attenuate** (100% = unity). The Rode endpoint's slider is
-  non-linear: 53.7% = 0 dB, 87% = +15 dB, 100% = +30 dB.
+  and looked like two dead mics — check `tools/VolProbe` before suspecting hardware (receiver C did
+  the same on 2026-10-04). A Wireless PRO receiver's output is already at its **0 dB maximum** here,
+  so Windows endpoint gain is the working lever; match it across receivers. A wired lapel on the aux
+  jack has no receiver either. The app's fader can only **attenuate** (100% = unity). The Rode
+  endpoint's slider is non-linear: 53.7% = 0 dB, 87% = +15 dB, 100% = +30 dB.
 - **+15 dB on the Wireless PRO endpoint is the verified ceiling.** +24 dB clipped (peaks +6.7 dBFS,
   flat-tops to 1.9 ms) while speech was still 14 dB under target, because crest here is ~45 dB: no
   endpoint gain lands speech at −24 and keeps transients under full scale — proximity and transmitter
@@ -549,10 +557,14 @@ operator's own later judgement.
   stream-hour): it starts a **new stamp every hour** (`RecordingFileLength` — which also keeps the
   stereo lapel's 1.38 GB/h diag WAV under the 4 GB RIFF limit) and stops after **3 hours**
   (`MaxRecordingLength`). It used to stop at 1 hour, which lost the closing Q&A of a 70-minute study
-  on 2026-09-27 — the part that review needed. Files expire at **28 days**, and `RecordingRetention`
-  deletes oldest-first below **20 GB free** when a recording starts, refuses to start below 15 GB and
-  stops one in flight below 8 GB. Session records are never swept. **Split strips record mono** (the
-  two channels are identical after the side split).
+  on 2026-09-27 — the part that review needed. `RecordingRetention`, at every record start: per-mic
+  diag WAVs expire at **14 days**, mixes at **28**, **stubs** (a stamp none of whose files reached
+  2 min — every launch leaves one) after a day; then oldest-first below **40 GB free** (a 3-hour
+  service at the 2026-10-04 rig's ~10 GB/h; at 20 GB the disk sat an hour from the start floor).
+  It refuses to start below 15 GB and stops one in flight below 8 GB; Checks warns `rec.space` when
+  the disk cannot hold the recording time still to run. Session records are never swept; a capture
+  worth keeping past 14 days goes in `analysis\keep\`. Every stop is logged with its reason.
+  **Split strips record mono** (the two channels are identical after the side split).
 - **A capture restart must not end a recording.** Until 2026-09-26 `InputChannel.Stop()` closed the
   mic's diag WAV, and Stop runs on every watchdog recovery, Resync, device change and replug: one
   Resync ended all seven diag files 8 minutes into a service while the UI said "recording". Now only

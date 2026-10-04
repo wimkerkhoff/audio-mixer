@@ -701,12 +701,28 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         return new HealthSnapshot(channels, outputs, IsReplaying, _vbCableInstalled, SingingSeconds,
-                                  failedRecordings);
+                                  failedRecordings, RecordingHoursLeft(),
+                                  _recording
+                                      ? Math.Max(0, (MaxRecordingLength - (DateTime.Now
+                                            - (_recordingChainStarted ?? _recordingStarted))).TotalHours)
+                                      : HealthMonitor.RecordingHoursWanted);
     }
 
     private readonly long[] _lastOutputSound = new long[AudioEngine.OutputCount];
 
     private readonly List<DropoutWindow> _dropoutWindows = new();
+
+    /// <summary>Hours of recording the free disk holds at this rig's rate: every bound strip (split
+    /// strips record mono) and every bus with a device. Replay records nothing worth guarding.</summary>
+    private double RecordingHoursLeft()
+    {
+        if (IsReplaying) return double.MaxValue;
+        int audioChannels = Channels.Where(c => c.SelectedDevice != null)
+                                    .Sum(c => c.Source == ChannelSource.Stereo ? 2 : 1)
+                          + 2 * Outputs.Count(o => o.SelectedDevice != null);
+        if (audioChannels == 0) return double.MaxValue;
+        return RecordingRetention.FreeGb(RecordingRoot) / RecordingRetention.GbPerHour(audioChannels);
+    }
 
     private DropoutWindow DropoutWindowFor(int index)
     {
@@ -1009,7 +1025,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // not mark it handled, so the process exited mid-service. Stopping first also gives every
         // removed strip's diag WAV a finalised header instead of abandoning it.
         bool restartRecording = IsRecording && count != Channels.Count;
-        if (restartRecording) StopRecording();
+        if (restartRecording) StopRecording("restarting under a new stamp for a strip-count change");
 
         bool prevAutosave = _suppressAutosave;
         bool prevRebuild = _suppressRebuild;
@@ -1596,7 +1612,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void ToggleRecording()
     {
-        if (_recording) { StopRecording(); return; }
+        if (_recording) { StopRecording("by the operator"); return; }
 
         // Old recordings first, so a start is not refused for space that is about to be freed.
         _retention.Prune();
@@ -1658,9 +1674,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         });
     }
 
-    private void StopRecording()
+    /// <param name="reason">Logged and added to the session's actions; null only for the hourly
+    /// rollover, which logs itself. On 2026-10-04 a recording ended at 10:35 with no trace of why.</param>
+    private void StopRecording(string? reason)
     {
         if (!_recording) return;
+        if (reason != null)
+        {
+            AudioLog.Write($"Recording stopped: {reason}.");
+            _session?.Action($"recording stopped ({reason})");
+        }
         _recording = false;
         _recordingChainStarted = null;
         foreach (var ch in Channels) _engine.Inputs[ch.Index].StopAnalysisRecording();
@@ -1693,15 +1716,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var now = DateTime.Now;
         if (now - (_recordingChainStarted ?? _recordingStarted) >= MaxRecordingLength)
         {
-            StopRecording();
+            StopRecording("reached the maximum length");
             StatusText = $"Recording stopped automatically after {MaxRecordingLength.TotalHours:F0} hours.";
-            AudioLog.Write("Recording stopped: reached the maximum length.");
             return;
         }
         if (now - _recordingStarted >= RecordingFileLength)
         {
             var chain = _recordingChainStarted;
-            StopRecording();
+            StopRecording(null);
             _recordingChainStarted = chain;
             ToggleRecording();
             _session?.Action("recording continued in new files");
@@ -1715,9 +1737,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         if (_retention.MustStopNow())
         {
-            StopRecording();
+            StopRecording("free space below the floor");
             StatusText = "Recording stopped. The disk is nearly full.";
-            AudioLog.Write("Recording stopped: free space below the floor.");
         }
     }
 
@@ -1734,7 +1755,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _deviceWatcher.Dispose();
         _meterTimer.Stop();
         _autosaveTimer.Stop();
-        StopRecording();
+        StopRecording("the mixer is closing");
         SavePreset();
         _session?.Dispose();
         foreach (var r in _recorders) r?.Dispose();

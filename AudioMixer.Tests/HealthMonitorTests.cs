@@ -62,6 +62,23 @@ public class HealthMonitorTests
         Assert.False(Has(a, ".dropouts"));
     }
 
+    // --- disk space -------------------------------------------------------------------------------
+
+    [Fact]
+    public void ADiskThatCannotHoldAServiceRaisesAWarning()
+    {
+        var snap = Snap() with { RecordingHoursLeft = 1.9 };
+        Assert.True(Has(HealthMonitor.Evaluate(snap), "rec.space"));
+    }
+
+    /// <summary>Mid-recording, what matters is the time the recording still has to run.</summary>
+    [Fact]
+    public void ARecordingNearItsEndNeedsOnlyItsRemainingTime()
+    {
+        var snap = Snap() with { RecordingHoursLeft = 1.9, RecordingHoursNeeded = 0.5 };
+        Assert.False(Has(HealthMonitor.Evaluate(snap), "rec.space"));
+    }
+
     [Fact]
     public void NoOutputDevice_IsCritical()
     {

@@ -22,6 +22,10 @@ public class RecordingRetentionTests : IDisposable
         try { if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true); } catch { }
     }
 
+    /// <summary>Plenty of room, so only the age and stub rules act — this machine's disk must not
+    /// decide whether a test deletes its files.</summary>
+    private static RecordingRetention Roomy(params string[] dirs) => new(dirs) { FreeGbOf = _ => 1000 };
+
     private string Wav(string name, int daysOld, int bytes = 1024)
     {
         var path = Path.Combine(_dir, name);
@@ -39,7 +43,7 @@ public class RecordingRetentionTests : IDisposable
         var old = Wav("diag-input1-old.wav", RecordingRetention.RetentionDays + 1);
         var fresh = Wav("diag-input1-new.wav", 1);
 
-        var (files, _) = new RecordingRetention(_dir).Prune();
+        var (files, _) = Roomy(_dir).Prune();
 
         Assert.Equal(1, files);
         Assert.False(File.Exists(old));
@@ -51,7 +55,7 @@ public class RecordingRetentionTests : IDisposable
     {
         var path = Wav("mix-A.wav", RecordingRetention.RetentionDays - 1);
 
-        new RecordingRetention(_dir).Prune();
+        Roomy(_dir).Prune();
 
         Assert.True(File.Exists(path));
     }
@@ -66,7 +70,7 @@ public class RecordingRetentionTests : IDisposable
         File.WriteAllBytes(b, new byte[512]);
         File.SetLastWriteTimeUtc(b, DateTime.UtcNow.AddDays(-40));
 
-        var (files, _) = new RecordingRetention(_dir, second).Prune();
+        var (files, _) = Roomy(_dir, second).Prune();
 
         Assert.Equal(2, files);
         Assert.False(File.Exists(a));
@@ -89,7 +93,7 @@ public class RecordingRetentionTests : IDisposable
         File.SetLastWriteTimeUtc(fixture, DateTime.UtcNow.AddDays(-400));
         var ordinary = Wav("diag-input1-20260809-092931.wav", 400);
 
-        var (files, _) = new RecordingRetention(_dir).Prune();
+        var (files, _) = Roomy(_dir).Prune();
 
         Assert.Equal(1, files);
         Assert.True(File.Exists(fixture), "the kept fixture was pruned");
@@ -105,7 +109,7 @@ public class RecordingRetentionTests : IDisposable
         File.WriteAllText(json, "{}");
         File.SetLastWriteTimeUtc(json, DateTime.UtcNow.AddDays(-400));
 
-        new RecordingRetention(_dir).Prune();
+        Roomy(_dir).Prune();
 
         Assert.True(File.Exists(json));
     }
@@ -113,8 +117,8 @@ public class RecordingRetentionTests : IDisposable
     [Fact]
     public void PruningAnEmptyOrMissingFolderIsHarmless()
     {
-        Assert.Equal(0, new RecordingRetention(_dir).Prune().Files);
-        Assert.Equal(0, new RecordingRetention(Path.Combine(_dir, "nope")).Prune().Files);
+        Assert.Equal(0, Roomy(_dir).Prune().Files);
+        Assert.Equal(0, Roomy(Path.Combine(_dir, "nope")).Prune().Files);
         Assert.Equal(0, new RecordingRetention().Prune().Files);
     }
 
@@ -124,13 +128,82 @@ public class RecordingRetentionTests : IDisposable
         var path = Wav("diag-input1.wav", 40);
         using var held = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None);
 
-        var (files, _) = new RecordingRetention(_dir).Prune();
+        var (files, _) = Roomy(_dir).Prune();
 
         Assert.Equal(0, files);
         Assert.True(File.Exists(path));
     }
 
+    // --- per-kind expiry and stubs (operator: "automatic cleanup of what we don't need", 2026-10-04)
+
+    [Fact]
+    public void PerMicCapturesExpireBeforeTheMixes()
+    {
+        int days = RecordingRetention.DiagRetentionDays + 1;
+        var diag = Wav("diag-input2-20260901-093000.wav", days, (int)RecordingRetention.StubBytes);
+        var mix = Wav("mix-A-20260901-093000.wav", days, (int)RecordingRetention.StubBytes);
+
+        Roomy(_dir).Prune();
+
+        Assert.False(File.Exists(diag));
+        Assert.True(File.Exists(mix), "the mix is what was sent, and keeps the full four weeks");
+    }
+
+    /// <summary>Every launch starts a recording, so restarts leave stamps of seconds. They go after a
+    /// day; a stamp whose mix reached two minutes is a real recording and stays.</summary>
+    [Fact]
+    public void AStubStampGoesAfterADayAndARealOneStays()
+    {
+        var stubMix = Wav("mix-A-20261004-092758.wav", 2, 1000);
+        var stubDiag = Wav("diag-input1-20261004-092758.wav", 2, 1000);
+        var realMix = Wav("mix-A-20261004-092931.wav", 2, (int)RecordingRetention.StubBytes);
+        var shortDiagOfReal = Wav("diag-input2-20261004-092931.wav", 2, 1000);
+        var todaysStub = Wav("mix-A-20261005-090000.wav", 0, 1000);
+
+        Roomy(_dir).Prune();
+
+        Assert.False(File.Exists(stubMix));
+        Assert.False(File.Exists(stubDiag));
+        Assert.True(File.Exists(realMix));
+        Assert.True(File.Exists(shortDiagOfReal), "a short file of a real recording is part of it");
+        Assert.True(File.Exists(todaysStub), "a stub is kept for a day, so a restart mid-service is safe");
+    }
+
+    [Fact]
+    public void StampIsReadFromAnyRecordingName()
+    {
+        Assert.Equal("20261004-092931", RecordingRetention.Stamp("diag-input10-20261004-092931.wav"));
+        Assert.Equal("20261004-092931", RecordingRetention.Stamp("mix-B-20261004-092931.wav"));
+        Assert.Null(RecordingRetention.Stamp("notes.wav"));
+    }
+
+    /// <summary>Today's rig: lapel stereo, six split mono, two stereo strips, two stereo buses = 16
+    /// channels, which wrote ~10 GB in the hour.</summary>
+    [Fact]
+    public void TheRateMatchesWhatTheRigWrote() =>
+        Assert.InRange(RecordingRetention.GbPerHour(16), 9.5, 11);
+
+    [Fact]
+    public void TheSpaceFloorHoldsAThreeHourServiceAtThatRate() =>
+        Assert.True(RecordingRetention.LowSpaceGb - RecordingRetention.StopFloorGb
+                    >= 3 * RecordingRetention.GbPerHour(16));
+
     // --- the space rule ---------------------------------------------------------------------------
+
+    [Fact]
+    public void WhileSpaceIsShortTheOldestGoFirst()
+    {
+        var old = Wav("mix-A-20260901-093000.wav", 10, (int)RecordingRetention.StubBytes);
+        var newer = Wav("mix-A-20260920-093000.wav", 5, (int)RecordingRetention.StubBytes);
+        int calls = 0;
+        // Short until one file is gone.
+        var r = new RecordingRetention(_dir) { FreeGbOf = _ => calls++ == 0 ? 10 : 1000 };
+
+        r.Prune();
+
+        Assert.False(File.Exists(old));
+        Assert.True(File.Exists(newer));
+    }
 
     [Fact]
     public void TheFloorsAreOrderedSoAnInFlightRecordingIsGivenEveryChance()

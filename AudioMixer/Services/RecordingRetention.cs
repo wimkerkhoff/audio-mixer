@@ -11,8 +11,9 @@ namespace AudioMixer.Services;
 /// space on the machine this runs on. Pruning at 28 days would arrive about a week after the disk
 /// filled.
 ///
-/// So there are two rules, and the space one is what actually protects the machine:
-///   * anything past <see cref="RetentionDays"/> goes, regardless of space;
+/// So there are four rules, and the space one is what actually protects the machine:
+///   * a per-mic capture past <see cref="DiagRetentionDays"/>, or a mix past <see cref="RetentionDays"/>, goes;
+///   * a stub — a stamp none of whose files reached two minutes — goes after a day;
 ///   * while free space is under <see cref="LowSpaceGb"/>, the OLDEST recordings go until it is not.
 ///
 /// Session records are never touched here — they live elsewhere, are tens of kilobytes, and are the
@@ -20,11 +21,32 @@ namespace AudioMixer.Services;
 /// </summary>
 public sealed class RecordingRetention
 {
-    /// <summary>Operator's choice, 2026-09-20.</summary>
+    /// <summary>Operator's choice, 2026-09-20. Applies to the bus mixes: what was actually sent.</summary>
     public const int RetentionDays = 28;
 
-    /// <summary>Below this, start deleting oldest-first even if nothing is old enough to expire.</summary>
-    public const double LowSpaceGb = 20;
+    /// <summary>
+    /// The per-mic captures are ~80% of the bytes and are only worth anything while a session is still
+    /// being reviewed; one worth keeping longer is a fixture and belongs in <see cref="KeepFolder"/>.
+    /// </summary>
+    public const int DiagRetentionDays = 14;
+
+    /// <summary>
+    /// Every launch starts a recording, so restarts leave stamps of a few seconds (seven on 2026-10-04
+    /// alone). Under this length a stamp holds nothing a review can use. Two minutes of 48 kHz stereo
+    /// float32 — the bus mixes are stereo, so a stamp only counts as a stub if its mixes are short too.
+    /// </summary>
+    public const long StubBytes = 2L * 60 * 48_000 * 2 * 4;
+
+    /// <summary>
+    /// Below this, start deleting oldest-first even if nothing is old enough to expire. Sized to hold a
+    /// whole service: the 2026-10-04 rig (nine strips, two buses) wrote ~10 GB an hour, and the
+    /// recording runs up to three. At 20 GB the disk sat one hour from the start floor all morning.
+    /// </summary>
+    public const double LowSpaceGb = 40;
+
+    /// <summary>Disk a recording uses per hour for this many 48 kHz float32 channels.</summary>
+    public static double GbPerHour(int audioChannels) =>
+        audioChannels * 48_000.0 * 4 * 3600 / (1L << 30);
 
     /// <summary>Do not begin a recording with less than this free — it would not survive the session.</summary>
     public const double StartFloorGb = 15;
@@ -37,6 +59,9 @@ public sealed class RecordingRetention
 
     public RecordingRetention(params string[] folders) => _folders = folders;
 
+    /// <summary>Free space of a folder's drive. Replaceable so tests do not depend on this disk.</summary>
+    public Func<string, double> FreeGbOf { get; init; } = FreeGb;
+
     public static double FreeGb(string path)
     {
         try
@@ -47,11 +72,10 @@ public sealed class RecordingRetention
         catch { return double.MaxValue; }   // unknown free space must never block a recording
     }
 
-    public bool HasRoomToStart() => _folders.Length == 0 || FreeGb(_folders[0]) >= StartFloorGb;
+    public bool HasRoomToStart() => _folders.Length == 0 || FreeGbOf(_folders[0]) >= StartFloorGb;
 
-    public bool MustStopNow() => _folders.Length > 0 && FreeGb(_folders[0]) < StopFloorGb;
+    public bool MustStopNow() => _folders.Length > 0 && FreeGbOf(_folders[0]) < StopFloorGb;
 
-    /// <summary>Deletes expired files, then oldest-first while space is short. Returns what it removed.</summary>
     /// <summary>
     /// A capture kept as a replay fixture belongs in `analysis/keep/`, which ReplayRig also searches
     /// and this never walks — EnumerateFiles is top-level only, so a subfolder is already immune.
@@ -63,19 +87,32 @@ public sealed class RecordingRetention
     /// </summary>
     public const string KeepFolder = "keep";
 
+    /// <summary>Deletes expired files and stubs, then oldest-first while space is short.</summary>
     public (int Files, double Gb) Prune(DateTime? nowUtc = null)
     {
-        var cutoff = (nowUtc ?? DateTime.UtcNow).AddDays(-RetentionDays);
+        var now = nowUtc ?? DateTime.UtcNow;
         var files = Wavs().OrderBy(f => f.LastWriteTimeUtc).ToList();
 
         int removed = 0;
         double bytes = 0;
 
-        foreach (var f in files.Where(f => f.LastWriteTimeUtc < cutoff).ToList())
+        foreach (var f in files.Where(f => IsExpired(f, now)).ToList())
         {
             if (!Delete(f, ref bytes)) continue;
             removed++;
             files.Remove(f);
+        }
+
+        // Stubs, a day on: long enough that a restart mid-service never sweeps the stamp before it.
+        foreach (var stub in files.GroupBy(f => Stamp(f.Name))
+                     .Where(g => g.Key != null
+                                 && g.All(f => f.Length < StubBytes)
+                                 && g.All(f => f.LastWriteTimeUtc < now.AddDays(-1)))
+                     .SelectMany(g => g).ToList())
+        {
+            if (!Delete(stub, ref bytes)) continue;
+            removed++;
+            files.Remove(stub);
         }
 
         // Oldest-first until there is room again. A recording still being written is skipped by
@@ -83,7 +120,7 @@ public sealed class RecordingRetention
         // casing: the file in progress is the one the operator is least willing to lose.
         foreach (var f in files)
         {
-            if (_folders.Length == 0 || FreeGb(_folders[0]) >= LowSpaceGb) break;
+            if (_folders.Length == 0 || FreeGbOf(_folders[0]) >= LowSpaceGb) break;
             if (!Delete(f, ref bytes)) continue;
             removed++;
         }
@@ -94,6 +131,20 @@ public sealed class RecordingRetention
                 $"Recording retention: removed {removed} file(s), {bytes / (1L << 30):F1} GB.");
         }
         return (removed, bytes / (1L << 30));
+    }
+
+    private static bool IsExpired(FileInfo f, DateTime now) =>
+        f.LastWriteTimeUtc < now.AddDays(f.Name.StartsWith("diag-", StringComparison.OrdinalIgnoreCase)
+                                             ? -DiagRetentionDays : -RetentionDays);
+
+    private static readonly System.Text.RegularExpressions.Regex StampPattern =
+        new(@"\d{8}-\d{6}", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The yyyyMMdd-HHmmss that ties a recording's files together, or null.</summary>
+    public static string? Stamp(string fileName)
+    {
+        var m = StampPattern.Match(fileName);
+        return m.Success ? m.Value : null;
     }
 
     private static bool Delete(FileInfo f, ref double bytes)

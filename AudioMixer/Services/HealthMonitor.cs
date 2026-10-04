@@ -80,7 +80,9 @@ public sealed record HealthSnapshot(
     bool IsReplaying,
     bool VbCableInstalled = true,
     double SingingSeconds = 0,
-    IReadOnlyList<string>? FailedRecordings = null);  // "label: reason", while recording is on
+    IReadOnlyList<string>? FailedRecordings = null,  // "label: reason", while recording is on
+    double RecordingHoursLeft = double.MaxValue,     // free disk at this rig's recording rate
+    double RecordingHoursNeeded = HealthMonitor.RecordingHoursWanted); // less once one is running
 
 /// <summary>
 /// The productised version of the human-in-the-loop these sessions have needed: an operator watching
@@ -111,6 +113,9 @@ public static class HealthMonitor
     /// clean by ear, never (max 5). A transmitter switched off is one gap, and the dead-mic rule's job.
     /// </summary>
     public const int DropoutsPerMinute = 6;
+
+    /// <summary>The recording's own limit (MainViewModel.MaxRecordingLength).</summary>
+    public const double RecordingHoursWanted = 3;
 
     /// <summary>
     /// Longer than a worship set, shorter than a sermon. Time is the whole rule because singing cannot
@@ -263,6 +268,17 @@ public static class HealthMonitor
             alerts.Add(new HealthAlert("rec.failed", AlertSeverity.Warning,
                 $"Recording stopped for {string.Join("; ", failed)}.",
                 "Check free disk space, then press Record twice"));
+        }
+
+        // Recording starts by itself at launch and runs up to three hours, so a disk that cannot hold
+        // a service is a fault to fix before one starts, not after the recording stops. Retention
+        // already frees what it may; what is left is fixtures, the newest captures, or other files.
+        if (s.RecordingHoursLeft < s.RecordingHoursNeeded)
+        {
+            alerts.Add(new HealthAlert("rec.space", AlertSeverity.Warning,
+                $"The disk holds only about {s.RecordingHoursLeft:F1} h more recording, and the " +
+                $"recording can run {s.RecordingHoursNeeded:F1} h more. It will stop when the disk fills.",
+                "Free space on the disk"));
         }
 
         // Two strips sharing one endpoint must take opposite sides of a split receiver. Left on Stereo
