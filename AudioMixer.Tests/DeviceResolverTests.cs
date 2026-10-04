@@ -173,6 +173,65 @@ public class DeviceResolverTests
         Assert.Equal("{line}", match?.Id);
     }
 
+    // --- serial key (identical receivers) -----------------------------------------------------------
+
+    private static readonly Guid RxA = Guid.Parse("ea211674-4dbb-5c8b-a38c-59a37e65cff8");
+    private static readonly Guid RxB = Guid.Parse("ec0a9f31-af72-5037-a92d-e573b5498ead");
+
+    private static AudioDeviceInfo Rx(string id, string name, Guid container) =>
+        new(id, name, DataFlow.Capture, "USB", container);
+
+    /// <summary>
+    /// 2026-10-04: receiver A was unplugged for a firmware update while B was present and free. A
+    /// strip that wants A must wait for A — the shared friendly name must not hand it B.
+    /// </summary>
+    [Fact]
+    public void ASerialKeyNeverFallsBackToAnUnpluggedReceiversTwin()
+    {
+        var live = new List<AudioDeviceInfo>
+        {
+            Rx("{b-new}", "Desktop Microphone (2- Wireless PRO RX)", RxB),
+        };
+
+        var match = DeviceResolver.Resolve(live, "{a-old}", "Desktop Microphone (Wireless PRO RX)",
+            new HashSet<string>(), ChannelSource.Left, RxA.ToString());
+
+        Assert.Null(match);
+    }
+
+    /// <summary>The wanted receiver is present but its side is taken: wait, don't take the twin.</summary>
+    [Fact]
+    public void ASerialKeyNeverFallsBackWhenItsReceiverIsClaimed()
+    {
+        var live = new List<AudioDeviceInfo>
+        {
+            Rx("{a}", "Desktop Microphone (Wireless PRO RX)", RxA),
+            Rx("{b}", "Desktop Microphone (2- Wireless PRO RX)", RxB),
+        };
+        var used = new HashSet<string> { DeviceResolver.Claim("{a}", ChannelSource.Left) };
+
+        var match = DeviceResolver.Resolve(live, "{a}", "Desktop Microphone (Wireless PRO RX)",
+            used, ChannelSource.Left, RxA.ToString());
+
+        Assert.Null(match);
+    }
+
+    /// <summary>The key still binds through a new GUID and a new "N- " name, which is its job.</summary>
+    [Fact]
+    public void ASerialKeyFindsItsReceiverUnderANewIdAndName()
+    {
+        var live = new List<AudioDeviceInfo>
+        {
+            Rx("{b}", "Desktop Microphone (Wireless PRO RX)", RxB),
+            Rx("{a-new}", "Desktop Microphone (3- Wireless PRO RX)", RxA),
+        };
+
+        var match = DeviceResolver.Resolve(live, "{a-old}", "Desktop Microphone (Wireless PRO RX)",
+            new HashSet<string>(), ChannelSource.Right, RxA.ToString());
+
+        Assert.Equal("{a-new}", match?.Id);
+    }
+
     [Theory]
     [InlineData("Speakers (Realtek(R) Audio)", "Realtek(R) Audio")]
     [InlineData("Microphone (5- Wireless PRO RX)", "Wireless PRO RX")]

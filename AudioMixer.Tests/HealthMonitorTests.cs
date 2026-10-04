@@ -13,9 +13,9 @@ public class HealthMonitorTests
         string? device = "ANKER #1 (Anker Soundsync)", bool routed = true, bool muted = false,
         bool priority = false, double levelDb = -25, double sinceData = 0, double sinceSound = 0,
         string? bus = null, string? deviceId = null, int side = 0, float speechDb = float.NaN,
-        float leadSpeechDb = float.NaN)
+        float leadSpeechDb = float.NaN, int dropouts = 0)
         => new(i, label, device, routed, muted, priority, levelDb, sinceData, sinceSound,
-               bus, deviceId, side, speechDb, false, leadSpeechDb);
+               bus, deviceId, side, speechDb, false, leadSpeechDb, dropouts);
 
     private static OutputHealth Bus(int i, string label = "OBS/Zoom", bool hasDevice = true,
         bool muted = false, double peakDb = -20, double sinceSound = 0, float volume = 100f)
@@ -32,6 +32,34 @@ public class HealthMonitorTests
     public void HealthyRig_RaisesNothing()
     {
         Assert.Empty(HealthMonitor.Evaluate(Snap()));
+    }
+
+    // --- radio dropouts (2026-10-04: A1 broke up ~28 times a minute and nothing said so) ---------
+
+    [Fact]
+    public void ALinkBreakingUpRaisesADropoutWarning()
+    {
+        var a = HealthMonitor.Evaluate(Snap(ch: new[] { Mic(0, dropouts: 28) }));
+        var alert = Assert.Single(a, x => x.Id == "in0.dropouts");
+        Assert.Equal(AlertSeverity.Warning, alert.Severity);
+    }
+
+    [Fact]
+    public void AnOccasionalGapIsNotADropoutWarning()
+    {
+        var a = HealthMonitor.Evaluate(Snap(ch: new[] { Mic(0, dropouts: HealthMonitor.DropoutsPerMinute - 1) }));
+        Assert.False(Has(a, ".dropouts"));
+    }
+
+    /// <summary>The operator has already taken it off air; repeating the warning is noise.</summary>
+    [Fact]
+    public void AMutedOrUnroutedMicRaisesNoDropoutWarning()
+    {
+        var a = HealthMonitor.Evaluate(Snap(ch: new[]
+        {
+            Mic(0, dropouts: 30, muted: true), Mic(1, dropouts: 30, routed: false), Mic(2),
+        }));
+        Assert.False(Has(a, ".dropouts"));
     }
 
     [Fact]

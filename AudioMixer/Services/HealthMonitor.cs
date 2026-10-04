@@ -59,7 +59,8 @@ public sealed record ChannelHealth(
     int Side = 0,                 // 0 Stereo, 1 Left, 2 Right — see ChannelSource
     float SpeechDb = float.NaN,   // settled calibration median; NaN until enough voiced buffers
     bool CalibrationStale = false,
-    float LeadSpeechDb = float.NaN); // the same, only while this mic held the bus — see InputChannel
+    float LeadSpeechDb = float.NaN, // the same, only while this mic held the bus — see InputChannel
+    int RecentDropouts = 0);        // radio gaps in the last minute — see InputChannel.DropoutGaps
 
 public sealed record OutputHealth(
     int Index,
@@ -102,6 +103,14 @@ public static class HealthMonitor
     public const double IdleLapelSeconds = 60.0;
 
     public const double OutputSilentSeconds = 10.0;
+
+    /// <summary>
+    /// Radio gaps per minute that mean a failing link. 2026-10-04 (57 min, ≥ 30 ms gaps): A1 at the
+    /// far table median 28/min, max 72, over this in 38 minutes; B1 and C1, which the operator heard
+    /// break up, 20 and 21 minutes; A2 and C2 ("intermittent", "falls away sometimes") 2 each; B2,
+    /// clean by ear, never (max 5). A transmitter switched off is one gap, and the dead-mic rule's job.
+    /// </summary>
+    public const int DropoutsPerMinute = 6;
 
     /// <summary>
     /// Longer than a worship set, shorter than a sermon. Time is the whole rule because singing cannot
@@ -312,6 +321,17 @@ public static class HealthMonitor
                     $"{c.Label} is connected over Bluetooth. A Bluetooth mic drops to HSP/HFP "
                     + "quality when it is used for input, and adds a second 2.4 GHz radio to the room.",
                     "Connect it by USB instead"));
+            }
+
+            // Before "dead": a link breaking up every second is never silent for 30 s at a stretch,
+            // and nothing else on the panel shows it — the meter just looks busy.
+            if (c.Routed && !c.Muted && c.RecentDropouts >= DropoutsPerMinute)
+            {
+                alerts.Add(new HealthAlert($"in{c.Index}.dropouts", AlertSeverity.Warning,
+                    $"{c.Label} keeps cutting out ({c.RecentDropouts} gaps in the last minute). Its " +
+                    "transmitter is losing the receiver: raise the receiver or move it closer, " +
+                    "or move the transmitter nearer.",
+                    null));
             }
 
             if (c.Routed && !c.Muted && c.SecondsSinceSound > DeadMicSeconds)

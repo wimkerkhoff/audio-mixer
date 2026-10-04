@@ -104,7 +104,7 @@ public sealed class DiagnosticsLog
             string calSpeech = float.IsNaN(cal.SpeechDb) ? "-" : cal.SpeechDb.ToString("F0");
             string calFloor = float.IsNaN(cal.FloorDb) ? "-" : cal.FloorDb.ToString("F0");
             AudioLog.Write(
-                $"Input {i} ('{dev.FriendlyName}'): inputDb={ch.InputPeakDb:F1} postDb={ch.PostPeakDb:F1} routes=[{string.Join(",", ch.Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={ch.Muted} gains=[{gains}] fluxCv={input.CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges}] cal=[speech={calSpeech} floor={calFloor} n={cal.TotalBuffers}] bufMs=[{bufMs}] under=[{underruns}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
+                $"Input {i} ('{dev.FriendlyName}'): inputDb={ch.InputPeakDb:F1} postDb={ch.PostPeakDb:F1} routes=[{string.Join(",", ch.Routes.Select(r => r.IsOn ? "1" : "0"))}] mute={ch.Muted} gains=[{gains}] fluxCv={input.CurrentFluxCv:F2} rf=[lvl={rf.MeanDb:F1} voiced={rf.VoicedPct:F0}% silent={rf.SilentPct:F0}% drops={rf.DropEdges} gaps={input.DropoutGaps}] cal=[speech={calSpeech} floor={calFloor} n={cal.TotalBuffers}] bufMs=[{bufMs}] under=[{underruns}] readCalls=[{readCalls}] readSamples=[{readSamples}]");
         }
     }
 }

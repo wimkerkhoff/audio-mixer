@@ -150,10 +150,14 @@ public class DeviceIdentityTests
         Assert.Equal("{guid-a}", match!.Id);
     }
 
-    /// <summary>A key for a device that is not here must fall through, not fail — the receiver may
-    /// simply be unplugged, and the name match is still the right answer for a single unit.</summary>
+    /// <summary>
+    /// A key for a device that is not here WAITS. This used to fall through to the name, which was
+    /// right with one receiver and wrong with three: the unit that is here is a twin, and binding it
+    /// swapped strips between receivers (2026-10-04). A genuinely replaced receiver is one pick in
+    /// Settings; a silent swap is a mislabelled mic nobody notices.
+    /// </summary>
     [Fact]
-    public void AnAbsentKeyFallsThroughToTheUsualMatching()
+    public void AnAbsentKeyWaitsRatherThanTakingATwin()
     {
         var all = new[] { Dev("{guid-a}", "Microphone (Wireless PRO RX)", RodeRx) };
 
@@ -161,7 +165,7 @@ public class DeviceIdentityTests
                                            new HashSet<string>(), ChannelSource.Stereo,
                                            "11111111-2222-5333-8444-555555555555");
 
-        Assert.Equal("{guid-a}", match!.Id);
+        Assert.Null(match);
     }
 
     [Fact]

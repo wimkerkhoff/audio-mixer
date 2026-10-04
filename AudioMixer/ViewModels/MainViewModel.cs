@@ -669,7 +669,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 (int)vm.Source,
                 cal.SpeechDb,
                 cal.IsStale,
-                input.SnapshotLeadCalibration().SpeechDb));
+                input.SnapshotLeadCalibration().SpeechDb,
+                DropoutWindowFor(i).Record(now, input.DropoutGaps)));
         }
 
         List<string>? failedRecordings = null;
@@ -704,6 +705,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     private readonly long[] _lastOutputSound = new long[AudioEngine.OutputCount];
+
+    private readonly List<DropoutWindow> _dropoutWindows = new();
+
+    private DropoutWindow DropoutWindowFor(int index)
+    {
+        while (_dropoutWindows.Count <= index) _dropoutWindows.Add(new DropoutWindow());
+        return _dropoutWindows[index];
+    }
 
     // --- Diagnostics ("why this mic?") ----------------------------------------------------------
 
@@ -1245,9 +1254,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 ch.DesiredDeviceKey);
             if (match == null) continue;
 
+            // Read before binding: the setter rewrites the desire to whatever was bound, so logging
+            // it afterwards always showed agreement and hid the 2026-10-04 cross-binding.
+            string? desired = ch.DesiredDeviceName;
+            string? desiredKey = ch.DesiredDeviceKey;
             ch.SelectedDevice = match;
-            AudioLog.Write($"Input {i} reattached to '{match.FriendlyName}' (desired "
-                         + $"'{ch.DesiredDeviceName}') after it reappeared.");
+            AudioLog.Write($"Input {i} reattached to '{match.FriendlyName}' (desired '{desired}'"
+                         + (desiredKey != null ? $", key {desiredKey}" : "") + ") after it reappeared.");
         }
     }
 

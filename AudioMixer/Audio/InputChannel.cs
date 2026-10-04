@@ -79,6 +79,23 @@ public sealed class InputChannel : IDisposable
 
     public long ClippedSamples => Interlocked.Read(ref _clippedSamples);
 
+    // Radio dropouts, counted as runs of EXACT zero in the raw capture. A Wireless PRO receiver that
+    // loses its transmitter mutes for ~0.5 s and fades either side, so the RF tally's voiced→silent
+    // edge never fires (it read drops=0 all through 2026-10-04 while A1 lost 25–99% of each minute).
+    // A mic in a room never reads exact zero — it always hears the floor — so a run of it is the link.
+    // Counted pre-fader, so a muted strip still reports its receiver.
+    private long _dropoutGaps;
+    private readonly DropoutCounter _dropouts =   // audio-thread only
+        new(InternalSampleRate * InternalChannels * 30 / 1000);
+
+    /// <summary>Monotonic count of dropout gaps (≥ 30 ms of exact zero) since this channel was created.</summary>
+    public long DropoutGaps => Interlocked.Read(ref _dropoutGaps);
+
+    private void CountDropouts(float[] buffer, int count)
+    {
+        if (_dropouts.Observe(buffer.AsSpan(0, count))) Interlocked.Increment(ref _dropoutGaps);
+    }
+
     private void CountClipping(float[] buffer, int count)
     {
         long over = 0;
@@ -748,6 +765,7 @@ public sealed class InputChannel : IDisposable
 
             InputPeak.Observe(rented, read);
             CountClipping(rented, read);
+            CountDropouts(rented, read);
 
             WriteAnalysis(rented, read);
 

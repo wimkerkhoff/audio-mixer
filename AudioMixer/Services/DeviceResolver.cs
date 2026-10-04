@@ -41,10 +41,20 @@ public static class DeviceResolver
         // fails at one or the other: the endpoint GUID is regenerated on every replug, and the friendly
         // name is shared by identical receivers — which is why name matching can only ever refuse.
         // Matching it also costs nothing when it is absent, which is every device that has no serial.
+        //
+        // A serial key also DECIDES ALONE: absent or claimed means "wait", never "try the name". The
+        // three Wireless PRO receivers share a friendly name, so falling through let a strip whose
+        // receiver was unplugged bind the one twin still free — and the bind then rewrote what the
+        // strip wanted, so the swap was saved. 2026-10-04: replugging for a firmware update left A1/A2
+        // on receiver B and B1/B2 on A, labelled as before.
         if (!string.IsNullOrEmpty(key) && Guid.TryParse(key, out var wanted))
+        {
             match = Unambiguous(all.Where(d => d.ContainerId == wanted && Free(d)));
+            if (match != null) used.Add(Claim(match.Id, side));
+            return match;
+        }
 
-        if (match == null && !string.IsNullOrEmpty(id))
+        if (!string.IsNullOrEmpty(id))
             match = all.FirstOrDefault(d => d.Id == id && Free(d));
         // Name matching REFUSES when it cannot tell candidates apart. Two identical receivers share a
         // friendly name, so picking the first free one binds an arbitrary unit — and with each receiver
