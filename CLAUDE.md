@@ -496,6 +496,12 @@ operator's own later judgement.
   garbling the first (forget the BT pairings); a dongle can keep its render endpoint while its capture
   is dead (the "half-link" — re-pair). The app's Bluetooth rule decides from the device bus
   (`BTHENUM`) alone, never a name guess.
+  **Wireless PRO (2026-10-04): bodies, not feet.** Rated 260 m line of sight, A1 lost **89–99%** of
+  each minute on a table ~6 table lengths from its receiver (low, behind the PC) with ~8 people
+  seated in between — and **0%** moved beside the receiver. Its twin A2 on the same receiver ran
+  0–2%, which rules out the PC side. The failure is fixed ~0.53 s mutes in bursts as people shift;
+  the receiver's signal bar still read "strong". Raise receivers into line of sight, near the
+  tables they serve; `in<N>.dropouts` in Checks confirms a spot.
 - **When a receiver disappears** (unplugged, put in its case) capture stops with `0x88890004`
   (device invalidated), the watchdog's restart fails the same way, and the strip shows "no microphone
   assigned" while remembering its device for reattachment — correct behaviour, verified 2026-09-23.
