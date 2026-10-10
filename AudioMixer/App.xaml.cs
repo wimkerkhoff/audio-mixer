@@ -32,6 +32,7 @@ public partial class App : Application
     {
         ApplyCliFlags(e.Args);
         InstallCrashHandlers();
+        Controls.WheelGuard.Install();
 
         string instanceName = ReplayOptions.Current == null ? InstanceName : ReplayInstanceName;
         _instanceMutex = new Mutex(initiallyOwned: true, instanceName, out bool isFirst);

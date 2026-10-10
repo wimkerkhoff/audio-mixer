@@ -670,7 +670,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 cal.SpeechDb,
                 cal.IsStale,
                 input.SnapshotLeadCalibration().SpeechDb,
-                DropoutWindowFor(i).Record(now, input.DropoutGaps)));
+                DropoutWindowFor(i).Record(now, input.DropoutGaps),
+                vm.IsWaitingForDevice ? vm.DesiredDeviceName : null));
         }
 
         List<string>? failedRecordings = null;

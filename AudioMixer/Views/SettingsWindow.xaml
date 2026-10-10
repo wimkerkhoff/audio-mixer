@@ -8,6 +8,7 @@
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style x:Key="Cap" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#A9A9B6"/>
             <Setter Property="FontSize" Value="10"/>
@@ -70,6 +71,12 @@
                                     <ComboBox Grid.Column="1" Margin="4,0" ItemsSource="{Binding AvailableDevices}"
                                               SelectedItem="{Binding SelectedDevice}"
                                               DisplayMemberPath="FriendlyName" FontSize="11"/>
+                                    <!-- Drawn over the empty picker, never blank: the device it wants
+                                         is simply not plugged in, and is not in the list to choose. -->
+                                    <TextBlock Grid.Column="1" Margin="11,0,28,0" VerticalAlignment="Center"
+                                               Text="{Binding WaitingText}" FontSize="11" Foreground="#E0A33E"
+                                               TextTrimming="CharacterEllipsis" IsHitTestVisible="False"
+                                               Visibility="{Binding IsWaitingForDevice, Converter={StaticResource BoolToVis}}"/>
                                     <ComboBox Grid.Column="2" Width="66" FontSize="11"
                                               SelectedIndex="{Binding SideIndex, Mode=TwoWay}"
                                               IsEnabled="{Binding IsStereoCapture}"
@@ -82,12 +89,14 @@
                                          re-pointed but never emptied, and since the strip now REMEMBERS
                                          what it wants across a replug, "forget it" had no control at
                                          all: an unplugged receiver would be re-grabbed the moment it
-                                         came back, even when the operator had moved on. -->
+                                         came back, even when the operator had moved on. It asks first:
+                                         on 2026-10-04 all six receiver strips were cleared while packing
+                                         up, and none reconnected at the next service. -->
                                     <Button Grid.Column="3" Content="✕" Width="22" Margin="4,0,0,0"
                                             FontSize="11" Padding="0"
                                             Background="#242A35" Foreground="#C7C7D2" BorderBrush="#3A3A44"
-                                            Command="{Binding ClearDeviceCommand}"
-                                            ToolTip="Unbind this strip and forget the device it wants"/>
+                                            Click="ClearDevice_Click"
+                                            ToolTip="Forget the device this strip uses. Not needed when unplugging: a strip remembers its device and reconnects by itself."/>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

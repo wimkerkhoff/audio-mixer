@@ -60,7 +60,8 @@ public sealed record ChannelHealth(
     float SpeechDb = float.NaN,   // settled calibration median; NaN until enough voiced buffers
     bool CalibrationStale = false,
     float LeadSpeechDb = float.NaN, // the same, only while this mic held the bus — see InputChannel
-    int RecentDropouts = 0);        // radio gaps in the last minute — see InputChannel.DropoutGaps
+    int RecentDropouts = 0,         // radio gaps in the last minute — see InputChannel.DropoutGaps
+    string? WaitingFor = null);     // the device it is mapped to but cannot find, when DeviceName is null
 
 public sealed record OutputHealth(
     int Index,
@@ -224,7 +225,16 @@ public static class HealthMonitor
 
         // A strip routed to a bus with nothing bound to it is one someone meant to use. Unrouted empty
         // strips are just spare and must stay silent, or every rig with headroom nags forever.
-        foreach (var c in s.Channels.Where(c => c.Routed && c.DeviceName == null))
+        // Mapped but absent is a different fault with a different fix: plugging it in, not choosing it.
+        // Told apart because an operator shown "no microphone assigned" for an unplugged receiver
+        // tried to map it by hand (2026-10-10). Physical, so no button.
+        foreach (var c in s.Channels.Where(c => c.Routed && c.DeviceName == null && c.WaitingFor != null))
+        {
+            alerts.Add(new HealthAlert($"in{c.Index}.unplugged", AlertSeverity.Warning,
+                $"{c.Label} is not plugged in: {c.WaitingFor}. Plug in its USB cable; it reconnects by itself.",
+                "Nothing to choose in Settings"));
+        }
+        foreach (var c in s.Channels.Where(c => c.Routed && c.DeviceName == null && c.WaitingFor == null))
         {
             alerts.Add(new HealthAlert($"in{c.Index}.nodevice", AlertSeverity.Warning,
                 $"{c.Label} has no microphone assigned.",

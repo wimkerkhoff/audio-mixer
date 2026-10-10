@@ -44,6 +44,7 @@ public sealed class ChannelViewModel : ViewModelBase
         DesiredDeviceId = id;
         DesiredDeviceName = name;
         DesiredDeviceKey = key;
+        RaiseWaiting();
     }
 
     /// <summary>Forget the desired device — an explicit "None" from the operator, not a disappearance.</summary>
@@ -52,6 +53,33 @@ public sealed class ChannelViewModel : ViewModelBase
         DesiredDeviceId = null;
         DesiredDeviceName = null;
         DesiredDeviceKey = null;
+        RaiseWaiting();
+    }
+
+    /// <summary>
+    /// Mapped, but the device is not here — almost always a receiver whose USB cable is not plugged
+    /// in. It must not look like an empty strip: on 2026-10-10 an operator facing blank pickers tried
+    /// to map the receivers by hand, not knowing they only needed plugging in to reconnect.
+    /// </summary>
+    public bool IsWaitingForDevice => _selectedDevice == null && DesiredDeviceName != null;
+
+    public string WaitingText => "Not plugged in: " + ShortDeviceName(DesiredDeviceName) + SourceSuffix;
+
+    // "Desktop Microphone (2- Wireless PRO RX)" -> "2- Wireless PRO RX". The row is ~200 px wide and
+    // the generic prefix is identical on every receiver, so it truncated away the one part that says
+    // which receiver to plug in. The full name stays on the tooltip and in Checks.
+    private static string? ShortDeviceName(string? name)
+    {
+        if (name == null) return null;
+        int open = name.IndexOf('('), close = name.LastIndexOf(')');
+        return open >= 0 && close > open + 1 ? name[(open + 1)..close] : name;
+    }
+
+    private void RaiseWaiting()
+    {
+        RaisePropertyChanged(nameof(IsWaitingForDevice));
+        RaisePropertyChanged(nameof(WaitingText));
+        RaisePropertyChanged(nameof(DeviceTooltip));
     }
 
     private AudioDeviceInfo? _selectedDevice;
@@ -73,7 +101,7 @@ public sealed class ChannelViewModel : ViewModelBase
             {
                 _onDeviceChanged(Index, value);
                 RaisePropertyChanged(nameof(IsStereoCapture));
-                RaisePropertyChanged(nameof(DeviceTooltip));
+                RaiseWaiting();
                 if (wasNull && value != null && Routes != null && Routes.Length > 0
                     && Routes.All(r => !r.IsOn))
                 {
@@ -117,6 +145,7 @@ public sealed class ChannelViewModel : ViewModelBase
     {
         get
         {
+            if (IsWaitingForDevice) return "missing";
             if (SelectedDevice == null || !IsRoutedAnywhere || Muted) return "off";
             if ((Environment.TickCount64 - _channel.LastDataTicks) > 2000) return "dead";
             return IsAutoMixActive ? "live" : "open";
@@ -165,7 +194,7 @@ public sealed class ChannelViewModel : ViewModelBase
                 _channel.Source = value;
                 RaisePropertyChanged(nameof(SourceSuffix));
                 RaisePropertyChanged(nameof(SideIndex));
-                RaisePropertyChanged(nameof(DeviceTooltip));
+                RaiseWaiting();
             }
         }
     }
@@ -199,7 +228,7 @@ public sealed class ChannelViewModel : ViewModelBase
     public string DeviceTooltip => _selectedDevice != null
         ? _selectedDevice.FriendlyName + SourceSuffix
         : DesiredDeviceName != null
-            ? "Waiting for " + DesiredDeviceName + SourceSuffix
+            ? "Not plugged in: " + DesiredDeviceName + SourceSuffix + ". It reconnects by itself when plugged in."
             : "No microphone assigned";
 
     // Fixed-band high-pass, 0 = off. Removes the rumble/HVAC/handling energy that dominates a

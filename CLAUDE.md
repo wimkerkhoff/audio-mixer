@@ -503,8 +503,13 @@ operator's own later judgement.
   the receiver's signal bar still read "strong". Raise receivers into line of sight, near the
   tables they serve; `in<N>.dropouts` in Checks confirms a spot.
 - **When a receiver disappears** (unplugged, put in its case) capture stops with `0x88890004`
-  (device invalidated), the watchdog's restart fails the same way, and the strip shows "no microphone
-  assigned" while remembering its device for reattachment — correct behaviour, verified 2026-09-23.
+  (device invalidated), the watchdog's restart fails the same way, and the strip remembers its device
+  for reattachment — correct behaviour, verified 2026-09-23. It must **say "not plugged in"**, never
+  look empty: on 2026-10-10 an operator shown blank strips tried to map the receivers by hand instead
+  of plugging in their USB cables. A mapped-but-absent strip now has an amber stripe and names the
+  device on the row, over the Settings picker, and in Checks (`in<N>.unplugged`, distinct from
+  `nodevice`). The mapping itself had been lost to **Settings' ✕ (forget device)**, pressed on all six
+  receiver strips while packing up on 2026-10-04 — so ✕ now asks first, and says unplugging is enough.
 
 ### Audio graph & NAudio
 
@@ -624,6 +629,10 @@ operator's own later judgement.
   the right fix, aimed at the right strip" is a unit test. `Target` is the half that fails silently.
   Physical or ambiguous remedies carry `FixKind.None`: a button that cannot help is worse than a
   sentence.
+- **A focused, closed ComboBox changes selection on the mouse wheel** — scrolling Settings walked the
+  priority picker LAPEL → A1 → … → C1 in one second on 2026-10-07, and C1 stayed priority for three
+  days. `Controls/WheelGuard` (a class handler installed in `App.OnStartup`) passes the wheel to the
+  scroll container unless the drop-down is open. WPF `Slider`s ignore the wheel already.
 - **Device enumeration must stay off the UI thread** (`RefreshDevices` enumerates on the threadpool,
   marshals only the rebuild, and coalesces overlapping refreshes). On the UI thread every replug froze
   the window ~3 s; now a real hot-plug peaks at 60 ms. Startup still enumerates once synchronously,

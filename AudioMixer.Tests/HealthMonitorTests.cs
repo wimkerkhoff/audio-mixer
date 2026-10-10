@@ -13,9 +13,9 @@ public class HealthMonitorTests
         string? device = "ANKER #1 (Anker Soundsync)", bool routed = true, bool muted = false,
         bool priority = false, double levelDb = -25, double sinceData = 0, double sinceSound = 0,
         string? bus = null, string? deviceId = null, int side = 0, float speechDb = float.NaN,
-        float leadSpeechDb = float.NaN, int dropouts = 0)
+        float leadSpeechDb = float.NaN, int dropouts = 0, string? waitingFor = null)
         => new(i, label, device, routed, muted, priority, levelDb, sinceData, sinceSound,
-               bus, deviceId, side, speechDb, false, leadSpeechDb, dropouts);
+               bus, deviceId, side, speechDb, false, leadSpeechDb, dropouts, waitingFor);
 
     private static OutputHealth Bus(int i, string label = "OBS/Zoom", bool hasDevice = true,
         bool muted = false, double peakDb = -20, double sinceSound = 0, float volume = 100f)
@@ -315,6 +315,32 @@ public class HealthMonitorTests
     public void AnUnroutedStripWithNoDevice_IsSilent() =>
         Assert.False(Has(HealthMonitor.Evaluate(
             Snap(ch: new[] { Mic(0), Mic(1, device: null, routed: false) })), ".nodevice"));
+
+    /// <summary>
+    /// 2026-10-10: a mapped receiver whose USB cable was not plugged in read "no microphone
+    /// assigned", and the operator tried to map it by hand. It must say "plug it in" instead, name the
+    /// device, and offer no Settings button — the fix is physical.
+    /// </summary>
+    [Fact]
+    public void AMappedStripWhoseDeviceIsAbsent_SaysPlugItIn_NotAssignIt()
+    {
+        var a = HealthMonitor.Evaluate(Snap(ch: new[]
+        {
+            Mic(0), Mic(1, label: "Rode A1", device: null, waitingFor: "Desktop Microphone (Wireless PRO RX)"),
+        }));
+        Assert.False(Has(a, ".nodevice"));
+        var alert = Assert.Single(a, x => x.Id == "in1.unplugged");
+        Assert.Contains("Desktop Microphone (Wireless PRO RX)", alert.Message);
+        Assert.Contains("Plug", alert.Message);
+        Assert.Equal(FixKind.None, alert.Fix);
+    }
+
+    [Fact]
+    public void AnUnroutedStripWaitingForItsDevice_IsSilent() =>
+        Assert.False(Has(HealthMonitor.Evaluate(Snap(ch: new[]
+        {
+            Mic(0), Mic(1, device: null, routed: false, waitingFor: "Wireless PRO RX"),
+        })), ".unplugged"));
 
     /// <summary>Both halves on Stereo carry the same blend, and the automixer cannot arbitrate it.</summary>
     [Fact]
