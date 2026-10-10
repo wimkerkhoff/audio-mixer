@@ -108,7 +108,9 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
   10–19 s holes, while audio ran on (bus A has no gap); outside those the 33 ms meter timer only
   managed a CSV row every ~141 ms instead of 100. `SwitchToQaOnRoomSpeech`, `RefreshHealth` and the
   decision track all ride that Background-priority `DispatcherTimer`. Cause unknown, no Windows hang
-  event. Next: log any tick > 2 s late, then move the Q&A switch and decision track off the UI thread.
+  event. A tick > 2 s late is now logged and written to the session's Actions ("window froze Ns
+  from hh:mm:ss"); read those after the next service, then move the Q&A switch and decision track
+  off the UI thread.
 - 🐛 **Replay with a preset that has more strips than the fixture has mics crashes Diagnostics**
   (`MainViewModel.DeviceRows`, then `SessionRecorder.BuildSummary`, index past `_engine.Inputs`).
   Give replays a preset with the fixture's strip count until every `_engine.Inputs[i]` is bounds-checked.

@@ -213,6 +213,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // one nobody thought to prepare for. Replay is excluded — it is a sandbox, not a service.
         _meterTimer.Tick += (_, _) =>
         {
+            NoteLateTick();
             foreach (var ch in Channels) ch.RefreshMeters();
             foreach (var op in Outputs) op.RefreshMeters();
             _diagnostics.Tick();
@@ -644,6 +645,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(AlertBadgeState));
         RaisePropertyChanged(nameof(AlertBadgeText));
         RaisePropertyChanged(nameof(ChecksHeadline));
+    }
+
+    private long _lastMeterTick;
+
+    /// <summary>A meter tick this late means the UI thread stalled — see <see cref="NoteLateTick"/>.</summary>
+    private const long UiStallLogMs = 2000;
+
+    /// <summary>
+    /// Checks, the Lapel → Q&amp;A switch and the decision track all ride the meter tick, so a stalled
+    /// UI thread silently suspends them while the audio plays on. On 2026-10-10 that happened for
+    /// 151 s mid-study and was found only as a hole in the log; this names it, in the opt-in log and
+    /// in the always-written session record.
+    /// </summary>
+    private void NoteLateTick()
+    {
+        long now = Environment.TickCount64;
+        long gap = _lastMeterTick == 0 ? 0 : now - _lastMeterTick;
+        _lastMeterTick = now;
+        if (gap <= UiStallLogMs) return;
+        var since = DateTime.Now.AddMilliseconds(-gap);
+        AudioLog.Write($"UI thread stalled {gap / 1000.0:F1}s since {since:HH:mm:ss}: meters, Checks and " +
+                       "Lapel -> Q&A were paused (audio unaffected).");
+        _session?.Action($"window froze {gap / 1000.0:F0}s from {since:HH:mm:ss}");
     }
 
     private HealthSnapshot BuildHealthSnapshot(long now)
