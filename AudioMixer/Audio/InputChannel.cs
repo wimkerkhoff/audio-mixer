@@ -249,6 +249,13 @@ public sealed class InputChannel : IDisposable
     private volatile bool _captureActive;
     public bool IsCapturing => _captureActive;
 
+    // Set when the device ends the capture on its own (unplugged: 0x88890004). IsCapturing must stay
+    // true for the watchdog, but the feed buffer is now empty by design, so it is not an underrun:
+    // on 2026-10-11 unplugging three receivers counted ~180 per strip per bus in the 1-2 s before
+    // the watchdog gave up, against [0,1] for the whole service.
+    private volatile bool _captureEnded;
+    public bool IsFeeding => _captureActive && !_captureEnded;
+
     private long _lastDataTicks;
     public long LastDataTicks => Volatile.Read(ref _lastDataTicks);
 
@@ -348,7 +355,7 @@ public sealed class InputChannel : IDisposable
     {
         var buffer = _outBuffers[outputIndex];
         var tracker = new TrackingSampleProvider(buffer.ToSampleProvider(), buffer,
-            () => IsCapturing && GetRoute(outputIndex));
+            () => IsFeeding && GetRoute(outputIndex));
         _outTrackers[outputIndex] = tracker;
         return tracker;
     }
@@ -430,6 +437,8 @@ public sealed class InputChannel : IDisposable
         capture.DataAvailable += OnDataAvailable;
         capture.RecordingStopped += (_, e) =>
         {
+            // A stale capture's late event must not mark its replacement as ended.
+            if (ReferenceEquals(_capture, capture)) _captureEnded = true;
             if (e.Exception != null)
             {
                 System.Diagnostics.Trace.WriteLine($"Capture stopped with error: {e.Exception}");
@@ -439,6 +448,7 @@ public sealed class InputChannel : IDisposable
         };
         _capture = capture;
         Volatile.Write(ref _lastDataTicks, Environment.TickCount64);
+        _captureEnded = false;
         _captureActive = true;
         capture.StartRecording();
     }

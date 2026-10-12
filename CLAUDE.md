@@ -529,7 +529,8 @@ operator's own later judgement.
   not identified (its log had been deleted). The live counter is `under=[a,b]` in the log and
   `underruns` in `/state`, counted **before** each read and only for pairs that should be feeding
   (routed, live capture) — before 2026-09-23 it also counted every unrouted pair (~100/s forever), so
-  filter old logs by routes. `bufMs = 0` is NOT an underrun (the depth legitimately drains to zero
+  filter old logs by routes; before 2026-10-12 it also counted ~180 per pair in the seconds after a
+  receiver was unplugged, so session records from then show hundreds on a clean service. `bufMs = 0` is NOT an underrun (the depth legitimately drains to zero
   between reads); only a climbing counter is.
 - **Crackle triage, in order:** (1) count samples ≥ full scale and flat-top runs (`tools/RxProbe`
   capture or the diag WAV) — zero means it is not clipping, whatever the peak says, and no gain change
