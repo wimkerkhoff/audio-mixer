@@ -556,6 +556,11 @@ operator's own later judgement.
   APOs registered, "audio enhancements" not disabled, 2026-09-26) — DSP ahead of the mixer on the
   priority mic, of unknown kind. The USB receivers carry none. Toggling enhancements restarts the
   endpoint, so the lapel drops for a watchdog restart: never mid-service.
+- **The stream's hiss is the wired lapel's aux path, not the mixer or OBS.** 2026-10-11, lapel-only
+  09:40–10:20, speech minus pause per band: lapel diag 8–10 dB at 4–12 kHz and 1–4 dB above 12 kHz
+  (pure noise there), vs **31–35 dB** on a Wireless PRO RX in the same minutes. `mix-A` and the OBS
+  recording match the lapel diag within 1 dB in every band, so nothing downstream adds it. Fix the
+  source (the presenter on a Wireless PRO transmitter), not the chain.
 
 ### Recording & measurement
 
