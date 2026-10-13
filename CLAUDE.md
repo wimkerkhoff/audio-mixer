@@ -46,12 +46,13 @@ something to learn.
 ## The rig
 
 - **Now (2026-10-04):** three **RØDE Wireless PRO** receivers on USB (A/B/C), each carrying two
-  transmitters in **Split** mode (six strips), plus a **wired classic Rode lapel** on the Realtek
-  aux jack for the presenter, used as the **priority** mic. The Wireless PRO is DSP-free and does not gate (finding 5).
+  transmitters in **Split** mode (six strips), plus the presenter's **older Rode wireless lapel**
+  (in use for years; its receiver's USB only charges — audio is analog 3.5 mm into the Realtek aux
+  jack), used as the **priority** mic. The Wireless PRO is DSP-free and does not gate (finding 5).
   It is *body-worn*: it covers people, not a room, so mic count and placement do the work DSP used to
   pretend to do. Gain: every transmitter **manual 26 dB** (GainAssist off), every receiver output
-  **0 dB — its maximum**, Windows endpoint **+18.9 dB** on all three (matched 2026-10-04); the wired
-  lapel's only lever is its Windows endpoint (~16 dB). Room mics still read ~20 dB under target on
+  **0 dB — its maximum**, Windows endpoint **+18.9 dB** on all three (matched 2026-10-04); the lapel
+  has its receiver's output level and its Windows endpoint (+16 dB). Room mics still read ~20 dB under target on
   air in a prayer meeting (−42 to −52 dBFS) — the remaining lever is transmitter gain or proximity.
 - **Outputs:** bus A = VB-CABLE → Zoom/OBS (the remote attendees — the listener that matters);
   bus B = the operator's USB headset.
@@ -457,8 +458,7 @@ operator's own later judgement.
   (the rename goes with it). A second identical receiver on a new port arrived ~24 dB under its twin
   and looked like two dead mics — check `tools/VolProbe` before suspecting hardware (receiver C did
   the same on 2026-10-04). A Wireless PRO receiver's output is already at its **0 dB maximum** here,
-  so Windows endpoint gain is the working lever; match it across receivers. A wired lapel on the aux
-  jack has no receiver either. The app's fader can only **attenuate** (100% = unity). The Rode
+  so Windows endpoint gain is the working lever; match it across receivers. The app's fader can only **attenuate** (100% = unity). The Rode
   endpoint's slider is non-linear: 53.7% = 0 dB, 87% = +15 dB, 100% = +30 dB.
 - **+15 dB on the Wireless PRO endpoint is the verified ceiling.** +24 dB clipped (peaks +6.7 dBFS,
   flat-tops to 1.9 ms) while speech was still 14 dB under target, because crest here is ~45 dB: no
@@ -552,15 +552,21 @@ operator's own later judgement.
   during a service (OBS ~32%, Zoom ~16%, audiodg ~11%; the mixer ~3%) and routed mics underran
   ~1/s each at Normal priority. Raising the process to **High** (live): 0 in the next 30 s, 1 in
   6 min. The app now sets High at startup (Normal under `--replay`; `--priority=` overrides both).
-- **The Realtek aux input (the wired lapel) runs Realtek capture effects** (`RtkRecMFX`/`RtkRecEFX`
+- **The Realtek aux input (the lapel) runs Realtek capture effects** (`RtkRecMFX`/`RtkRecEFX`
   APOs registered, "audio enhancements" not disabled, 2026-09-26) — DSP ahead of the mixer on the
   priority mic, of unknown kind. The USB receivers carry none. Toggling enhancements restarts the
   endpoint, so the lapel drops for a watchdog restart: never mid-service.
-- **The stream's hiss is the wired lapel's aux path, not the mixer or OBS.** 2026-10-11, lapel-only
-  09:40–10:20, speech minus pause per band: lapel diag 8–10 dB at 4–12 kHz and 1–4 dB above 12 kHz
-  (pure noise there), vs **31–35 dB** on a Wireless PRO RX in the same minutes. `mix-A` and the OBS
-  recording match the lapel diag within 1 dB in every band, so nothing downstream adds it. Fix the
-  source (the presenter on a Wireless PRO transmitter), not the chain.
+- **The stream's hiss arrives on the lapel's analog aux path, not from the mixer or OBS.**
+  2026-10-11, lapel-only 09:40–10:20, speech minus pause per band: lapel diag 8–10 dB at 4–12 kHz
+  and 1–4 dB above 12 kHz (pure noise there), vs **31–35 dB** on a Wireless PRO RX in the same
+  minutes. `mix-A` and the OBS recording match the lapel diag within 1 dB in every band; OBS has no
+  filters on either the old direct source or the mixer's. Yet it is **new since the mixer**: on
+  SermonAudio uploads, same talker, same lapel, old direct-to-OBS route vs now, 12–16 kHz S/N fell
+  13.8 → 5.1 dB (Porter, Mar vs Sep) and every hiss band fell 4–5 dB (Butler, Apr vs Oct). Cause not
+  yet pinned — likely gain staging (receiver output vs Windows +16 dB) or USB noise from the new
+  receivers on the onboard input; test with the transmitter on and nobody speaking. Separate known
+  hum: receiver charging on USB while on the 3.5 mm (120/180 Hz lines ~14 dB on 2026-09-27; none on
+  10-11). The clean fix is the presenter on a Wireless PRO transmitter.
 
 ### Recording & measurement
 
