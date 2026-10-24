@@ -585,7 +585,7 @@ operator's own later judgement.
   2 min — every launch leaves one) after a day; then oldest-first below **40 GB free** (a 3-hour
   service at the 2026-10-04 rig's ~10 GB/h; at 20 GB the disk sat an hour from the start floor).
   It refuses to start below 15 GB and stops one in flight below 8 GB; Checks warns `rec.space` when
-  the disk cannot hold the recording time still to run. Session records are never swept; a capture
+  the disk cannot hold the recording time still to run. Session records are not swept by it (`SessionStore` prunes them at 90 days); a capture
   worth keeping past 14 days goes in `analysis\keep\`. Every stop is logged with its reason.
   **Split strips record mono** (the two channels are identical after the side split).
 - **A capture restart must not end a recording.** Until 2026-09-26 `InputChannel.Stop()` closed the

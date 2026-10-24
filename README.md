@@ -16,32 +16,36 @@ rest, holding its choice so a pause cannot hand the room to a distant mic.
 
 | Window | What it is for |
 |---|---|
-| **Operator panel** | The mixer. A Speaking / Singing toggle, one row per mic (state stripe, meter with target band, level, mute, bus A/B that lights when the automixer picks it), an on-air card per bus, one toolbar. |
+| **Operator panel** | The mixer. The **Lapel \| Q&A \| Singing** buttons, one row per mic (state stripe, meter with target band, level, mute, bus A/B that lights when the automixer picks it), an on-air card per bus, one toolbar. |
 | **Checks** | Everything needing attention, and nothing that is merely fine. It opens itself only when something is wrong, so its appearance is the signal. Each item offers a button that does the fix where one exists. Never blocks. |
 | **Diagnostics** | Why this mic (ranked, with the deciding numbers) · the session so far · calibration · devices. Never needed to run a service. |
 | **Settings** | The rig: the priority mic, each strip's device and split side, automix mode per bus, the bus leveler, the global low-cut, device-picker filters. |
 
-## Speaking and Singing
+## Lapel, Q&A and Singing
 
 Which mics are open, on which bus, muted or not — the operator sets directly on the mic rows. The one
-thing not obvious enough to leave to memory is a two-sided toggle at the top of the panel:
+thing not obvious enough to leave to memory is three buttons at the top of the panel, which set how
+the automixer chooses and nothing else:
 
-- **Speaking** — follow-the-talker: one mic at a time, the others switched off, so one voice is
-  never heard through several mics at once.
+- **Lapel** — for teaching. Only the presenter's lapel is on the stream; the room mics stay off, so
+  paper and coughs near them never air. When someone in the room speaks up for about 2 seconds, the
+  mixer moves itself to Q&A. It never moves back on its own: returning to Lapel is the operator's call.
+- **Q&A** — for discussion and prayer. One mic at a time, the closest to whoever is talking; the
+  others are switched off, so one voice is never heard through several mics at once.
 - **Singing** — follow-the-talker **off**. A congregation singing has no single talker, so switching
   would chop it; every routed mic stays open.
 
 Singing lights purple, because it is the mode that is easy to forget to leave: if it is still on
-after 15 minutes, Checks asks whether the singing has finished and offers to switch back. Both sides
-go amber if the two buses have been set to different modes in Settings.
+after 15 minutes, Checks asks whether the singing has finished and offers to switch to Lapel. Every lit mode goes amber if the two
+buses have been set to different modes in Settings.
 
-The **priority mic** (normally the presenter's lapel) is never switched off and ducks the others
-while it is speaking. It is chosen once in Settings; to leave the lapel out of a meeting, mute it.
-All mutes, mic and bus, are remembered across a restart.
+The **priority mic** (normally the presenter's lapel) is never switched off, and while the presenter
+is speaking the room mics are muted. It is chosen once in Settings; to leave the lapel out of a
+meeting, mute it. All mutes, mic and bus, are remembered across a restart.
 
 There used to be four scene buttons (Standby, Teaching, Prayer, Singing). They were removed in
 2026-09: nobody could remember what each did, and because a scene rewrote every mute and route it
-silently undid the operator's own changes.
+silently undid the operator's own changes. The three buttons above change only the mode.
 
 ## Running a service
 
@@ -53,12 +57,13 @@ silently undid the operator's own changes.
   room mics **10–15 ft from the lectern**.
 - Check every mic row shows level and Checks is clear. For a service whose recording matters, arm
   on-board recording on the transmitters too — it cannot clip and is the backup if anything goes wrong.
-- Choose **Speaking**.
+- Choose **Lapel** for a talk, **Q&A** for a discussion.
 
 **During**
 
 - Mute the mic of any table nobody is sitting at, and mute the lapel if the presenter takes it off.
-- Switch to **Singing** for congregational singing and back to **Speaking** afterwards.
+- Switch to **Singing** for congregational singing and back afterwards.
+- After a discussion, press **Lapel** again once the presenter has the floor back.
 - Watch Checks, not the meters — it opens itself when something needs you.
 
 **After**
@@ -72,29 +77,35 @@ silently undid the operator's own changes.
 
 | Symptom | Check |
 | --- | --- |
-| A mic shows no level | Is its receiver still in the case, or unplugged? Is the transmitter on? |
+| A mic row says "not plugged in" | Plug that receiver's USB cable in (directly, not in its case); it reconnects by itself — don't re-map it in Settings |
+| A mic shows no level | Is the transmitter on? |
+| Checks says a mic "keeps cutting out" | The transmitter is losing its receiver — usually people's bodies in between. Raise the receiver, or move it nearer the tables it serves |
 | Remote attendees can't hear the room, the headset can | Is the lapel open and loud while unused? It ducks the room — mute it |
 | The stream crackles or sounds gritty | Not the mic gain. Resync (or close and reopen the mixer) |
-| One mic is always quiet | The receiver's gain on the device, then Settings — the level slider can only turn down |
+| One mic is always quiet | The transmitter's gain, then the receiver's Windows level — the level slider can only turn down |
 | The mix switches between two mics too often | Normal between two people taking turns; if it happens with one talker, note the time |
+| Remote attendees hear an echo while the presenter talks | A room mic is open alongside the lapel. Press **Lapel**; note the time |
 | Zoom/OBS hear nothing but bus A is moving | The problem is after the mixer: check OBS/Zoom's microphone is "CABLE Output" |
 
 ## Choosing the microphone
 
-Per output bus, **Off** or **Gate**:
+Per output bus, one of three modes (the buttons above set both buses at once):
 
-- **Off** — every routed mic passes at unity. What Singing uses.
-- **Gate** — winner takes all; every other mic is muted to zero. Everything else uses this.
+- **Off** (Singing) — every routed mic passes at unity.
+- **Gate** (Q&A) — winner takes all; every other mic is muted to zero.
+- **Lapel** — the priority mic alone, room mics muted, until sustained room speech moves it to Gate.
 
-The winner is the loudest mic by smoothed RMS, **held**: a challenger must be about 3 dB louder
-*and* the current winner must have held for ~200 ms. That hold is the actual fix for "far mic wins" —
-the original bug was temporal, not a bad metric. The selector re-picked the loudest mic every 10 ms,
-so a distant mic's rise during a talker's pause stole the room.
+The winner is the loudest mic by smoothed RMS, **held**: a challenger must be about 3 dB louder, the
+current winner must have held for ~200 ms, and the challenger must keep its lead for 100–500 ms
+depending on how far ahead it is. That hold is the actual fix for "far mic wins" — the original bug
+was temporal, not a bad metric. The selector re-picked the loudest mic every 10 ms, so a distant
+mic's rise during a talker's pause stole the room.
 
 **One mic can be the lapel**, picked in Settings. It is never gated, and while the presenter is
-speaking it ducks the room mics — otherwise their voice reaches the bus twice, once clean and once
-delayed, and comb-filters. The duck is held for ~1.2 s across sentence gaps, and broken immediately
-by a genuinely loud interjection.
+speaking it mutes the room mics — otherwise their voice reaches the bus twice, once clean and once
+delayed, and comb-filters. The lapel keeps the floor through the presenter's pauses until someone in
+the room clearly breaks in (louder than −45 dBFS and 6 dB over the lapel for ~0.4 s). Once a room
+talker holds the bus, the lapel takes it back by being louder than them for ~0.3 s.
 
 A two-transmitter receiver (RØDE Wireless PRO in Split mode) is **one** audio device carrying TX1
 left and TX2 right. Bind it to two strips, one set to Left and one to Right, or the automixer sees a
@@ -102,9 +113,11 @@ single blended channel it cannot arbitrate.
 
 ## Recording, and reading a service back
 
-**Recording is always on.** It starts shortly after launch and stops itself after an hour, so nobody
-forgetting to close the app can fill the disk. Files expire after 28 days, and are also deleted
-oldest-first when free space is short.
+**Recording is always on.** It starts shortly after launch, begins new files every hour, and stops
+itself after three hours, so nobody forgetting to close the app can fill the disk. Per-mic captures
+expire after 14 days and bus mixes after 28; a launch that never recorded 2 minutes is cleared after
+a day; and the oldest recordings go first whenever free space is under 40 GB. It will not start
+below 15 GB free, and stops below 8 GB.
 
 Each service leaves four things under `Documents\AudioMixer\`:
 
@@ -135,9 +148,9 @@ A capture worth keeping as a replay fixture goes in `analysis\keep\`, which rete
   high-pass moves speech-band S/N by 0.1–0.2 dB.
 - **Gain calibration** — every capture buffer is tallied into 1 dB bins, voiced separately, at the
   same tap the automixer's thresholds read. The Diagnostics readout is what transmitter gain gets set
-  against; a peak meter cannot do this job, because a DSP-free wireless mic's crest is ~20 dB.
+  against; a peak meter cannot do this job, because a DSP-free wireless mic's crest is 20–45 dB.
 - **Device memory** — a strip remembers the device it wants even while that device is unplugged, and
-  re-binds the moment it reappears. Receivers that carry a hardware serial are told apart properly,
+  re-binds the moment it reappears. Until then its row says "not plugged in" and names the device. Receivers that carry a hardware serial are told apart properly,
   so two identical units cannot be swapped.
 - **Health checks** — every rule corresponds to a failure that actually happened and had to be
   diagnosed by hand.
@@ -145,8 +158,8 @@ A capture worth keeping as a replay fixture goes in `analysis\keep\`, which rete
 ## Requirements
 
 - Windows 10 or 11
-- For Zoom/OBS routing: [VB-CABLE](https://vb-audio.com/Cable/) — free. Install, reboot, set bus B's
-  device to "CABLE Input", then set Zoom's microphone to "CABLE Output".
+- For Zoom/OBS routing: [VB-CABLE](https://vb-audio.com/Cable/) — free. Install, reboot, set bus A's
+  device to "CABLE Input", then set Zoom's and OBS's microphone to "CABLE Output".
 
 ## Getting it
 
@@ -215,7 +228,7 @@ WasapiCapture (per input)
   in `Views/`.
 
 Anything that makes a judgement — health rules, the automixer, session aggregates —
-lives in a pure function so it can be unit-tested. Nearly 400 tests cover that layer; anything
+lives in a pure function so it can be unit-tested. About 350 tests cover that layer; anything
 needing a device or a window is exercised by a replay run instead.
 
 ## File locations
