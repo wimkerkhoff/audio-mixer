@@ -42,6 +42,13 @@ public sealed class AutoMixer
     // study 23 lapel reclaims lasted under 1 s, the lapel a median 9 dB UNDER the talker in the
     // shortest; louder-for-0.3 s would have kept 21 of them off and let 22 of 24 real answers
     // through, ~0.3 s later. The lapel is at unity throughout, so the "mm-hm" itself still airs.
+    // "Out-level" is the break-in test mirrored: no room mic BreakInOverLapel above the lapel.
+    // Plain "louder than the leader" lost to a room mic near the presenter: on 2026-10-24 one read
+    // his voice within a dB or two of his own lapel, the comparison flipped every syllable, the
+    // count never reached 0.3 s, and both mics stayed open on his voice — the echo Zoom reported —
+    // for 93 s in 27 stretches of up to 12 s. It is every room mic, not the leader alone: the
+    // leader's level collapses in an RF dropout, or a brief blip on a far mic leads, while the
+    // questioner is still loud on the others.
     private const int LapelReclaimTicks = 30;          // ~300 ms
 
     // Lapel mode switches itself to Q&A (Gate) when a room mic carries sustained speech — the
@@ -268,7 +275,8 @@ public sealed class AutoMixer
                              && _env[roomLeader] > SilenceFloorRms;
             if (priorityActive && roomHolds)
             {
-                _reclaimTicks[o] = _env[pArg] > _env[roomLeader] ? _reclaimTicks[o] + 1 : 0;
+                bool sameTalker = lmax < _env[pArg] * BreakInOverLapel;
+                _reclaimTicks[o] = sameTalker ? _reclaimTicks[o] + 1 : 0;
                 if (_reclaimTicks[o] < LapelReclaimTicks) priorityActive = false;
             }
             else

@@ -569,6 +569,62 @@ public class AutoMixerTests
         Assert.InRange(t, 25, 45);
     }
 
+    /// <summary>
+    /// 2026-10-24: a room mic near the presenter heard him within a dB or two of his own lapel, so
+    /// "louder than the room mic" never held 0.3 s and both stayed open on his voice — echo on Zoom.
+    /// </summary>
+    [Fact]
+    public void ARoomMicHearingThePresenterAsLoudAsHisLapel_GivesTheBusBack()
+    {
+        var (mix, rig) = RoomTalkerHoldsTheBus();
+        rig[0].InjectLevelsForTest(0.045f);     // he talks at -27
+        rig[1].InjectLevelsForTest(0.056f);     // the room mic hears him at -25, 2 dB over his lapel
+        int t = 0;
+        while (rig[1].GetAutoMixGain(0) > 0f && t < 200) { mix.Tick(rig); t++; }
+        Assert.InRange(t, 25, 60);
+    }
+
+    /// <summary>
+    /// 2026-10-24 replay: the mic holding the bus is not always the loudest room mic — its level
+    /// collapses in an RF dropout (B2 read -120 mid-question), or a far mic's blip leads — and the
+    /// lapel, judged against the leader alone, took the bus while another room mic still heard the
+    /// questioner well over it. The test is against every room mic.
+    /// </summary>
+    [Fact]
+    public void TheLapelIsJudgedAgainstTheLoudestRoomMicNotJustTheLeader()
+    {
+        var rig = Rig(3);
+        rig[0].IsPriority = true;
+        rig[0].InjectLevelsForTest(0.05f);
+        var mix = Gated(channels: 3);
+        Run(mix, rig);
+        rig[0].InjectLevelsForTest(0f);
+        Run(mix, rig, 100);
+        rig[1].InjectLevelsForTest(0.056f);     // a questioner at -25 on the leading mic
+        Assert.NotEqual(0, TickUntilWinner(mix, rig, 1, max: 100));
+
+        rig[0].InjectLevelsForTest(0.012f);     // the lapel hears them at -38: "active"
+        rig[1].InjectLevelsForTest(0.02f);      // the leader falls to -34, within 6 dB of it
+        rig[2].InjectLevelsForTest(0.027f);     // another mic hears them at -31, under the hysteresis
+        for (int t = 0; t < 200; t++)
+        {
+            mix.Tick(rig);
+            Assert.True(rig[1].GetAutoMixGain(0) > 0f || rig[2].GetAutoMixGain(0) > 0f);
+        }
+    }
+
+    [Fact]
+    public void ARoomTalkerWellOverTheLapelKeepsTheBus()
+    {
+        var (mix, rig) = RoomTalkerHoldsTheBus();
+        rig[0].InjectLevelsForTest(0.025f);     // -32: the lapel hears the talker, or an "mm-hm"
+        for (int t = 0; t < 200; t++)           // the talker at -25, 7 dB over it
+        {
+            mix.Tick(rig);
+            Assert.Equal(1f, rig[1].GetAutoMixGain(0));
+        }
+    }
+
     // --- Lapel mode ------------------------------------------------------------------------------------
 
     private static (AutoMixer, InputChannel[]) LapelMode()

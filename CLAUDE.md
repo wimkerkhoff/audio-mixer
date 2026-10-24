@@ -253,6 +253,20 @@ lock-free; `InputChannel` ramps them within a buffer.
   Replayed on the theology study with the floor rule: 9.9 → 8.3 hand-offs/min, lapel → room 33 →
   19, room blips under 0.5 s 16 → 6 (old code: 18.9, 62, 38), still 21 of 22 talkers, now covering
   97% of their time. In Lapel mode the same capture switched itself to Q&A at 1:15 and then matched.
+  **Since 2026-10-24 "louder" means no room mic is +6 dB (`BreakInOverLapel`) over the lapel** —
+  the break-in test mirrored, against the loudest room mic, not the leader. Plain "louder than the
+  leader" lost to a room mic near the presenter: it read his voice 0–6 dB over his lapel (85 s of
+  B2's tenures that day; questioners read +12 to +21), so the count never held 0.3 s and both mics
+  stayed open on his voice — the echo Zoom reported. Against the leader alone, an RF dropout on the
+  questioner's mic or a far mic's blip handed the lapel the bus mid-question. Replayed all-Q&A,
+  old vs new: today's study echo (room mic open on the lapel talker) 196 → 79 s and 131 → 50 s,
+  hand-offs 14.3 → 13.1/min; theology study unchanged (13 of 13 talkers, 97% → 96% covered);
+  confession study room airtime 44 → 40 s. **Known cost:** a reclaimed lapel locks out a loud
+  questioner it hears over −40 (break-in only runs while the lapel is under it), so long questions
+  lost 2–5 s each (28 s → 23 s at worst) — heard through the lapel meanwhile, thinner, not muted.
+  Breaking in at +10 dB over an *active* lapel gave that back but let most of the echo return
+  (196 → 165 s, 21.6 hand-offs/min): a fixed margin cannot separate them at this placement.
+  Raising the lapel fader 65 → 100% halved the echo again but cost questioners more.
 - **Split receivers**: one WASAPI endpoint, TX1 left / TX2 right. Bind it to two strips
   (`ChannelSource.Left`/`Right`); bound whole it reaches the bus hard-panned as one blended channel
   the automixer cannot arbitrate. Device claims are per **side** (`DeviceResolver.Claim`/`IsFree`,
