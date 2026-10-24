@@ -1,6 +1,6 @@
 ---
 name: session-review
-description: Analyse a recorded AudioMixer session to judge what a remote attendee actually heard, and turn that into concrete setting or code changes. Use when reviewing a service afterwards, when the operator reports the audio sounded wrong, when asked to check the automixer's choices, the leveler, clipping or levels, or when asked to compare sessions over time.
+description: Analyse a recorded AudioMixer session to judge what a remote attendee actually heard, and turn that into concrete recommendations for settings, code, docs and UI. Asks the operator a few questions first and confirms its reading with them afterwards. Use when reviewing a service afterwards, when the operator reports the audio sounded wrong, when asked to check the automixer's choices, the leveler, clipping or levels, or when asked to compare sessions over time.
 ---
 
 # Reviewing a session
@@ -25,6 +25,33 @@ have prevented, corrected, or at minimum reported this without anyone in the roo
 finding that only a technical operator could have acted on is a design gap, and should be reported
 as one.
 
+## Ask first
+
+Before reading anything, ask the operator (one AskUserQuestion call, up to four questions; skip any
+the conversation already answered):
+
+- **Which session**, and what kind of meeting (teaching, discussion, prayer, singing) — it decides
+  which mode was right and what "good" looks like.
+- **What did people notice, and roughly when** — remote attendees' feedback (echo, crackle, too
+  quiet, someone not heard), and the operator's own impression on the headset.
+- **What changed on the rig since the last session** — receivers or transmitters moved, gain,
+  cables, a new device. Each one is a hypothesis to test against the previous session.
+- **What to focus on, or compare against** — a previous session, a fixture, one complaint.
+
+Their answers are hypotheses, not findings. The operator's instinct has been wrong in useful ways
+(crackle read as clipping); measure before agreeing.
+
+## Safety — read-only, always
+
+- **Never delete, move, truncate or overwrite** anything under `Documents\AudioMixer\` or
+  `%TEMP%\AudioMixer*.log` without the operator's explicit OK (CLAUDE.md, first rule). Moving a
+  capture worth keeping into `analysis\keep\` also needs that OK.
+- **Before looping any app mode** (a batch of `--replay` runs): one short run first, count the files
+  under `Documents\AudioMixer\` before and after, and check free space against the 40 GB retention
+  floor. On 2026-10-24 replays that were believed to be a sandbox recorded and set off retention,
+  which deleted 33 GB of real recordings.
+- Scripts and intermediate files go in the scratchpad, never the repo or `Documents`.
+
 ## The data
 
 Under `~/Documents/AudioMixer/`:
@@ -34,7 +61,9 @@ Under `~/Documents/AudioMixer/`:
 | `analysis/diag-input<N>-<stamp>.wav` | one mic, raw | **pre-fader, pre-low-cut** — what the mic heard |
 | `analysis/decisions-<stamp>.csv` | 10 Hz decision track | automix mode/bus, winner/bus, leveler gain/bus, per-mic level + applied gain. Captures before 2026-09-23 have a single `scene` column instead of the mode columns |
 | `recordings/mix-<A|B>-<stamp>.wav` | the bus | **post-leveler, pre-volume** — what was sent |
-| `sessions/session-<stamp>.json` | aggregates + config + events | whole session |
+| `sessions/session-<stamp>.json` | aggregates + config + events + operator actions | whole session |
+| `%TEMP%\AudioMixer.log` | 1 Hz per-input lines (`rf=[… gaps=]`, `under=[a,b]`, `routes=`), every hand-off, UI stalls, watchdog restarts | find the run by its `=== AudioMixer started` banner |
+| `analysis/keep/` | fixtures (with `<stamp>.preset.json`, any `labels-<stamp>.json`) | never pruned |
 
 A session is one `<stamp>`. **Start from `session-*.json`**: it carries `Config`, without which the
 numbers cannot be read — "12 hand-offs a minute" means one thing under Gate and another under Off,
@@ -103,8 +132,25 @@ this room's floor is HVAC that no filter removes.
 
 ### 7. Link and glitches
 
-`Underruns` per input (a silent hole in the monitor feed, invisible to meters). RF dropouts show as
-exact-silence gaps mid-speech with high flux-CV while voiced% is high.
+- **RF dropouts:** the log's `gaps=` is cumulative per input; difference it per minute and tabulate
+  per mic. Compare against the previous session whenever the operator moved anything — on
+  2026-10-24 moving two receivers took a service from ~15,900 gaps to 216. Checks' `in<N>.dropouts`
+  only fires at 6+ in a minute, so the table shows what the events miss.
+- **Underruns:** `under=[a,b]` per minute, for routed pairs only (`routes=`). Unplugging a receiver
+  can still inflate the count when the watchdog restart fails (`0x88890004`); exclude those minutes.
+  Real ones are silent holes in the mix: count exact-zero runs ≥ 2 ms per minute in `mix-*.wav`.
+- **UI stalls:** "UI thread stalled" lines and "window froze" actions — meters, Checks and the
+  Lapel → Q&A switch pause with them.
+
+### 7b. Echo: two mics open on one voice
+
+In Q&A the priority lapel stays at unity, so whenever a room mic leads, both are open. Echo is that
+happening **while the lapel's wearer is talking**. From the CSV, for each room-mic tenure on bus A,
+take the room mic's level minus the lapel's (over voiced frames) and histogram it per mic. Measured
+2026-10-24: questioners on their own mic read **+12 to +21 dB** over the lapel; the presenter's own
+voice in the room mic nearest him read **0 to +9**. A big cluster under +9 on one mic is that mic
+hearing the presenter — a placement finding first, a selector finding second. Use `winner_A` for
+who led; the `gain_*` columns of an unrouted strip read 1.0 and mean nothing.
 
 ### 8. What the operator changed, and whether it helped
 
@@ -177,6 +223,17 @@ Report in this shape:
 5. **Operator interventions** — what was changed, whether each helped, and which the app should have
    handled itself.
 6. **What you could not determine**, and what to capture next time.
+7. **Recommendations**, sorted into **Code**, **Docs** (CLAUDE.md, README, ROADMAP) and **UI**
+   (what the operator sees and taps). For each: the evidence, and where it goes — a fix to make now,
+   or a ROADMAP entry when it needs a labelled capture or replay first. Docs findings include
+   anything in CLAUDE.md the session proved wrong.
+
+## Ask after
+
+End by asking the operator (AskUserQuestion) what only someone in the room can settle: whether a
+stretch you inferred was the presenter's voice, a question, or noise really was; whether the
+remote complaint matches the times you found; and **which recommendations to act on now** and
+which to put on the ROADMAP. Do not start code changes before that answer.
 
 State numbers with their units and source. If a session is too short, too quiet, or mis-levelled to
 support a conclusion, say so rather than reporting a weak one — a confident wrong answer about a
