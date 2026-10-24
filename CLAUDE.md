@@ -274,7 +274,7 @@ lock-free; `InputChannel` ramps them within a buffer.
   the preset on load, too loose and two strips push the same audio twice.
 - **What shows the automixer:** the row stripe goes green ("live now") from `IsAutoMixActive`; each bus
   button lights green when that mic leads that bus. `IsDucking` is in `/state` and Diagnostics only.
-  Each hand-off is logged by `LogAutoMixSelectionChanges`.
+  Each hand-off is logged by `DiagnosticsLog.LogSelectionChanges`.
 
 ## Testing without a room full of people
 
@@ -282,7 +282,8 @@ lock-free; `InputChannel` ramps them within a buffer.
   session's `diag-input*.wav` through `IWaveIn`, so everything downstream runs unmodified.
   Load-bearing: **480-frame** buffers (at 512+ the flux accumulation is bypassed and you test different
   code), and **one clock pumps every source in lockstep and drives the automix tick** — deterministic
-  and speed-independent. Sandbox: own mutex, no autosave, no output devices by default.
+  and speed-independent. Sandbox: own mutex, no autosave, no recording, no session record, no output
+  devices by default. A `--for` run exits by itself at the end.
 - **Golden baselines**: `tools/replay-baseline.ps1 -Name <fixture> [-Update]`, in `tools/baselines/`;
   record and check at the same `-Speed` (1–2; higher drops audio). **Each fixture owns its preset**
   (`<Name>.preset.json`, passed with `--preset`), and the baseline records its hash — `--replay` does
@@ -290,10 +291,13 @@ lock-free; `InputChannel` ramps them within a buffer.
   (the `presentation` fixture re-run at its own recording commit gave 60 hand-offs vs its stored 14),
   so a changed fixture preset is reported as configuration drift before numbers are compared.
   **No golden baselines are committed yet** (`tools/baselines/` does not exist; the two original
-  fixtures' WAVs were pruned by retention). Two fixtures now sit in `analysis\keep\` with their own
-  presets (`<stamp>.preset.json`): `20260926-073500`, a **theology study** (interactive — tests that
-  questions still get a mic), and `20260927-091932`, a **confession study** (teaching; the room only
-  made noise — with the operator's labels, finding 9). Replay a selector change on both. Batch runs:
+  fixtures' WAVs were pruned by retention). Fixtures in `analysis\keep\`, each with its preset
+  (`<stamp>.preset.json`): `20260926-073500`, a **theology study** (interactive — tests that
+  questions still get a mic); `20260927-091932`, a **confession study** (teaching; the room only
+  made noise — with the operator's labels, finding 9); `20261024-062726` + `-072727`, a theology
+  study with the six-transmitter rig, where a room mic near the presenter made echo (unlabelled);
+  and `20261004-092931` + `-102931` (`labels-20261004-092931.md`). Replay a selector change on the
+  first two at least. Batch runs:
   the hand-off log line carries `@hh:mm:ss.ff`, the replay position, so two runs line up.
 - **Binding errors** are swallowed at runtime; a clean build proves nothing about the UI. `--log`
   logs them (`BindingErrorListener`); `--open-all` opens every window. Zero binding errors is also
@@ -399,7 +403,7 @@ source against an uncompressed one; compare levels **only within a matched set**
 **8. Absolute thresholds turn a gain-staging error into a chopped mix — check level before blaming a
 capsule.** 2026-09-20, 15 min prayer meeting: a clean capture (0 over-FS, flux-CV 0.38, no drops),
 but every mic ~22 dB under target (speech p50 −45/−46/−46). `PriorityActiveRms` (−40),
-`PriorityBreakInRms` (−50) and `SilenceFloorRms` (−55) assume speech near −24, so the lapel at −39 had
+`PriorityBreakInRms` (−50 then, −45 now) and `SilenceFloorRms` (−55) assume speech near −24, so the lapel at −39 had
 1 dB of margin: 12 winner changes/min and winner = −1 (a hard mute under Gate) 28% of the time. **Compare
 `speech=` against −24 dBFS before reaching for a quality metric.** You cannot add the 22 dB
 downstream: crest is 28–36 dB, so peaks would clip — the gain belongs at the transmitter.

@@ -85,7 +85,7 @@ the app's own conclusions and are usually right; your job is to check them and f
 ### 2. Level — the first thing that goes wrong
 
 Per mic: `SpeechDb` against the **−24 dBFS** target. More than ~10 dB under and *stop*: absolute
-thresholds (`PriorityActiveRms` −40, `PriorityBreakInRms` −50, `SilenceFloorRms` −55) no longer sit
+thresholds (`PriorityActiveRms` −40, `PriorityBreakInRms` −45, `SilenceFloorRms` −55) no longer sit
 below speech, so the selector will be unstable and its statistics describe a broken rig rather than a
 broken rule. This is finding 8 and it is the single most common root cause.
 
@@ -154,9 +154,9 @@ who led; the `gain_*` columns of an unrouted strip read 1.0 and mean nothing.
 
 ### 8. What the operator changed, and whether it helped
 
-`Actions` in the session record: a timestamped list of what was changed by hand — scenes, routing,
-mutes, levels, devices, leveler, resync, calibration resets. Scene changes appear as one line rather
-than the twenty derived changes they cause.
+`Actions` in the session record: a timestamped list of what was changed by hand — modes (Lapel, Q&A,
+Singing, and "auto: switched to Q&A"), routing, mutes, levels, devices, leveler, resync, calibration
+resets, and "window froze" stalls.
 
 For each action, compare the minutes either side of its timestamp in the decision track and the mix:
 
@@ -196,7 +196,7 @@ These each cost real time. Check them before reporting.
 
 `tools/live_wav.py` — `session_files(dir, stamp)` and `read_mono(path)` parse possibly-unfinalized
 WAVs. Use it rather than `soundfile` for a capture that may still be recording. Offline analysers live
-in `tools/`: `AnalyzeInputs`, `RefCorr`, `naturalness.py`, `gate_rate.py`, `voice_quality.py`.
+in `tools/`: `AnalyzeInputs`, `naturalness.py`, `gate_rate.py`, `comb_test.py`, `transcribe.py`.
 
 ## Before proposing a selector change
 

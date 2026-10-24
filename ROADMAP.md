@@ -20,11 +20,13 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
 
 ## Next time the rig is set up
 
-- 🏛 **Calibrate the four-transmitter rig to −24 dBFS.** On 2026-09-23 the Rode strips read 13–17 dB
+- 🏛 **Calibrate the rig to −24 dBFS** (six transmitters and the lapel since 2026-10-04; on
+  2026-10-24 the lapel's speech still read −31 dBFS). On 2026-09-23 the Rode strips read 13–17 dB
   under target after the gain moved from Windows to the receivers — unverified, because the
   calibration medians spanned several gain changes. Reset calibration, speak at each mic at working
-  distance, adjust the **receiver** gain until Diagnostics' `speech` goes green, reset after each
-  change. Everything in finding 8 depends on it.
+  distance, adjust **transmitter gain or the Windows endpoint** (each receiver's output is already at
+  its 0 dB maximum) until Diagnostics' `speech` goes green, reset after each change. Everything in
+  finding 8 depends on it.
 - 🏛 **Read the room floor before anyone arrives** (a quiet minute, Diagnostics `floor`): it sets
   `SilenceFloorRms` and the leveler's idle hold (~6 dB above the bus floor).
 - 🏛 **Record a labelled fixture.** "Record all inputs" for a whole service while someone notes when
@@ -67,7 +69,8 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
   missed one keeps a question off the stream. Also listen for how much of the first question is lost.
 - 🔬 **Label the theology study** (`20260926-073500`, interactive). Its old-vs-new replays assume a
   room mic held ≥ 1.5 s is a talker; the one tenure the floor rule dropped (2:58, Rode B1, −45 to −56)
-  is unverified, as is whether the lapel reclaim rule clipped any answer. The labelling page built for
+  is unverified, as is whether the lapel reclaim rule clipped any answer (the rule changed on
+  2026-10-24; see the coupling item above). The labelling page built for
   the confession study (claude.ai artifact "Room Mic Takeovers") can be reused with new clips.
 - 🔬 **In Q&A, a silent room still opens every mic.** After a room talker stops and before the
   presenter speaks, Gate's silent-room branch puts every routed mic at unity (the floor rule only
