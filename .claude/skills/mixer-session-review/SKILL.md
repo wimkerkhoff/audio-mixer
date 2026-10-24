@@ -1,5 +1,5 @@
 ---
-name: session-review
+name: mixer-session-review
 description: Analyse a recorded AudioMixer session to judge what a remote attendee actually heard, and turn that into concrete recommendations for settings, code, docs and UI. Asks the operator a few questions first and confirms its reading with them afterwards. Use when reviewing a service afterwards, when the operator reports the audio sounded wrong, when asked to check the automixer's choices, the leveler, clipping or levels, or when asked to compare sessions over time.
 ---
 

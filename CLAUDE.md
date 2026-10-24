@@ -682,8 +682,9 @@ operator's own later judgement.
 
 ## Reviewing a recorded session
 
-`.claude/skills/session-review` is the procedure — invoke it rather than re-deriving the order (checking
-level before analysing hand-offs is the step that has produced confident wrong answers when skipped).
+`/mixer-session-review` (`.claude/skills/mixer-session-review`) is the procedure — invoke it rather
+than re-deriving the order (checking level before analysing hand-offs is the step that has produced
+confident wrong answers when skipped).
 A session is one `<stamp>` across `session-*.json` (**start here** — the `Config` everything must be
 read against), `decisions-*.csv`, the per-mic `diag-input*.wav` and the bus `mix-*.wav`.
 
