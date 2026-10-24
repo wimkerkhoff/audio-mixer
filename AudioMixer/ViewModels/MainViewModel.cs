@@ -242,7 +242,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // that is still DefaultInputCount = 3. On the six-transmitter rig every session record showed
         // inputs 4-6 with zero leader, ducked and muted time — plausible-looking and wrong. Replay is
         // excluded: it is a sandbox, not a service.
-        if (!_isReplaying)
+        // ReplayOptions, not IsReplaying: that is set by StartReplayIfRequested, below, so it read false
+        // here and every replay since 2026-09-26 recorded — and ran retention, which on 2026-10-24
+        // deleted 33 GB of real recordings to make room for the replays' own.
+        if (Audio.Replay.ReplayOptions.Current == null)
         {
             _session = new SessionRecorder(_engine, Channels, Outputs) { Config = BuildSessionConfig };
 
@@ -1638,6 +1641,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void ToggleRecording()
     {
         if (_recording) { StopRecording("by the operator"); return; }
+
+        // A replay never records, so it can never run retention against the operator's recordings.
+        if (Audio.Replay.ReplayOptions.Current != null)
+        {
+            StatusText = "A replay does not record.";
+            return;
+        }
 
         // Old recordings first, so a start is not refused for space that is about to be freed.
         _retention.Prune();

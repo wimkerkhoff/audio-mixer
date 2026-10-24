@@ -228,7 +228,7 @@ WasapiCapture (per input)
   in `Views/`.
 
 Anything that makes a judgement — health rules, the automixer, session aggregates —
-lives in a pure function so it can be unit-tested. About 350 tests cover that layer; anything
+lives in a pure function so it can be unit-tested. Over 400 tests cover that layer; anything
 needing a device or a window is exercised by a replay run instead.
 
 ## File locations

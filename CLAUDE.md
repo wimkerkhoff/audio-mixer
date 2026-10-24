@@ -26,9 +26,12 @@ something to learn.
   $p.WaitForExit(20000)`. A kill leaves every recording in progress with a zero-length WAV header
   (82 files broken this way in one evening; `tools/wavfix.py` repairs them). Relaunch with the same
   arguments it had — read them from `Win32_Process` first; normally `--log --state 7077`.
-- **Test without touching the live mixer.** `--replay` has its own single-instance mutex, no autosave
-  and no output devices, so it runs beside a live session; give it a preset *copy* (`--preset=`) and
-  its own log (set `TEMP`/`TMP` for that process). `--shots` + `--open-all` renders every window.
+- **Test without touching the live mixer.** `--replay` has its own single-instance mutex, no autosave,
+  no output devices and no recording, so it runs beside a live session; give it a preset *copy*
+  (`--preset=`) and its own log (set `TEMP`/`TMP` for that process). `--shots` + `--open-all` renders
+  every window. **Before running any mode of the app in a loop, count the files under
+  `Documents\AudioMixer\` before and after one short run** — a sandbox claim here was false for a
+  month, and believing it destroyed recordings (see Recording & measurement).
 - **Measure before concluding.** Tonight-style mistakes, each made once:
   - a live meter measures the *room*, not a gain change — read the endpoint back (`tools/VolProbe`);
   - a calibration median spanning a gain change averages two rigs — reset, then re-measure;
@@ -600,6 +603,12 @@ operator's own later judgement.
 - **A replay fixture must live in `analysis\keep\`** — `Prune()` runs at every record start (at
   launch) and is top-level only. Both original golden baselines' WAVs were pruned at 42 days
   old before anyone noticed.
+- **Until 2026-10-24 every `--replay` recorded, and so ran retention.** The guard read `IsReplaying`,
+  which is set only after it. A batch of 22 replays wrote 40 GB into `analysis\`/`recordings\`
+  with free space under the 40 GB floor, and each record start deleted the oldest real recordings
+  to make room: 33 GB, every mix and diag WAV of the 7–21 Oct services, gone for good (`f.Delete`,
+  no Recycle Bin). The guard now reads `ReplayOptions.Current`, and `ToggleRecording` refuses
+  under replay as well. Session records from replays before then sit among the real ones.
 - **`decisions-<stamp>.csv` is the only record of what the automixer did**: every 100 ms, per bus the
   automix mode and leader, per mic the level and applied gain (the diag WAVs are pre-automix). 10 Hz
   cannot miss a 200 ms hold. The `mode_<bus>` columns replaced a `scene` column on 2026-09-23.
