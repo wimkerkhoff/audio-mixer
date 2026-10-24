@@ -42,6 +42,20 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
 
 ## Automixer and levels
 
+- 🔬 **Learn each room mic's coupling to the lapel's wearer** — consider at the next data review.
+  Since 2026-10-24 the lapel reclaims when no room mic is +6 dB over it (CLAUDE.md, Automixer), which
+  cut the replayed echo ~60%, but a fixed margin cannot tell the presenter's voice in a nearby room
+  mic (B2 read him 0 to +9 dB over his lapel at 65% fader) from a questioner (+12 to +22). The cost
+  left: a questioner's pause lets the lapel reclaim, and they cannot break back in while the lapel
+  hears them over −40 — two long questions lost 2.7 s and 5.5 s mid-question (the rest lose ~1.7 s
+  at the end, as the presenter answers over them). A fixed +10 dB active break-in gave that back but
+  let most of the echo return. Candidate: while only the lapel talks (Lapel mode, or a held floor
+  with no break-in), keep a per-mic median of room-minus-lapel level, post-fader; a mic is "another
+  talker" only well above its own median, for reclaim and for an active-lapel break-in alike. Adapts
+  to placement and fader with no setting. Replay old vs new on `20261024-062726`/`-072727` (in
+  `keep\`, Q&A with the presenter answering questions) and both studies; the scratch scripts that
+  scored echo seconds and per-question coverage from the decisions CSV are worth turning into a tool.
+
 - 🔬 **Relative thresholds.** `PriorityActiveRms` (−40), `PriorityBreakInRms` (−45) and
   `SilenceFloorRms` (−55) are absolute and assume speech near −24; the rig's level has moved 20+ dB
   between sessions, and when it is off the mix chops (finding 8). Candidate: derive speech/silence
@@ -110,7 +124,14 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
   decision track all ride that Background-priority `DispatcherTimer`. Cause unknown, no Windows hang
   event. A tick > 2 s late is now logged and written to the session's Actions ("window froze Ns
   from hh:mm:ss"); read those after the next service, then move the Q&A switch and decision track
-  off the UI thread.
+  off the UI thread. 2026-10-24 (theology study): froze 10.0 s at 06:54:18 and 9.7 s at 07:14:00,
+  plus 2–4 s three times at 06:34 while the operator re-routed bus B strip by strip.
+- 🐛 **Underruns are still counted after a receiver is unplugged** when the watchdog restart fails
+  (`0x88890004`): 2026-10-24 06:33, B1/B2 logged 708 and 705 in one minute — the 2026-10-12 fix
+  covers a capture the device ends, not this path. Inflates the session record's `Underruns`.
+- 🔬 **Real underruns 06:35–07:15 on 2026-10-24**: 100–350/min summed over every routed mic, then
+  near zero after 07:18. Count exact-zero holes per minute in `keep\mix-A-20261024-062726.wav` to see
+  whether the stream crackled, and line it up with the UI freezes and CPU (OBS, Zoom).
 - 🐛 **Replay with a preset that has more strips than the fixture has mics crashes Diagnostics**
   (`MainViewModel.DeviceRows`, then `SessionRecorder.BuildSummary`, index past `_engine.Inputs`).
   Give replays a preset with the fixture's strip count until every `_engine.Inputs[i]` is bounds-checked.
