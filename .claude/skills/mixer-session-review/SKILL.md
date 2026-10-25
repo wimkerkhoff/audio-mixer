@@ -139,6 +139,8 @@ this room's floor is HVAC that no filter removes.
 - **Underruns:** `under=[a,b]` per minute, for routed pairs only (`routes=`). Unplugging a receiver
   can still inflate the count when the watchdog restart fails (`0x88890004`); exclude those minutes.
   Real ones are silent holes in the mix: count exact-zero runs ≥ 2 ms per minute in `mix-*.wav`.
+- **CPU:** `cpu=` on the log's `Output 0` line (since 2026-10-25). Line underrun bursts up against
+  it before blaming the mixer — at 100% even a High-priority capture thread starves.
 - **UI stalls:** "UI thread stalled" lines and "window froze" actions — meters, Checks and the
   Lapel → Q&A switch pause with them.
 

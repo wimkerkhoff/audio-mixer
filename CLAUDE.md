@@ -113,7 +113,9 @@ Runtime files:
 **One mixer window** (`SimpleWindow`, fixed 330 px wide, `SizeToContent="Height"`, one row per mic):
 the **Lapel | Q&A | Singing** buttons, mic rows (state stripe, meter with the target band, level, mute,
 bus A/B buttons that light green when the automixer has that mic on that bus), an on-air card per bus
-whose ON AIR / MUTED label *is* its mute button, and one toolbar. **Checks** lists every warning and
+whose ON AIR / MUTED label *is* its mute button, and one toolbar, ending in the whole-PC CPU %
+(green < 70, amber < 90, red; `CpuUsage`, one `GetSystemTimes` a second, also `cpu=` on the log's
+`Output 0` line). **Checks** lists every warning and
 opens itself only when something needs attention. **Diagnostics** is "why this mic", the session so
 far, calibration and devices. **Settings** holds the rig: the priority mic, each strip's device and
 split side, per-bus automix mode, the leveler, the global low-cut, picker filters. `App` owns
@@ -578,6 +580,9 @@ operator's own later judgement.
   during a service (OBS ~32%, Zoom ~16%, audiodg ~11%; the mixer ~3%) and routed mics underran
   ~1/s each at Normal priority. Raising the process to **High** (live): 0 in the next 30 s, 1 in
   6 min. The app now sets High at startup (Normal under `--replay`; `--priority=` overrides both).
+  2026-10-25: OBS jumped to 75% of the machine, CPU sat at 100% and every mic underran 1–3 in 3 min
+  even at High. The panel's CPU figure (since then) is the operator's cue to close what the service
+  does not need.
 - **The Realtek aux input (the lapel) runs Realtek capture effects** (`RtkRecMFX`/`RtkRecEFX`
   APOs registered, "audio enhancements" not disabled, 2026-09-26) — DSP ahead of the mixer on the
   priority mic, of unknown kind. The USB receivers carry none. Toggling enhancements restarts the
