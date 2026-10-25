@@ -48,6 +48,16 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
 
 ## Automixer and levels
 
+- 🔬 **Quick questions never get a room mic in Q&A** (operator, 2026-10-25 confession study: "a
+  bit slow to open mic for a questioner", "a lot of questions are really quick"). Breaking in over
+  the lapel needs 0.4 s held (`BreakInSustainTicks`, chosen against paper rustle, finding 9), and
+  is locked out while the lapel hears the questioner over −40 (the coupling item below). A
+  1–2 s question is over first and airs only faintly through the lapel. Candidate: scale the
+  break-in sustain by margin as room-vs-room already does (`RequiredSustainTicks`: ~100 ms at
+  +10 dB), in Gate only — Lapel mode keeps the room off regardless. Risk: rustle at a mic is also
+  far over the lapel; replay the confession study (94 labelled noise tenures) to count what more
+  gets through, and the 2026-10-25 Q&A to count questions that gain a mic.
+
 - 🔬 **Learn each room mic's coupling to the lapel's wearer** — consider at the next data review.
   Since 2026-10-24 the lapel reclaims when no room mic is +6 dB over it (CLAUDE.md, Automixer), which
   cut the replayed echo ~60%, but a fixed margin cannot tell the presenter's voice in a nearby room
