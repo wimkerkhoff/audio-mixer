@@ -312,6 +312,23 @@
             </Style.Triggers>
         </Style>
 
+        <!-- Whole-PC CPU. Over 90% the capture threads starve and the stream crackles (2026-09-26,
+             2026-10-25), and nothing else on the panel would say so. -->
+        <Style x:Key="CpuText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="Foreground" Value="#3FBF7F"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="warn">
+                    <Setter Property="Foreground" Value="#E0A33E"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="bad">
+                    <Setter Property="Foreground" Value="#FF8F86"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
     </Window.Resources>
 
     <StackPanel Margin="8">
@@ -343,6 +360,9 @@
                         ToolTip="Open the documentation"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock Style="{StaticResource CpuText}" Text="{Binding CpuText}"
+                           Tag="{Binding CpuBand}"
+                           ToolTip="CPU usage of the whole PC. Green under 70%, amber 70 to 90%, red 90% and over: then audio can crackle. Close what the service does not need."/>
                 <!-- With no banner in the panel this badge is the ONLY thing that says something is
                      wrong, so it carries the count and the worst severity, not just a glyph. -->
                 <Button x:Name="ChecksButton" Content="{Binding AlertBadgeText}" MinWidth="34" Height="20"

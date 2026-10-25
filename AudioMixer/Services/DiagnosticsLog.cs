@@ -11,14 +11,17 @@ public sealed class DiagnosticsLog
     private readonly AudioEngine _engine;
     private readonly IReadOnlyList<ChannelViewModel> _channels;
     private readonly IReadOnlyList<OutputViewModel> _outputs;
+    private readonly Func<double?> _cpuPercent;
 
     private long _lastLogTick = Environment.TickCount64;
     private readonly long[] _lastTotalSamples;
     private readonly int[] _lastAutoMixWinner;
 
     public DiagnosticsLog(
-        AudioEngine engine, IReadOnlyList<ChannelViewModel> channels, IReadOnlyList<OutputViewModel> outputs)
+        AudioEngine engine, IReadOnlyList<ChannelViewModel> channels, IReadOnlyList<OutputViewModel> outputs,
+        Func<double?> cpuPercent)
     {
+        _cpuPercent = cpuPercent;
         _engine = engine;
         _channels = channels;
         _outputs = outputs;
@@ -73,7 +76,8 @@ public sealed class DiagnosticsLog
             _lastTotalSamples[o] = total;
             long samplesPerSec = delta * 1000 / elapsedMs;
             AudioLog.Write(
-                $"Output {o}: playing={bus.IsPlaying} samplesPerSec={samplesPerSec} peakDb={_outputs[o].OutputPeakDb:F1} winner={_engine.AutoMixActiveInput(o)}");
+                $"Output {o}: playing={bus.IsPlaying} samplesPerSec={samplesPerSec} peakDb={_outputs[o].OutputPeakDb:F1} winner={_engine.AutoMixActiveInput(o)}" +
+                (o == 0 && _cpuPercent() is double cpu ? $" cpu={cpu:F0}%" : ""));
         }
 
         for (int i = 0; i < _channels.Count; i++)

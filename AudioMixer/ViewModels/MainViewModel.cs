@@ -208,12 +208,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             Interval = TimeSpan.FromMilliseconds(33),
         };
-        _diagnostics = new DiagnosticsLog(_engine, Channels, Outputs);
+        _diagnostics = new DiagnosticsLog(_engine, Channels, Outputs, () => CpuPercent);
         // Not gated on AudioLog.Enabled, unlike the diagnostics log: the session that matters is the
         // one nobody thought to prepare for. Replay is excluded — it is a sandbox, not a service.
         _meterTimer.Tick += (_, _) =>
         {
             NoteLateTick();
+            SampleCpu();
             foreach (var ch in Channels) ch.RefreshMeters();
             foreach (var op in Outputs) op.RefreshMeters();
             _diagnostics.Tick();
@@ -377,6 +378,33 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public string AlertBadgeState => Alerts.Count == 0 ? "clear"
         : Alerts.Any(a => a.Severity == AlertSeverity.Critical) ? "bad" : "warn";
+
+    private CpuUsage.Times? _cpuLast;
+    private long _cpuLastTick;
+
+    /// <summary>Whole-PC CPU, sampled once a second; null until two readings exist.</summary>
+    public double? CpuPercent { get; private set; }
+
+    public string CpuText => CpuPercent is double p ? $"{p:F0}%" : "";
+
+    public string CpuBand => CpuPercent is double p ? CpuUsage.Band(p) : "ok";
+
+    private void SampleCpu()
+    {
+        long now = Environment.TickCount64;
+        if (now - _cpuLastTick < 1000) return;
+        _cpuLastTick = now;
+        var t = CpuUsage.Read();
+        if (t == null) return;
+        if (_cpuLast is CpuUsage.Times last && CpuUsage.Percent(last, t.Value) is double p)
+        {
+            CpuPercent = p;
+            RaisePropertyChanged(nameof(CpuPercent));
+            RaisePropertyChanged(nameof(CpuText));
+            RaisePropertyChanged(nameof(CpuBand));
+        }
+        _cpuLast = t;
+    }
 
     /// <summary>
     /// A glyph when there is nothing to report, so the toolbar reads as a row of icons rather than
