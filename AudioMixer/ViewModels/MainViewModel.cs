@@ -245,7 +245,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // ReplayOptions, not IsReplaying: that is set by StartReplayIfRequested, below, so it read false
         // here and every replay since 2026-09-26 recorded — and ran retention, which on 2026-10-24
         // deleted 33 GB of real recordings to make room for the replays' own.
-        if (Audio.Replay.ReplayOptions.Current == null)
+        if (!IsSandbox)
         {
             _session = new SessionRecorder(_engine, Channels, Outputs) { Config = BuildSessionConfig };
 
@@ -955,6 +955,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         });
     }
 
+    /// <summary>
+    /// --shots: the real devices and preset, for a true picture of the panel, but nothing written —
+    /// no recording (and so no retention), no session record, no autosave.
+    /// </summary>
+    public static bool CaptureOnly { get; set; }
+
+    private static bool IsSandbox => Audio.Replay.ReplayOptions.Current != null || CaptureOnly;
+
     private bool _isReplaying;
     public bool IsReplaying
     {
@@ -1504,7 +1512,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         // A replay sandbox has no real input devices bound; letting it autosave would overwrite the
         // operator's preset with replay placeholders, possibly while they are mid-service.
-        if (Audio.Replay.ReplayOptions.Current?.SuppressAutosave == true) return;
+        if (Audio.Replay.ReplayOptions.Current?.SuppressAutosave == true || CaptureOnly) return;
 
         var preset = PresetMapper.FromViewModels(Channels, Outputs, new PresetMapper.AppOptions(
             _hideVirtualInputs, _hideVoicemeeterOutputs, _warnOnBluetoothMics,
@@ -1642,10 +1650,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         if (_recording) { StopRecording("by the operator"); return; }
 
-        // A replay never records, so it can never run retention against the operator's recordings.
-        if (Audio.Replay.ReplayOptions.Current != null)
+        // A sandbox run never records, so it can never run retention against the operator's
+        // recordings.
+        if (IsSandbox)
         {
-            StatusText = "A replay does not record.";
+            StatusText = "A replay or screenshot run does not record.";
             return;
         }
 

@@ -305,6 +305,11 @@ lock-free; `InputChannel` ramps them within a buffer.
 - **`--shots[=DIR]`** renders every window to PNG via `RenderTargetBitmap` and exits — works occluded,
   off-screen or with the workstation locked (a screen grab returns the lock screen; `PrintWindow`
   returns blank for WPF).
+  It uses the real devices and preset but writes nothing: no recording (so no retention), no
+  session record, no autosave (since 2026-10-24; verified by file count and preset hash). It does
+  open the outputs for ~10 s, so bus A reaches VB-CABLE: not while Zoom or OBS is live. A shot
+  for the README needs the receivers plugged in — with them packed, every Rode row says "not
+  plugged in" — and under `--replay` too, which also leaves both buses OFF AIR.
 - **Unit tests** cover pure logic (health rules, automixer, allowlist, recorder, mapping). Anything
   needing a device or window is verified by a replay run. **CI** (`.github/workflows/ci.yml`) builds
   and runs `dotnet test` on every push and pull request since 2026-09-21; before that only

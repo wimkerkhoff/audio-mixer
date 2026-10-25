@@ -169,6 +169,7 @@ public partial class App : Application
                 _shotsDirectory = eq > 0 ? a[(eq + 1)..] : System.IO.Path.Combine(
                     System.IO.Path.GetTempPath(), "AudioMixer-shots");
                 _openAllWindows = true;   // capturing one window is never what this is for
+                MainViewModel.CaptureOnly = true;
             }
             else if (a.Equals("--open-all", StringComparison.OrdinalIgnoreCase))
             {

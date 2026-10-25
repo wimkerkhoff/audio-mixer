@@ -194,7 +194,7 @@ dotnet test AudioMixer.sln
 | `--replay[=STAMP]` | Feed the inputs from a recorded session instead of live mics. A sandbox: its own instance mutex, no autosave, no output devices. Add `--seek=MM:SS --for=MM:SS --speed=N --loop`. |
 | `--preset=PATH` | Load and save the preset at PATH instead of `%APPDATA%`. What makes a replay fixture reproducible. |
 | `--state[=PORT]` | Serve a live JSON snapshot on `http://127.0.0.1:7077/state` — the fastest way to see the selector's reasoning without the GUI. |
-| `--shots[=DIR]` | Render every window to PNG and exit. Works with the workstation locked, where a screen grab returns the lock screen. |
+| `--shots[=DIR]` | Render every window to PNG and exit. Works with the workstation locked, where a screen grab returns the lock screen. Writes nothing else: no recording, session record or preset change. |
 | `--log` | Write `%TEMP%\AudioMixer.log`, including WPF binding failures. Crashes are always logged regardless, to `%TEMP%\AudioMixer.crash.log`. |
 | `--open-all` | Open every window, so one run covers all their markup. |
 | `--priority=CLASS` | Process priority: `Idle`, `BelowNormal`, `Normal`, `AboveNormal` or `High`. Defaults to `High` (a PC running OBS and Zoom starves Normal-priority capture threads) and to `Normal` under `--replay`. |
