@@ -51,6 +51,17 @@ public sealed class AutoMixer
     // questioner is still loud on the others.
     private const int LapelReclaimTicks = 30;          // ~300 ms
 
+    // Q&A: while the lapel is itself "active" (over PriorityActiveRms) the pause break-in above never
+    // runs, and the lapel hears a questioner at -31 to -38 — so a question waited, often until its
+    // end: on 2026-10-25 real questions got a room mic after 0.1-5.3 s, median 1.7 s. Over an active
+    // lapel, a room mic breaks in when it is this far above its OWN learned pickup of the presenter
+    // (PresenterCoupling), held ActiveBreakInTicks. A fixed margin cannot: the mic beside him read
+    // his voice at +0 to +15 dB over his lapel, the others at -5 to -16 typical. Offline on that
+    // day's track, +14 dB held 0.3 s kept ~15 false break-ins in 50 min of his teaching (C1's
+    // dropout-skewed figure aside) — validate by replay before moving it.
+    private const double ActiveBreakInExcessDb = 14;
+    private const int ActiveBreakInTicks = 30;         // ~300 ms
+
     // Lapel mode switches itself to Q&A (Gate) when a room mic carries sustained speech — the
     // break-in test held this long. At 1.5 s a replay of the 2026-09-27 confession study switched
     // 33 s in on paper shuffled at a room mic (-23 dBFS); at 2.0 s a 100 Hz re-run of the detector on
@@ -96,6 +107,11 @@ public sealed class AutoMixer
 
     private readonly float[] _cv;                  // per channel spectral-flux instability (from InputChannel)
 
+    private readonly PresenterCoupling _coupling;  // per room mic, its pickup of the lapel's wearer
+    private readonly int[] _epoch;                 // per channel, CalibrationEpoch the coupling was learned in
+    private int _couplingLapel = -1;               // the lapel the coupling was learned against
+    private readonly int[] _activeBreakTicks;      // per output, ticks a room mic has broken in over an active lapel
+
     private readonly float _attackCoef;
     private readonly float _releaseCoef;
 
@@ -125,6 +141,9 @@ public sealed class AutoMixer
 
         _env = new float[maxChannels];
         _cv = new float[maxChannels];
+        _coupling = new PresenterCoupling(maxChannels);
+        _epoch = new int[maxChannels];
+        _activeBreakTicks = new int[outputCount];
         _activeAny = new bool[maxChannels];
 
         _attackCoef = (float)(1 - Math.Exp(-TickSeconds / (AttackMs / 1000.0)));
@@ -188,6 +207,8 @@ public sealed class AutoMixer
 
             _activeAny[i] = false;
         }
+
+        LearnCoupling(inputs, n);
 
         for (int o = 0; o < _outputCount; o++)
         {
@@ -287,7 +308,19 @@ public sealed class AutoMixer
             // The lapel keeps the floor through its wearer's pauses until a room mic breaks in (see
             // PriorityBreakInRms). A muted lapel gives it up: muting is how an operator leaves the
             // lapel out of a meeting, and the room must then run as plain Gate.
-            if (priorityActive)
+            // Over an ACTIVE lapel, only a room mic far above its own pickup of him breaks in (see
+            // ActiveBreakInExcessDb); the floor then goes to the room as in a break-in.
+            _activeBreakTicks[o] = priorityActive && RoomTalksOverActiveLapel(inputs, o, n, pArg)
+                ? _activeBreakTicks[o] + 1 : 0;
+            if (_activeBreakTicks[o] >= ActiveBreakInTicks)
+            {
+                _priorityOwned[o] = false;
+                _priorityArg[o] = -1;
+                _breakInTicks[o] = 0;
+                _activeBreakTicks[o] = 0;
+                priorityActive = false;
+            }
+            else if (priorityActive)
             {
                 _priorityOwned[o] = true;
                 _priorityArg[o] = pArg;
@@ -387,6 +420,61 @@ public sealed class AutoMixer
         }
 
         for (int i = 0; i < n; i++) inputs[i].IsAutoMixActive = _activeAny[i];
+    }
+
+    private static double Db(float linear) => 20 * Math.Log10(Math.Max(linear, 1e-6f));
+
+    // Learns each room mic's pickup of the lapel's wearer, from ticks where he is talking and his
+    // lapel is what is on air (last tick's selection) — so mostly him, not a questioner. A gain
+    // change on either side (calibration reset) or a different lapel starts it over.
+    private void LearnCoupling(InputChannel[] inputs, int n)
+    {
+        int p = -1;
+        for (int i = 0; i < n; i++)
+            if (inputs[i].IsPriority && !inputs[i].Muted) { p = i; break; }
+        if (p < 0) return;
+
+        if (p != _couplingLapel || inputs[p].CalibrationEpoch != _epoch[p])
+        {
+            _coupling.ResetAll();
+            _couplingLapel = p;
+            for (int i = 0; i < n; i++) _epoch[i] = inputs[i].CalibrationEpoch;
+        }
+        for (int i = 0; i < n; i++)
+        {
+            if (i == p || inputs[i].CalibrationEpoch == _epoch[i]) continue;
+            _coupling.Reset(i);
+            _epoch[i] = inputs[i].CalibrationEpoch;
+        }
+
+        if (_env[p] <= PriorityActiveRms) return;
+        bool onAir = false;
+        for (int o = 0; o < _outputCount; o++) if (Volatile.Read(ref _activeInput[o]) == p) onAir = true;
+        if (!onAir) return;
+
+        double lapelDb = Db(_env[p]);
+        for (int i = 0; i < n; i++)
+        {
+            if (i == p || inputs[i].IsPriority || inputs[i].Muted) continue;
+            // A dropout or a silent mic says nothing about its pickup: skip it, on the instantaneous
+            // level (the envelope lingers 250 ms after a dropout begins).
+            if (inputs[i].CurrentLevelLinear < SilenceFloorRms || _env[i] < SilenceFloorRms) continue;
+            _coupling.Add(i, Db(_env[i]) - lapelDb);
+        }
+    }
+
+    // Some routed room mic far above its learned pickup of the presenter, i.e. someone else talking.
+    private bool RoomTalksOverActiveLapel(InputChannel[] inputs, int o, int n, int lapel)
+    {
+        if (lapel < 0) return false;
+        double lapelDb = Db(_env[lapel]);
+        for (int i = 0; i < n; i++)
+        {
+            if (!inputs[i].GetRoute(o) || inputs[i].IsPriority || inputs[i].Muted) continue;
+            if (_env[i] <= PriorityBreakInRms || _coupling.Median(i) is not double c) continue;
+            if (Db(_env[i]) - lapelDb - c >= ActiveBreakInExcessDb) return true;
+        }
+        return false;
     }
 }
 

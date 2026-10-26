@@ -625,6 +625,102 @@ public class AutoMixerTests
         }
     }
 
+    // --- Q&A: breaking in over an active lapel, against each mic's learned pickup of him --------------
+
+    /// <summary>
+    /// The presenter teaches at -25 on his lapel for ~15 s; room mic 1 hears him at
+    /// <paramref name="mic1Db"/> relative, room mic 2 at -6 dB relative.
+    /// </summary>
+    private static (AutoMixer, InputChannel[]) Learned(float mic1Db)
+    {
+        var rig = Rig(3);
+        rig[0].IsPriority = true;
+        var mix = Gated(channels: 3);
+        float lapel = 0.056f;
+        rig[0].InjectLevelsForTest(lapel);
+        rig[1].InjectLevelsForTest(lapel * MathF.Pow(10, mic1Db / 20));
+        rig[2].InjectLevelsForTest(lapel * 0.5f);
+        Run(mix, rig, 1500);
+        return (mix, rig);
+    }
+
+    [Fact]
+    public void AQuestionerFarAboveTheirMicsUsualPickupBreaksInOverAnActiveLapel()
+    {
+        var (mix, rig) = Learned(mic1Db: -6);
+        rig[0].InjectLevelsForTest(0.025f);     // -32: the lapel hears the questioner, still "active"
+        rig[1].InjectLevelsForTest(0.006f);
+        rig[2].InjectLevelsForTest(0.18f);      // -15: +17 over the lapel, +23 over this mic's usual
+        Assert.InRange(TickUntilWinner(mix, rig, 2, max: 200), 25, 60);
+    }
+
+    /// <summary>2026-10-25: B2 sat beside the presenter and read him at +0 to +15 dB over his lapel.</summary>
+    [Fact]
+    public void TheMicBesideThePresenterDoesNotBreakInOnHisVoice()
+    {
+        var (mix, rig) = Learned(mic1Db: 0);
+        rig[0].InjectLevelsForTest(0.056f);
+        rig[1].InjectLevelsForTest(0.16f);      // +9 dB over his lapel, as the near mic read at p90
+        for (int t = 0; t < 300; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(0f, rig[1].GetAutoMixGain(0));
+        }
+    }
+
+    [Fact]
+    public void BeforeAnythingIsLearnedAnActiveLapelKeepsTheFloorAsBefore()
+    {
+        var rig = Rig(3);
+        rig[0].IsPriority = true;
+        var mix = Gated(channels: 3);
+        rig[0].InjectLevelsForTest(0.05f);
+        Run(mix, rig);
+        rig[0].InjectLevelsForTest(0.025f);
+        rig[2].InjectLevelsForTest(0.18f);
+        for (int t = 0; t < 300; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(0f, rig[2].GetAutoMixGain(0));
+        }
+    }
+
+    [Fact]
+    public void AGainChangeOnTheRoomMicForgetsItsFigure()
+    {
+        var (mix, rig) = Learned(mic1Db: -6);
+        rig[2].ResetCalibration();
+        rig[0].InjectLevelsForTest(0.025f);
+        rig[1].InjectLevelsForTest(0.006f);
+        rig[2].InjectLevelsForTest(0.18f);
+        for (int t = 0; t < 300; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(0f, rig[2].GetAutoMixGain(0));
+        }
+    }
+
+    /// <summary>
+    /// A mic in RF dropout reads silence: learning from it would put its figure tens of dB low, and
+    /// then its ordinary pickup of the presenter would read as a talker (C1, 2026-10-25).
+    /// </summary>
+    [Fact]
+    public void AMicInDropoutLearnsNothing()
+    {
+        var rig = Rig(3);
+        rig[0].IsPriority = true;
+        var mix = Gated(channels: 3);
+        rig[0].InjectLevelsForTest(0.056f);
+        rig[2].InjectLevelsForTest(0f);         // mic 2 cut out the whole time he taught
+        Run(mix, rig, 1500);
+        rig[2].InjectLevelsForTest(0.056f);     // back, hearing him as loud as his lapel
+        for (int t = 0; t < 300; t++)
+        {
+            mix.Tick(rig);
+            Assert.Equal(0f, rig[2].GetAutoMixGain(0));
+        }
+    }
+
     // --- Lapel mode ------------------------------------------------------------------------------------
 
     private static (AutoMixer, InputChannel[]) LapelMode()

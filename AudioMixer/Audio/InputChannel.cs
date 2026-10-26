@@ -132,7 +132,13 @@ public sealed class InputChannel : IDisposable
     {
         _calibration.Reset();
         _leadCalibration.Reset();
+        Interlocked.Increment(ref _calibrationEpoch);
     }
+
+    // Bumped by every reset, i.e. every gain change: the automixer's learned presenter coupling for
+    // this mic (PresenterCoupling) is in post-fader dB and goes stale with it.
+    private int _calibrationEpoch;
+    public int CalibrationEpoch => Volatile.Read(ref _calibrationEpoch);
 
     // The same histogram, fed only once this mic has held the bus for LeadSettleMs. A room mic's
     // plain median is whoever it hears: with only the presenter talking on the lapel it is his voice

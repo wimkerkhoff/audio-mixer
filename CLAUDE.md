@@ -269,6 +269,18 @@ lock-free; `InputChannel` ramps them within a buffer.
   Breaking in at +10 dB over an *active* lapel gave that back but let most of the echo return
   (196 → 165 s, 21.6 hand-offs/min): a fixed margin cannot separate them at this placement.
   Raising the lapel fader 65 → 100% halved the echo again but cost questioners more.
+- **Over an active lapel, a room mic breaks in against its own learned pickup of the presenter**
+  (since 2026-10-25, Q&A only). The pause break-in never runs while the lapel reads over −40, and
+  the lapel hears a questioner at −31 to −38, so questions waited — median 1.7 s, up to 5.3 s that
+  morning. `PresenterCoupling` keeps, per room mic, a running median of room-minus-lapel dB while
+  the presenter talks with his lapel on air (1 dB bins, halved every ~5 min, trusted after ~10 s;
+  reset by that mic's or the lapel's calibration reset). A mic `ActiveBreakInExcessDb` (+14) over
+  its own figure for 0.3 s takes the floor. Measured that day: B2, beside him, at +0.2 dB; A1 −4.6;
+  C1 −9.0 — **skip dropout frames**, which put C1 at −13.4 and made its ordinary pickup of him look
+  like a talker. Replayed old vs new: 2026-10-25 Q&A median delay 1.7 → 1.0 s (A1's questions
+  1.7 → 0.1–0.4 s; B2's and C1's unchanged); 2026-10-24 Q&A 19 → 22 of 29 talkers; theology study
+  unchanged (13 of 13); confession study room airtime 40 → 44 s (7 sub-second grabs, none at a
+  labelled clip), teaching 22 → 23 room grabs. In Lapel mode none of this runs.
 - **Split receivers**: one WASAPI endpoint, TX1 left / TX2 right. Bind it to two strips
   (`ChannelSource.Left`/`Right`); bound whole it reaches the bus hard-panned as one blended channel
   the automixer cannot arbitrate. Device claims are per **side** (`DeviceResolver.Claim`/`IsFree`,

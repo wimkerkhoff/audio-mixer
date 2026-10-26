@@ -48,29 +48,17 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
 
 ## Automixer and levels
 
-- 🔬 **Quick questions never get a room mic in Q&A** (operator, 2026-10-25 confession study: "a
-  bit slow to open mic for a questioner", "a lot of questions are really quick"). Breaking in over
-  the lapel needs 0.4 s held (`BreakInSustainTicks`, chosen against paper rustle, finding 9), and
-  is locked out while the lapel hears the questioner over −40 (the coupling item below). A
-  1–2 s question is over first and airs only faintly through the lapel. Candidate: scale the
-  break-in sustain by margin as room-vs-room already does (`RequiredSustainTicks`: ~100 ms at
-  +10 dB), in Gate only — Lapel mode keeps the room off regardless. Risk: rustle at a mic is also
-  far over the lapel; replay the confession study (94 labelled noise tenures) to count what more
-  gets through, and the 2026-10-25 Q&A to count questions that gain a mic.
-
-- 🔬 **Learn each room mic's coupling to the lapel's wearer** — consider at the next data review.
-  Since 2026-10-24 the lapel reclaims when no room mic is +6 dB over it (CLAUDE.md, Automixer), which
-  cut the replayed echo ~60%, but a fixed margin cannot tell the presenter's voice in a nearby room
-  mic (B2 read him 0 to +9 dB over his lapel at 65% fader) from a questioner (+12 to +22). The cost
-  left: a questioner's pause lets the lapel reclaim, and they cannot break back in while the lapel
-  hears them over −40 — two long questions lost 2.7 s and 5.5 s mid-question (the rest lose ~1.7 s
-  at the end, as the presenter answers over them). A fixed +10 dB active break-in gave that back but
-  let most of the echo return. Candidate: while only the lapel talks (Lapel mode, or a held floor
-  with no break-in), keep a per-mic median of room-minus-lapel level, post-fader; a mic is "another
-  talker" only well above its own median, for reclaim and for an active-lapel break-in alike. Adapts
-  to placement and fader with no setting. Replay old vs new on `20261024-062726`/`-072727` (in
-  `keep\`, Q&A with the presenter answering questions) and both studies; the scratch scripts that
-  scored echo seconds and per-question coverage from the decisions CSV are worth turning into a tool.
+- 🔬 **Quick questions, and questions from the mic beside the presenter, still wait in Q&A.**
+  Since 2026-10-25 a room mic breaks in over an active lapel at +14 dB over its learned pickup of
+  the presenter (CLAUDE.md, Automixer): replayed, the A1 questions went from 1.7 s to 0.1–0.4 s.
+  Left: (1) the room mic beside the presenter (B2 that day, which hears him at the lapel's own
+  level) needs a questioner +14 dB over the lapel, so its questions waited as before (1–5 s);
+  (2) 24 short stretches on B2 at +6.5 to +10 dB never got a mic in either version — quick
+  questions or his voice, unlabelled; (3) a mic in constant RF dropout (C1, 22% of frames) learns
+  slowly and gains nothing. Next: label the 2026-10-25 Q&A (10:25–10:31) so (2) can be judged;
+  then consider a shorter pause break-in when far over the mic's learned figure, and whether the
+  reclaim rule should use the learned figure too. Also: the scratch scripts that scored echo
+  seconds, per-question delay and coverage from the decisions CSV are worth turning into a tool.
 
 - 🔬 **Relative thresholds.** `PriorityActiveRms` (−40), `PriorityBreakInRms` (−45) and
   `SilenceFloorRms` (−55) are absolute and assume speech near −24; the rig's level has moved 20+ dB
