@@ -20,10 +20,6 @@ Status: 🏛 needs the room (a live session) · 🔬 needs a labelled capture fi
 
 ## Next time the rig is set up
 
-- 🏛 **Retake the README screenshot** (`docs/screenshot.png` is from 2026-09-21, before Lapel |
-  Q&A | Singing). With the receivers plugged in and before Zoom/OBS go live: mixer closed, then
-  `AudioMixer.exe --shots=<dir>`; replace the image with `01-AudioMixer.png`. Writes nothing else.
-
 - 🏛 **Calibrate the rig to −24 dBFS** (six transmitters and the lapel since 2026-10-04; on
   2026-10-24 the lapel's speech still read −31 dBFS). On 2026-09-23 the Rode strips read 13–17 dB
   under target after the gain moved from Windows to the receivers — unverified, because the

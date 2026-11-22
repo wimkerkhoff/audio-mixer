@@ -10,7 +10,11 @@ every talker is picked up by all of them at different distances, and simply summ
 comb-filter "echo", a raised noise floor and reverb. The automixer keeps one mic open and mutes the
 rest, holding its choice so a pause cannot hand the room to a distant mic.
 
-![AudioMixer operator panel](docs/screenshot.png)
+![AudioMixer operator panel: Lapel, Q&A and Singing buttons, eight mic rows, and the two bus cards](docs/screenshot.png)
+
+*The operator panel with Singing on (purple). Each row has a meter with its target band, a level
+slider, mute and the A/B bus buttons. The toolbar ends with the whole-PC CPU (amber at 72%) and the
+Checks count. The bottom cards show bus A on air to OBS/Zoom and the headset bus muted.*
 
 ## The four windows
 
